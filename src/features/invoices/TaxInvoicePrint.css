@@ -1,0 +1,466 @@
+.tax-invoice-root {
+  --tax-brand: #111;
+  --tax-accent: #111;
+  --tax-border: #333;
+  box-sizing: border-box;
+  width: 148mm;
+  margin: 0 auto;
+  padding: 0;
+  color: #111;
+  background: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 8pt;
+  line-height: 1.35;
+}
+
+.tax-invoice-root *,
+.tax-invoice-root *::before,
+.tax-invoice-root *::after {
+  box-sizing: border-box;
+}
+
+.tax-invoice {
+  display: flex;
+  flex-direction: column;
+  padding: 3mm 4mm;
+}
+
+.tax-invoice-header {
+  margin-bottom: 1mm;
+}
+
+.tax-invoice-brand-row {
+  display: grid;
+  grid-template-columns: 44mm 1fr 22mm;
+  align-items: start;
+  gap: 3mm;
+}
+
+.tax-invoice-gstin {
+  font-size: 7.5pt;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tax-invoice-identity {
+  text-align: center;
+}
+
+.tax-invoice-logo {
+  display: block;
+  width: 14mm;
+  height: 14mm;
+  object-fit: contain;
+  margin: 0 auto 1.5mm;
+}
+
+.tax-invoice-shop {
+  margin: 0;
+  color: var(--tax-brand);
+  font-size: 14pt;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.tax-invoice-tagline {
+  margin: 0.5mm 0 1.5mm;
+  font-size: 7.5pt;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tax-invoice-address,
+.tax-invoice-meta-line {
+  margin: 0;
+  font-size: 7.5pt;
+}
+
+.tax-invoice-marks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1.5mm;
+}
+
+.tax-invoice-bis,
+.tax-invoice-qr {
+  width: 14mm;
+  height: 14mm;
+  object-fit: contain;
+}
+
+.tax-invoice-rule {
+  border: none;
+  border-top: 1pt solid var(--tax-accent);
+  margin: 2mm 0;
+}
+
+.tax-invoice-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: 3mm 4mm;
+}
+
+.tax-invoice-party h2 {
+  margin: 0 0 1mm;
+  font-size: 8pt;
+  font-weight: 700;
+}
+
+.tax-invoice-customer-name {
+  margin: 0 0 0.5mm;
+  font-weight: 700;
+  font-size: 8.5pt;
+}
+
+.tax-invoice-customer-address {
+  margin: 0;
+  font-size: 7.5pt;
+}
+
+.tax-invoice-title-center {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-weight: 700;
+  font-size: 10pt;
+  letter-spacing: 0.04em;
+  padding-top: 0;
+  order: -1;
+}
+
+.tax-invoice-meta-right {
+  text-align: right;
+  font-size: 7.5pt;
+}
+
+.tax-invoice-meta-right p {
+  margin: 0 0 0.4mm;
+}
+
+.tax-invoice-meta-right span {
+  font-weight: 600;
+}
+
+.tax-invoice-rates-title {
+  margin-top: 1.2mm !important;
+  font-weight: 700;
+}
+
+.tax-invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 6.6pt;
+}
+
+.tax-invoice-table th,
+.tax-invoice-table td {
+  border: 0.5pt solid #999;
+  padding: 1mm 0.6mm;
+  vertical-align: top;
+  word-wrap: break-word;
+}
+
+.tax-invoice-table thead th {
+  background: #fff;
+  font-weight: 700;
+  text-align: center;
+  font-size: 6pt;
+  line-height: 1.15;
+  word-wrap: break-word;
+}
+
+.tax-invoice-col-particulars {
+  width: 22%;
+  text-align: left;
+}
+
+.tax-invoice-col-num {
+  text-align: right;
+}
+
+.tax-col-amount {
+  width: 18mm;
+}
+
+.tax-invoice-table tbody tr.empty td {
+  height: 7mm;
+}
+
+.tax-invoice-footer-grid {
+  display: grid;
+  grid-template-columns: 1fr 46mm;
+  gap: 4mm;
+  margin-top: 3mm;
+  align-items: start;
+}
+
+.tax-invoice-footer-grid--single {
+  grid-template-columns: 1fr;
+  justify-items: end;
+}
+
+.tax-invoice-item-count {
+  font-size: 8pt;
+  margin: 2mm 0 0;
+}
+
+.tax-invoice-discount-box {
+  border: 0.5pt solid #999;
+  padding: 1.5mm 2mm;
+  min-height: 18mm;
+}
+
+.tax-invoice-discount-box h3 {
+  margin: 0 0 1.5mm;
+  font-size: 8pt;
+  font-weight: 700;
+}
+
+.tax-invoice-totals {
+  min-width: 38mm;
+  font-size: 8pt;
+}
+
+.tax-invoice-totals-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 3mm;
+  margin-bottom: 0.6mm;
+}
+
+.tax-invoice-totals-row--discount-total,
+.tax-invoice-totals-row--grand {
+  font-weight: 700;
+  border-top: 0.75pt solid var(--tax-border);
+  padding-top: 1mm;
+  margin-top: 1mm;
+}
+
+.tax-invoice-words,
+.tax-invoice-note {
+  margin: 1.5mm 0 0;
+  font-size: 7.5pt;
+}
+
+.tax-invoice-words {
+  font-style: italic;
+}
+
+.tax-invoice-signature-img {
+  display: block;
+  max-height: 18mm;
+  margin: 2mm auto 2mm;
+}
+
+.tax-invoice-signatures {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 4mm;
+  margin-top: auto;
+  padding-top: 8mm;
+  font-size: 8pt;
+}
+
+.tax-invoice-signatures > div {
+  flex: 1;
+  min-height: 0;
+  padding-top: 2mm;
+  text-align: center;
+}
+
+.tax-invoice-signatures .left {
+  text-align: left;
+}
+
+.tax-invoice-signatures .right {
+  text-align: right;
+}
+
+.tax-invoice-print-page {
+  min-height: 100vh;
+  margin: 0;
+  padding: 8mm;
+  background: #fdfbf7;
+}
+
+.tax-invoice-print-status {
+  max-width: 148mm;
+  margin: 0 auto 4mm;
+  font-family: system-ui, sans-serif;
+  font-size: 0.875rem;
+  color: #5c4b46;
+}
+
+.tax-invoice-print-error {
+  color: #5b1916;
+}
+
+@media screen {
+  .tax-invoice-root {
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  }
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .tax-invoice-print-page {
+    min-height: auto;
+    padding: 0;
+    background: #fff;
+  }
+
+  .tax-invoice-print-status {
+    display: none !important;
+  }
+
+  .tax-invoice-root {
+    width: 100%;
+    margin: 0;
+    box-shadow: none;
+  }
+}
+
+.tax-invoice-root.paper-a4 {
+  width: 210mm;
+  min-height: 297mm;
+  font-size: 10pt;
+  line-height: 1.4;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice {
+  min-height: 297mm;
+  padding: 6mm 8mm;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-shop {
+  font-size: 16pt;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-tagline {
+  font-size: 9pt;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-address,
+.tax-invoice-root.paper-a4 .tax-invoice-meta-line {
+  font-size: 8.5pt;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-title-center {
+  font-size: 12pt;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-party h2 {
+  font-size: 9pt;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-customer-name {
+  font-size: 9.5pt;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-customer-address,
+.tax-invoice-root.paper-a4 .tax-invoice-meta-right {
+  font-size: 8.5pt;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-table {
+  font-size: 8.5pt;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-table th,
+.tax-invoice-root.paper-a4 .tax-invoice-table td {
+  padding: 1.6mm 1.2mm;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-table tbody tr.empty td {
+  height: 8.5mm;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-col-particulars {
+  width: 26%;
+}
+
+.tax-invoice-root.paper-a4 .tax-col-amount {
+  width: 24mm;
+}
+
+.tax-invoice-root.paper-a4 .tax-invoice-item-count,
+.tax-invoice-root.paper-a4 .tax-invoice-totals,
+.tax-invoice-root.paper-a4 .tax-invoice-words,
+.tax-invoice-root.paper-a4 .tax-invoice-note,
+.tax-invoice-root.paper-a4 .tax-invoice-signatures {
+  font-size: 9pt;
+}
+
+@media print {
+  .tax-invoice-root.paper-a4 {
+    width: 100% !important;
+    min-height: auto !important;
+  }
+
+  .tax-invoice-root.paper-a4 .tax-invoice {
+    min-height: calc(297mm - 16mm);
+  }
+}
+
+.tax-invoice-root.paper-thermal {
+  width: 80mm;
+  min-height: 0;
+  font-size: 7.5pt;
+}
+
+.tax-invoice-root.paper-thermal .tax-invoice {
+  padding: 2mm;
+}
+
+.tax-invoice-root.paper-thermal .tax-invoice-shop {
+  font-size: 11pt;
+}
+
+.tax-invoice-root.paper-thermal .tax-invoice-brand-row,
+.tax-invoice-root.paper-thermal .tax-invoice-meta,
+.tax-invoice-root.paper-thermal .tax-invoice-footer-grid {
+  grid-template-columns: 1fr;
+}
+
+.tax-invoice-root.paper-thermal .tax-invoice-marks,
+.tax-invoice-root.paper-thermal .tax-invoice-title-center {
+  display: none;
+}
+
+.tax-invoice-root.paper-thermal .tax-invoice-gstin,
+.tax-invoice-root.paper-thermal .tax-invoice-meta-right {
+  text-align: left;
+}
+
+.tax-invoice-root.paper-thermal .thermal-hide {
+  display: none;
+}
+
+.tax-invoice-root.paper-thermal .tax-invoice-table {
+  table-layout: auto;
+  font-size: 7pt;
+}
+
+.tax-invoice-root.paper-thermal .tax-invoice-signatures {
+  flex-direction: column;
+  gap: 3mm;
+  padding-top: 3mm;
+}
+
+.tax-invoice-root.paper-thermal .tax-invoice-signatures .left,
+.tax-invoice-root.paper-thermal .tax-invoice-signatures .right {
+  text-align: left;
+}

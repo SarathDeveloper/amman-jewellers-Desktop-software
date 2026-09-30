@@ -1,0 +1,24 @@
+import { resolve } from 'node:path'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@shared': resolve(__dirname, 'shared'),
+    },
+  },
+  build: {
+    outDir: 'dist',
+  },
+  server: {
+    // Electron dev loads http://127.0.0.1:5173 — bind IPv4 explicitly (localhost may be IPv6-only).
+    host: '127.0.0.1',
+    port: 5173,
+    proxy: {
+      '/api': 'http://127.0.0.1:3000',
+      '/uploads': 'http://127.0.0.1:3000',
+    },
+  },
+})

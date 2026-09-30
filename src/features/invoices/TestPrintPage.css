@@ -1,0 +1,46 @@
+.test-print-root {
+  box-sizing: border-box;
+  width: 148mm;
+  margin: 0 auto;
+  padding: 8mm;
+  background: #fff;
+  color: #111;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11pt;
+  line-height: 1.45;
+}
+
+.test-print-root h1 {
+  margin: 0 0 2mm;
+  font-size: 16pt;
+}
+
+.test-print-title {
+  margin: 0 0 4mm;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.test-print-ok {
+  margin-top: 6mm;
+  font-weight: 600;
+}
+
+.test-print-root.paper-a4 {
+  width: 210mm;
+  min-height: 80mm;
+}
+
+.test-print-root.paper-thermal {
+  width: 80mm;
+  padding: 3mm;
+  font-size: 9pt;
+}
+
+@media print {
+  .test-print-root {
+    width: 100%;
+    box-shadow: none;
+  }
+}

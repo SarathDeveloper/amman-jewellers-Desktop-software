@@ -1,0 +1,28 @@
+---
+description: Display all user-facing dates as 22 Sep 2026
+alwaysApply: true
+---
+
+# Date display format
+
+User-facing dates are **`22 Sep 2026`**: day with no leading zero, English 3-letter month (`Jan`–`Dec`), then year.
+
+## Source of truth
+
+- Display with `formatDisplayDate()` / `formatDisplayDateTime()` from `src/lib/format.ts`
+- Date-time: `22 Sep 2026 4:10 PM`
+- Persist and send ISO `YYYY-MM-DD` (and ISO datetimes) in state, APIs, and `<input type="date">` values
+
+## Do
+
+```tsx
+formatDisplayDate('2026-09-22') // 22 Sep 2026
+<DateInput value={iso} onChange={setIso} className="input" />
+```
+
+## Don't
+
+- Don't show `22/09/2026`, `2026-09-22`, or `22 Sept 2026` in the UI
+- Don't call `toLocaleDateString()` or `Intl.DateTimeFormat` for dates
+- Don't put a visible native date input; wrap pickers in `DateInput` so the overlay shows `22 Sep 2026`
+- Don't invent a second formatter in a page or print template

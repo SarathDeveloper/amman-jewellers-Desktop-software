@@ -1,0 +1,333 @@
+.pledge-print-page {
+  min-height: 100vh;
+  background: #fff;
+  padding: 1rem;
+}
+
+.pledge-print-status {
+  text-align: center;
+  color: #333;
+}
+
+.pledge-print-error {
+  color: #111;
+}
+
+.pledge-print-root {
+  display: flex;
+  justify-content: center;
+}
+
+.pledge-print {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 10mm 12mm;
+  background: #fff;
+  color: #111;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11px;
+  line-height: 1.35;
+  box-sizing: border-box;
+  border: 1px solid #333;
+}
+
+.pledge-print-top {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 12px;
+  align-items: start;
+  border-bottom: 1.5pt solid #111;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+
+.pledge-print-proprietor {
+  margin-top: 6px;
+}
+
+.pledge-print-proprietor p,
+.pledge-print-contact p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.pledge-print-proprietor p:first-child {
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.pledge-print-brand {
+  min-width: 0;
+}
+
+.pledge-print-logo {
+  display: block;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  margin-bottom: 4px;
+}
+
+.pledge-print-brand h1 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  color: #111;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pledge-print-title {
+  margin: 4px 0 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #111;
+  text-transform: uppercase;
+}
+
+.pledge-print-contact {
+  min-width: 0;
+  text-align: right;
+}
+
+.pledge-print-contact-label {
+  font-weight: 700;
+  font-size: 9px !important;
+  letter-spacing: 0.06em;
+  color: #111;
+  margin-bottom: 2px !important;
+}
+
+.pledge-print-address {
+  margin-top: 4px !important;
+  font-size: 9px !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.pledge-print-promo-top,
+.pledge-print-promo-bottom {
+  margin: 0 0 8px;
+  font-size: 9px;
+  color: #111;
+  text-align: center;
+}
+
+.pledge-print-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  margin-bottom: 10px;
+  border: 1px solid #111;
+  background: #fff;
+}
+
+.pledge-print-meta > div {
+  padding: 6px 8px;
+  min-width: 0;
+}
+
+.pledge-print-meta > div + div {
+  border-left: 1px solid #111;
+}
+
+.pledge-print-meta span {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #111;
+}
+
+.pledge-print-meta strong {
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.pledge-print-section {
+  margin-bottom: 10px;
+}
+
+.pledge-print-section h2,
+.pledge-print-declaration h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #111;
+  border-bottom: 1px solid #111;
+  padding-bottom: 3px;
+  text-transform: uppercase;
+}
+
+.pledge-print-borrower {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+
+.pledge-print-borrower .full,
+.pledge-print-loan-grid .full {
+  grid-column: 1 / -1;
+}
+
+.pledge-print-borrower span,
+.pledge-print-jewells span,
+.pledge-print-loan-grid span {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  color: #111;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pledge-print-borrower strong,
+.pledge-print-loan-grid strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pledge-print-jewells p {
+  margin: 0 0 4px;
+}
+
+.pledge-print-valuation,
+.pledge-print-items {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  table-layout: fixed;
+}
+
+.pledge-print-valuation th,
+.pledge-print-valuation td,
+.pledge-print-items th,
+.pledge-print-items td {
+  border: 1px solid #111;
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+  background: #fff;
+}
+
+.pledge-print-valuation th,
+.pledge-print-items th {
+  background: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.pledge-print-items .num,
+.pledge-print-valuation td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pledge-print-loan-boxes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.pledge-print-loan-box {
+  border: 1.5pt solid #111;
+  border-radius: 0;
+  padding: 8px 10px;
+  text-align: center;
+  background: #fff;
+}
+
+.pledge-print-loan-box span {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #111;
+}
+
+.pledge-print-loan-box strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+  color: #111;
+}
+
+.pledge-print-loan-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+
+.pledge-print-declaration ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.pledge-print-declaration li,
+.pledge-print-declaration p {
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.pledge-print-signs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 28px;
+  text-align: center;
+}
+
+.pledge-print-sign-line {
+  height: 36px;
+  border-bottom: 1px solid #111;
+  margin-bottom: 6px;
+}
+
+.pledge-print-signs span {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  overflow-wrap: anywhere;
+}
+
+.pledge-print-sign-sub {
+  font-weight: 600 !important;
+  color: #111;
+  margin-top: 2px;
+}
+
+.pledge-print-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid #111;
+  font-size: 9px;
+  color: #111;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 8mm;
+  }
+
+  .pledge-print-page {
+    background: #fff;
+    padding: 0;
+  }
+
+  .pledge-print {
+    width: auto;
+    min-height: auto;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+}

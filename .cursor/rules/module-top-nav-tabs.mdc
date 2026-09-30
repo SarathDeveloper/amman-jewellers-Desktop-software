@@ -1,0 +1,35 @@
+---
+description: Compact module top nav tabs — Inventory chrome is the source of truth
+alwaysApply: true
+---
+
+# Module top nav tabs
+
+Every module’s compact top tabs use `.billing-chrome` / `.billing-chrome-tab`. Copy Inventory (`src/features/inventory/InventoryLayout.tsx`). Do not invent a second tab bar.
+
+## Compact spec (source of truth)
+
+- Chrome: `padding: 0.35rem 0.35rem 0.35rem 0.5rem`, `border-radius: 12px`
+- Tab: icon 18 / stroke 1.75 + label, `padding: 0.55rem 0.9rem`, `font-size: 0.875rem`, `border-radius: 8px`, `gap: 0.4rem`
+- Active: `var(--brand)` background, white text — same for every tab
+- Tab size must not change with the child page (no `:has(.sale-bill-editor)` or similar padding/font overrides)
+
+```tsx
+<div className="billing-chrome">
+  <div className="billing-chrome-tabs" role="tablist">
+    <NavLink role="tab" className={() => `billing-chrome-tab${selected ? ' active' : ''}`}>
+      <span className="billing-chrome-tab-icon" aria-hidden>
+        <Icon size={18} strokeWidth={1.75} />
+      </span>
+      <span className="billing-chrome-tab-label">{tab.label}</span>
+    </NavLink>
+  </div>
+</div>
+```
+
+## Do / don't
+
+- **Do** reuse these classes on Billing, Inventory, Reports, and any new module
+- **Don't** size compact tabs from the editor/page underneath
+- **Don't** give compact tabs per-type active colors
+- **Exception:** Billing landing cards (`.billing-chrome--list`) keep the large colored tiles; that is not the compact tab bar

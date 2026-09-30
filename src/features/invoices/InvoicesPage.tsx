@@ -1,0 +1,837 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  Calendar,
+  Eye,
+  MoreHorizontal,
+  Pencil,
+  Printer,
+  Search,
+  Trash2,
+} from 'lucide-react'
+import { localTodayIso } from '@shared/localDate'
+import type { BillFormat, Invoice, PaymentMode, Pledge } from '@shared/types'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { DataTable, TablePager } from '../../components/DataTable'
+import { FilterBar } from '../../components/FilterBar'
+import { LoadingState } from '../../components/LoadingState'
+import { StatusBadge, type StatusKind } from '../../components/StatusBadge'
+import { useToast } from '../../components/toastContext'
+import { formatCurrency, formatDisplayDate, formatPaymentMode, paginate } from '../../lib/format'
+import { api } from '../../lib/api'
+import {
+  invoiceMatchesFilters,
+  monthRange,
+  type BillingPeriod,
+  type DuePaidFilter,
+} from './billingInsights'
+import {
+  BILLING_TAB_OPTIONS,
+  saleDetailPathForFormat,
+  salePathForFormat,
+  type BillingType,
+} from './billingType'
+import { InvoicePreviewModal } from './InvoicePreviewModal'
+import { PledgePreviewModal } from '../pledges/PledgePreviewModal'
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50]
+const DEFAULT_PAGE_SIZE = 10
+
+type SaleStatusChip = 'all' | 'draft' | 'estimate' | 'final'
+type PledgeStatusChip = 'all' | 'draft' | 'active' | 'redeemed' | 'forfeited'
+type BillTypeFilter = 'all' | BillingType
+
+type BillRow =
+  | {
+      kind: 'invoice'
+      key: string
+      id: number
+      date: string
+      billNo: string
+      typeLabel: string
+      billType: 'cash_bill' | 'tax_invoice'
+      customerName: string
+      customerPhone: string
+      itemsLabel: string
+      total: number
+      paid: number
+      balance: number
+      paymentLabel: string
+      statusKind: StatusKind
+      statusLabel?: string
+      isHistorical: boolean
+      invoice: Invoice
+    }
+  | {
+      kind: 'pledge'
+      key: string
+      id: number
+      date: string
+      billNo: string
+      typeLabel: string
+      billType: 'adagu'
+      customerName: string
+      customerPhone: string
+      itemsLabel: string
+      total: number
+      paid: number
+      balance: number
+      paymentLabel: string
+      statusKind: StatusKind
+      statusLabel: string
+      isHistorical: boolean
+      pledge: Pledge
+    }
+
+function listStatus(invoice: Invoice): StatusKind {
+  if (invoice.isEstimate) return 'estimate'
+  if (invoice.status === 'draft') return 'draft'
+  if (invoice.balanceDue > 0) return 'due'
+  return 'final'
+}
+
+function itemCountLabel(count: number): string {
+  return `${count} ${count === 1 ? 'item' : 'items'}`
+}
+
+function typeLabelFor(type: 'cash_bill' | 'tax_invoice' | 'adagu'): string {
+  return BILLING_TAB_OPTIONS.find((tab) => tab.value === type)?.label ?? type
+}
+
+function invoiceToRow(invoice: Invoice): BillRow {
+  const billType = invoice.billFormat === 'tax_invoice' ? 'tax_invoice' : 'cash_bill'
+  return {
+    kind: 'invoice',
+    key: `invoice-${invoice.id}`,
+    id: invoice.id,
+    date: invoice.invoiceDate,
+    billNo: invoice.invoiceNo,
+    typeLabel: typeLabelFor(billType),
+    billType,
+    customerName: invoice.customerName,
+    customerPhone: invoice.customerPhone,
+    itemsLabel: itemCountLabel(invoice.items.length),
+    total: invoice.amountPayable ?? invoice.total,
+    paid: invoice.amountPaid,
+    balance: invoice.balanceDue,
+    paymentLabel: invoice.amountPaid > 0 ? formatPaymentMode(invoice.paymentMode) : '-',
+    statusKind: listStatus(invoice),
+    isHistorical: Boolean(invoice.isHistorical),
+    invoice,
+  }
+}
+
+function pledgeToRow(pledge: Pledge): BillRow {
+  const statusKind: StatusKind =
+    pledge.status === 'redeemed'
+      ? 'paid'
+      : pledge.status === 'forfeited'
+        ? 'draft'
+        : pledge.status === 'draft'
+          ? 'draft'
+          : 'due'
+  const statusLabel =
+    pledge.status === 'redeemed'
+      ? 'Redeemed'
+      : pledge.status === 'forfeited'
+        ? 'Forfeited'
+        : pledge.status === 'draft'
+          ? 'Draft'
+          : 'Active'
+  return {
+    kind: 'pledge',
+    key: `pledge-${pledge.id}`,
+    id: pledge.id,
+    date: pledge.pledgeDate,
+    billNo: pledge.receiptNo,
+    typeLabel: typeLabelFor('adagu'),
+    billType: 'adagu',
+    customerName: pledge.customerName,
+    customerPhone: pledge.customerPhone,
+    itemsLabel: itemCountLabel(pledge.items.length),
+    total: pledge.loanAmount,
+    paid: 0,
+    balance: pledge.status === 'active' ? pledge.loanAmount : 0,
+    paymentLabel: '-',
+    statusKind,
+    statusLabel,
+    isHistorical: false,
+    pledge,
+  }
+}
+
+export function InvoicesPage() {
+  const today = localTodayIso()
+  const { showToast } = useToast()
+
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [pledges, setPledges] = useState<Pledge[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [reprinting, setReprinting] = useState(false)
+  const [period, setPeriod] = useState<BillingPeriod>('all')
+  const [selectedDate, setSelectedDate] = useState(today)
+  const [search, setSearch] = useState('')
+  const [billTypeFilter, setBillTypeFilter] = useState<BillTypeFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<SaleStatusChip>('all')
+  const [pledgeStatus, setPledgeStatus] = useState<PledgeStatusChip>('all')
+  const [duePaid, setDuePaid] = useState<DuePaidFilter>('all')
+  const [paymentFilter, setPaymentFilter] = useState<'all' | PaymentMode>('all')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [dateSort, setDateSort] = useState<'desc' | 'asc'>('desc')
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([])
+  const [menuKey, setMenuKey] = useState<string | null>(null)
+  const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [previewInvoice, setPreviewInvoice] = useState<{ id: number; format: BillFormat } | null>(null)
+  const [previewPledgeId, setPreviewPledgeId] = useState<number | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  const adaguOnly = billTypeFilter === 'adagu'
+  const showSaleStatusChips = !adaguOnly
+
+  const range = useMemo(() => {
+    if (period === 'all') return { from: null, to: null }
+    if (period === 'month') return monthRange(selectedDate)
+    return { from: selectedDate, to: selectedDate }
+  }, [period, selectedDate])
+
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      try {
+        if (active) {
+          setError(null)
+          setLoading(true)
+        }
+        const [invoiceList, pledgeList] = await Promise.all([api.listInvoices(), api.listPledges()])
+        if (active) {
+          setInvoices(invoiceList)
+          setPledges(pledgeList)
+        }
+      } catch (err) {
+        if (active) {
+          setError(err instanceof Error ? err.message : 'Failed to load bills')
+        }
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (menuKey === null) return
+    function onPointerDown(event: PointerEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuKey(null)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [menuKey])
+
+  const visibleRows = useMemo(() => {
+    const includeInvoices = billTypeFilter === 'all' || billTypeFilter === 'cash_bill' || billTypeFilter === 'tax_invoice'
+    const includePledges = billTypeFilter === 'all' || billTypeFilter === 'adagu'
+    const formatFilter =
+      billTypeFilter === 'cash_bill' || billTypeFilter === 'tax_invoice' ? billTypeFilter : 'all'
+
+    const invoiceRows: BillRow[] = includeInvoices
+      ? invoices
+          .filter((invoice) =>
+            invoiceMatchesFilters(invoice, {
+              from: range.from,
+              to: range.to,
+              search,
+              status: statusFilter,
+              paymentMode: paymentFilter,
+              format: formatFilter,
+              duePaid,
+            }),
+          )
+          .map(invoiceToRow)
+      : []
+
+    const q = search.trim().toLowerCase()
+    const pledgeRows: BillRow[] = includePledges
+      ? pledges
+          .filter((pledge) => {
+            if (range.from && pledge.pledgeDate < range.from) return false
+            if (range.to && pledge.pledgeDate > range.to) return false
+            if (billTypeFilter === 'all' && statusFilter !== 'all') return false
+            if (adaguOnly && pledgeStatus !== 'all' && pledge.status !== pledgeStatus) return false
+            if (paymentFilter !== 'all') return false
+            if (duePaid !== 'all') return false
+            if (!q) return true
+            return (
+              pledge.receiptNo.toLowerCase().includes(q) ||
+              pledge.customerName.toLowerCase().includes(q) ||
+              pledge.customerPhone.toLowerCase().includes(q)
+            )
+          })
+          .map(pledgeToRow)
+      : []
+
+    const merged = [...invoiceRows, ...pledgeRows]
+    return merged.sort((a, b) => {
+      const cmp = a.date.localeCompare(b.date) || a.id - b.id
+      return dateSort === 'asc' ? cmp : -cmp
+    })
+  }, [
+    invoices,
+    pledges,
+    billTypeFilter,
+    range.from,
+    range.to,
+    search,
+    statusFilter,
+    pledgeStatus,
+    paymentFilter,
+    duePaid,
+    adaguOnly,
+    dateSort,
+  ])
+
+  const lastPage = Math.max(1, Math.ceil(visibleRows.length / pageSize))
+  const currentPage = Math.min(page, lastPage)
+
+  useEffect(() => {
+    if (page !== currentPage) {
+      setPage(currentPage)
+    }
+  }, [page, currentPage])
+
+  const pagedRows = useMemo(
+    () => paginate(visibleRows, currentPage, pageSize),
+    [visibleRows, currentPage, pageSize],
+  )
+
+  const allPageSelected =
+    pagedRows.length > 0 && pagedRows.every((row) => selectedKeys.includes(row.key))
+
+  function resetPage() {
+    setPage(1)
+  }
+
+  function resetFilters() {
+    setBillTypeFilter('all')
+    setStatusFilter('all')
+    setPledgeStatus('all')
+    setPaymentFilter('all')
+    setDuePaid('all')
+    setPeriod('all')
+    setSearch('')
+    setPage(1)
+    setSelectedKeys([])
+  }
+
+  async function load() {
+    try {
+      setError(null)
+      const [invoiceList, pledgeList] = await Promise.all([api.listInvoices(), api.listPledges()])
+      setInvoices(invoiceList)
+      setPledges(pledgeList)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load bills')
+    }
+  }
+
+  async function remove(id: number) {
+    try {
+      await api.deleteInvoice(id)
+      setDeleteId(null)
+      setSelectedKeys((keys) => keys.filter((key) => key !== `invoice-${id}`))
+      showToast('Draft bill deleted', 'success')
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete bill')
+    }
+  }
+
+  function printFormatFor(invoice: Invoice): BillFormat {
+    return invoice.billFormat ?? 'cash_bill'
+  }
+
+  async function reprintLast() {
+    try {
+      setReprinting(true)
+      setError(null)
+      const settings = await api.getShopSettings()
+      const invoiceId = settings.lastPrinted.invoiceId
+      if (!invoiceId) {
+        throw new Error('No bill has been printed yet.')
+      }
+      const format = settings.lastPrinted.billFormat || 'cash_bill'
+      setPreviewInvoice({ id: invoiceId, format })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reprint last bill')
+    } finally {
+      setReprinting(false)
+    }
+  }
+
+  function printInvoice(invoice: Invoice) {
+    setError(null)
+    setPreviewInvoice({ id: invoice.id, format: printFormatFor(invoice) })
+  }
+
+  function printPledge(pledge: Pledge) {
+    setError(null)
+    setPreviewPledgeId(pledge.id)
+  }
+
+  function exportPdf(invoice: Invoice) {
+    setMenuKey(null)
+    setError(null)
+    setPreviewInvoice({ id: invoice.id, format: printFormatFor(invoice) })
+  }
+
+  function toggleSelected(key: string) {
+    setSelectedKeys((keys) => (keys.includes(key) ? keys.filter((value) => value !== key) : [...keys, key]))
+  }
+
+  function togglePageSelected() {
+    if (allPageSelected) {
+      const pageKeys = new Set(pagedRows.map((row) => row.key))
+      setSelectedKeys((keys) => keys.filter((key) => !pageKeys.has(key)))
+      return
+    }
+    setSelectedKeys((keys) => [...new Set([...keys, ...pagedRows.map((row) => row.key)])])
+  }
+
+  return (
+    <div className="app-page billing-page app-page-fill">
+      <header className="page-header app-page-header billing-page-header">
+        <div>
+          <h1>Billing</h1>
+          <p className="page-subtitle muted">Create, manage and track all your bills</p>
+        </div>
+        <div className="toolbar page-header-actions billing-header-tools">
+          <label className="billing-search">
+            <Search size={16} strokeWidth={2} aria-hidden />
+            <input
+              className="input"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value)
+                resetPage()
+              }}
+              placeholder="Search bills, customer, mobile..."
+            />
+          </label>
+          <label className="billing-date-field">
+            <Calendar size={16} strokeWidth={2} aria-hidden />
+            <span className="billing-date-label">{formatDisplayDate(selectedDate)}</span>
+            <input
+              className="billing-date-input"
+              type="date"
+              value={selectedDate}
+              onChange={(event) => {
+                setSelectedDate(event.target.value || today)
+                resetPage()
+              }}
+              aria-label="Billing date"
+            />
+          </label>
+        </div>
+      </header>
+
+      {error && <div className="error-banner">{error}</div>}
+
+      {loading ? (
+        <LoadingState />
+      ) : (
+        <DataTable
+          header={
+            <div className="billing-toolbar">
+              {showSaleStatusChips ? (
+                <FilterBar
+                  value={statusFilter}
+                  onChange={(value) => {
+                    setStatusFilter(value)
+                    resetPage()
+                  }}
+                  options={[
+                    { value: 'all', label: 'All' },
+                    { value: 'draft', label: 'Draft' },
+                    { value: 'estimate', label: 'Estimate' },
+                    { value: 'final', label: 'Final' },
+                  ]}
+                />
+              ) : (
+                <FilterBar
+                  value={pledgeStatus}
+                  onChange={(value) => {
+                    setPledgeStatus(value)
+                    resetPage()
+                  }}
+                  options={[
+                    { value: 'all', label: `All (${pledges.length})` },
+                    {
+                      value: 'draft',
+                      label: `Draft (${pledges.filter((p) => p.status === 'draft').length})`,
+                    },
+                    {
+                      value: 'active',
+                      label: `Active (${pledges.filter((p) => p.status === 'active').length})`,
+                    },
+                    {
+                      value: 'redeemed',
+                      label: `Redeemed (${pledges.filter((p) => p.status === 'redeemed').length})`,
+                    },
+                    {
+                      value: 'forfeited',
+                      label: `Forfeited (${pledges.filter((p) => p.status === 'forfeited').length})`,
+                    },
+                  ]}
+                />
+              )}
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={reprinting}
+                onClick={() => void reprintLast()}
+              >
+                <Printer size={16} strokeWidth={1.75} aria-hidden />
+                Reprint last
+              </button>
+              <div className="billing-toolbar-filters">
+                <label className="billing-filter-field">
+                  <select
+                    className="input"
+                    value={billTypeFilter}
+                    aria-label="Bill type"
+                    onChange={(event) => {
+                      setBillTypeFilter(event.target.value as BillTypeFilter)
+                      setStatusFilter('all')
+                      setPledgeStatus('all')
+                      resetPage()
+                    }}
+                  >
+                    <option value="all">Type All</option>
+                    <option value="cash_bill">Cash Bill</option>
+                    <option value="tax_invoice">Tax Invoice</option>
+                    <option value="adagu">Adagu Bill</option>
+                  </select>
+                </label>
+                <label className="billing-filter-field billing-period-field">
+                  <Calendar size={15} strokeWidth={2} aria-hidden />
+                  <select
+                    className="input"
+                    value={period}
+                    aria-label="Period"
+                    onChange={(event) => {
+                      setPeriod(event.target.value as BillingPeriod)
+                      resetPage()
+                    }}
+                  >
+                    <option value="today">Today</option>
+                    <option value="month">This month</option>
+                    <option value="all">All</option>
+                  </select>
+                </label>
+                {!adaguOnly ? (
+                  <>
+                    <label className="billing-filter-field">
+                      <select
+                        className="input"
+                        value={paymentFilter}
+                        aria-label="Payment"
+                        onChange={(event) => {
+                          setPaymentFilter(event.target.value as 'all' | PaymentMode)
+                          resetPage()
+                        }}
+                      >
+                        <option value="all">Payment All</option>
+                        <option value="cash">Cash</option>
+                        <option value="upi">UPI</option>
+                        <option value="card">Card</option>
+                        <option value="mixed">Mixed</option>
+                      </select>
+                    </label>
+                    <label className="billing-filter-field">
+                      <select
+                        className="input"
+                        value={duePaid}
+                        aria-label="Due status"
+                        onChange={(event) => {
+                          setDuePaid(event.target.value as DuePaidFilter)
+                          resetPage()
+                        }}
+                      >
+                        <option value="all">Status All</option>
+                        <option value="due">Due</option>
+                        <option value="paid">Paid</option>
+                      </select>
+                    </label>
+                  </>
+                ) : null}
+                <button type="button" className="btn secondary" onClick={resetFilters}>
+                  Reset
+                </button>
+              </div>
+            </div>
+          }
+          footer={
+            visibleRows.length === 0 ? undefined : (
+              <TablePager
+                page={currentPage}
+                pageSize={pageSize}
+                total={visibleRows.length}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                itemLabel="bills"
+              />
+            )
+          }
+        >
+          <table>
+            <thead>
+              <tr>
+                <th className="billing-check-col">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    onChange={togglePageSelected}
+                    aria-label="Select all bills on this page"
+                  />
+                </th>
+                <th>Bill No.</th>
+                <th>
+                  <button
+                    type="button"
+                    className="billing-sort"
+                    onClick={() => setDateSort((value) => (value === 'desc' ? 'asc' : 'desc'))}
+                  >
+                    Date
+                    <span aria-hidden>{dateSort === 'desc' ? ' ↓' : ' ↑'}</span>
+                  </button>
+                </th>
+                <th>Type</th>
+                <th>Customer</th>
+                <th>Items</th>
+                <th className="num">Total Amount</th>
+                <th className="num">Paid</th>
+                <th className="num">Balance</th>
+                <th>Payment</th>
+                <th>Status</th>
+                <th className="num">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.length === 0 ? (
+                <tr>
+                  <td colSpan={12} className="empty-cell">
+                    No bills found. Create your first bill to get started.
+                  </td>
+                </tr>
+              ) : null}
+              {pagedRows.map((row) => {
+                if (row.kind === 'pledge') {
+                  const viewPath = `/billing/adagu/${row.pledge.id}`
+                  return (
+                    <tr key={row.key}>
+                      <td className="billing-check-col">
+                        <input
+                          type="checkbox"
+                          checked={selectedKeys.includes(row.key)}
+                          onChange={() => toggleSelected(row.key)}
+                          aria-label={`Select ${row.billNo}`}
+                        />
+                      </td>
+                      <td>
+                        <Link to={viewPath} className="billing-bill-no">
+                          {row.billNo}
+                        </Link>
+                      </td>
+                      <td>{formatDisplayDate(row.date)}</td>
+                      <td>{row.typeLabel}</td>
+                      <td>
+                        <span className="billing-customer-name">{row.customerName}</span>
+                        {row.customerPhone ? (
+                          <span className="cell-hint">{row.customerPhone}</span>
+                        ) : null}
+                      </td>
+                      <td>{row.itemsLabel}</td>
+                      <td className="num">{formatCurrency(row.total)}</td>
+                      <td className="num">-</td>
+                      <td className="num">
+                        {row.pledge.status === 'active' ? formatCurrency(row.balance) : '-'}
+                      </td>
+                      <td>{row.paymentLabel}</td>
+                      <td>
+                        <StatusBadge kind={row.statusKind} label={row.statusLabel} />
+                      </td>
+                      <td>
+                        <div className="row-actions">
+                          <Link
+                            to={viewPath}
+                            className="btn ghost billing-icon-btn"
+                            aria-label={`Open ${row.billNo}`}
+                          >
+                            {row.pledge.status === 'active' || row.pledge.status === 'draft' ? (
+                              <Pencil size={16} strokeWidth={1.75} />
+                            ) : (
+                              <Eye size={16} strokeWidth={1.75} />
+                            )}
+                          </Link>
+                          <button
+                            type="button"
+                            className="btn ghost billing-icon-btn"
+                            aria-label={`Print ${row.billNo}`}
+                            onClick={() => printPledge(row.pledge)}
+                          >
+                            <Printer size={16} strokeWidth={1.75} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                }
+
+                const invoice = row.invoice
+                const saleType = row.billType
+                const editPath = salePathForFormat(saleType, invoice.id)
+                const detailPath = saleDetailPathForFormat(saleType, invoice.id)
+                const viewPath = invoice.status === 'final' ? detailPath : editPath
+                return (
+                  <tr key={row.key}>
+                    <td className="billing-check-col">
+                      <input
+                        type="checkbox"
+                        checked={selectedKeys.includes(row.key)}
+                        onChange={() => toggleSelected(row.key)}
+                        aria-label={`Select ${row.billNo}`}
+                      />
+                    </td>
+                    <td>
+                      <Link to={viewPath} className="billing-bill-no">
+                        {row.billNo}
+                      </Link>
+                    </td>
+                    <td>{formatDisplayDate(row.date)}</td>
+                    <td>{row.typeLabel}</td>
+                    <td>
+                      <span className="billing-customer-name">{row.customerName}</span>
+                      {row.customerPhone ? (
+                        <span className="cell-hint">{row.customerPhone}</span>
+                      ) : null}
+                    </td>
+                    <td>{row.itemsLabel}</td>
+                    <td className="num">{formatCurrency(row.total)}</td>
+                    <td className="num">{formatCurrency(row.paid)}</td>
+                    <td className={`num${row.balance > 0 ? ' due-amount' : ''}`}>
+                      {formatCurrency(row.balance)}
+                    </td>
+                    <td>{row.paymentLabel}</td>
+                    <td>
+                      <StatusBadge kind={row.statusKind} />
+                      {row.isHistorical ? (
+                        <span className="badge draft billing-old-badge">Old</span>
+                      ) : null}
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        {invoice.status === 'draft' && !invoice.isEstimate ? (
+                          <Link
+                            to={editPath}
+                            className="btn ghost billing-icon-btn"
+                            aria-label={`Edit ${row.billNo}`}
+                          >
+                            <Pencil size={16} strokeWidth={1.75} />
+                          </Link>
+                        ) : (
+                          <Link
+                            to={detailPath}
+                            className="btn ghost billing-icon-btn"
+                            aria-label={`View ${row.billNo}`}
+                          >
+                            <Eye size={16} strokeWidth={1.75} />
+                          </Link>
+                        )}
+                        <button
+                          type="button"
+                          className="btn ghost billing-icon-btn"
+                          aria-label={`Print ${row.billNo}`}
+                          onClick={() => printInvoice(invoice)}
+                        >
+                          <Printer size={16} strokeWidth={1.75} />
+                        </button>
+                        {invoice.status === 'draft' && !invoice.isEstimate ? (
+                          <button
+                            type="button"
+                            className="btn ghost billing-icon-btn billing-icon-danger"
+                            aria-label={`Delete ${row.billNo}`}
+                            onClick={() => setDeleteId(invoice.id)}
+                          >
+                            <Trash2 size={16} strokeWidth={1.75} />
+                          </button>
+                        ) : (
+                          <div
+                            className="billing-menu"
+                            ref={menuKey === row.key ? menuRef : undefined}
+                          >
+                            <button
+                              type="button"
+                              className="btn ghost billing-icon-btn"
+                              aria-label={`More actions for ${row.billNo}`}
+                              aria-expanded={menuKey === row.key}
+                              onClick={() =>
+                                setMenuKey((current) => (current === row.key ? null : row.key))
+                              }
+                            >
+                              <MoreHorizontal size={16} strokeWidth={1.75} />
+                            </button>
+                            {menuKey === row.key ? (
+                              <div className="billing-menu-pop" role="menu">
+                                <Link to={detailPath} role="menuitem" onClick={() => setMenuKey(null)}>
+                                  View
+                                </Link>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => exportPdf(invoice)}
+                                >
+                                  Export PDF
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </DataTable>
+      )}
+
+      {deleteId !== null && (
+        <ConfirmDialog
+          title="Delete draft bill"
+          message="Delete this draft bill?"
+          onCancel={() => setDeleteId(null)}
+          onConfirm={() => void remove(deleteId)}
+        />
+      )}
+
+      {previewInvoice && (
+        <InvoicePreviewModal
+          invoiceId={previewInvoice.id}
+          initialFormat={previewInvoice.format}
+          onClose={() => setPreviewInvoice(null)}
+        />
+      )}
+
+      {previewPledgeId != null ? (
+        <PledgePreviewModal pledgeId={previewPledgeId} onClose={() => setPreviewPledgeId(null)} />
+      ) : null}
+    </div>
+  )
+}
