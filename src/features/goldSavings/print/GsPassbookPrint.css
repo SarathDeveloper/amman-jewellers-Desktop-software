@@ -1,0 +1,341 @@
+.gs-passbook-root {
+  --gs-magenta: #9b1b6f;
+  --gs-magenta-deep: #6d1152;
+  --gs-purple: #7e1a8a;
+  --gs-gold: #e6c34a;
+  --gs-gold-dark: #c9a227;
+  --gs-cream: #fff8e8;
+  --gs-yellow: #ffe566;
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  background: #fff;
+  color: #111;
+  font-family: Arial, "Noto Sans Tamil", sans-serif;
+  font-size: 9.5pt;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.gs-passbook-root *,
+.gs-passbook-root *::before,
+.gs-passbook-root *::after {
+  box-sizing: border-box;
+}
+.gs-passbook {
+  position: relative;
+  min-height: 297mm;
+  padding: 4mm;
+  background: var(--gs-cream);
+  border: 2.2pt solid var(--gs-gold-dark);
+  outline: 1.2pt solid var(--gs-magenta);
+  outline-offset: -4.2mm;
+}
+.gs-passbook-header {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #c2185b 0%, var(--gs-magenta) 42%, var(--gs-purple) 100%);
+  color: #fff;
+  padding: 3.5mm 4mm 4mm;
+  border-radius: 2mm 2mm 0 0;
+}
+.gs-passbook-banner {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 28mm;
+  overflow: hidden;
+  opacity: 0.32;
+  pointer-events: none;
+}
+.gs-passbook-banner img {
+  display: block;
+  width: 100%;
+  height: 28mm;
+  object-fit: cover;
+  object-position: center top;
+}
+.gs-passbook-hero {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 4mm;
+  align-items: start;
+}
+.gs-passbook-hero-left {
+  min-width: 0;
+}
+.gs-passbook-promo {
+  margin: 0 0 2.5mm;
+  display: inline-block;
+  max-width: 100%;
+  background: var(--gs-yellow);
+  color: #1a1a1a;
+  font-weight: 800;
+  font-size: 8.4pt;
+  line-height: 1.35;
+  padding: 1.6mm 2.4mm;
+  border-radius: 1mm;
+}
+.gs-passbook-hero-left h2 {
+  margin: 0 0 2mm;
+  color: #fff;
+  font-size: 11pt;
+  font-weight: 800;
+  line-height: 1.3;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+.gs-passbook-rules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 1.4mm;
+}
+.gs-passbook-rules li {
+  position: relative;
+  padding-left: 5mm;
+  font-size: 8pt;
+  line-height: 1.35;
+}
+.gs-passbook-rules li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.7mm;
+  width: 3.2mm;
+  height: 3.2mm;
+  border-radius: 50%;
+  background: var(--gs-gold);
+  box-shadow: inset 0 0 0 0.7mm #fff;
+}
+.gs-passbook-hero-right {
+  min-width: 0;
+}
+.gs-passbook-brand {
+  display: grid;
+  gap: 2mm;
+  justify-items: end;
+  text-align: right;
+}
+.gs-passbook-brand-top {
+  display: flex;
+  gap: 2.5mm;
+  align-items: start;
+  justify-content: flex-end;
+}
+.gs-passbook-logo,
+.gs-passbook-bis {
+  width: 15mm;
+  height: 15mm;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 50%;
+  padding: 1mm;
+  flex: 0 0 auto;
+}
+.gs-passbook-shop {
+  min-width: 0;
+  max-width: 100%;
+}
+.gs-passbook-shop h1 {
+  margin: 0 0 1mm;
+  color: var(--gs-gold);
+  font-size: 13.5pt;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  overflow-wrap: break-word;
+}
+.gs-passbook-tagline {
+  font-weight: 700;
+  color: #fff;
+  font-size: 8.5pt;
+}
+.gs-passbook-shop p {
+  margin: 0;
+  font-size: 7.5pt;
+  line-height: 1.35;
+}
+.gs-passbook-bis-wrap {
+  display: grid;
+  justify-items: center;
+  gap: 1mm;
+  min-width: 18mm;
+}
+.gs-passbook-bis-wrap span {
+  text-align: center;
+  font-size: 5.6pt;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  color: var(--gs-gold);
+}
+.gs-passbook-bis-wrap--text {
+  background: #fff;
+  color: var(--gs-magenta);
+  border-radius: 1mm;
+  padding: 1.5mm 1.2mm;
+}
+.gs-passbook-bis-wrap--text span {
+  color: var(--gs-magenta-deep);
+}
+
+.gs-passbook-mid {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 4mm;
+  padding: 4mm 1mm 3.5mm;
+  align-items: stretch;
+}
+.gs-passbook-mid--form-only {
+  grid-template-columns: 1fr;
+}
+.gs-passbook-side {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42mm;
+}
+.gs-passbook-side-img {
+  max-width: 100%;
+  max-height: 52mm;
+  object-fit: contain;
+}
+.gs-passbook-form {
+  background: #fff;
+  border: 1.4pt solid var(--gs-magenta);
+  border-radius: 2mm;
+  overflow: hidden;
+  min-height: 42mm;
+}
+.gs-passbook-form h3 {
+  margin: 0;
+  background: var(--gs-magenta);
+  color: #fff;
+  text-align: center;
+  font-size: 11pt;
+  font-weight: 800;
+  padding: 2.2mm 3mm;
+}
+.gs-passbook-form-top {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr 1fr;
+  gap: 3mm;
+  align-items: end;
+  padding: 3mm 4mm 2mm;
+}
+.gs-passbook-form-top div {
+  display: grid;
+  gap: 0.8mm;
+}
+.gs-passbook-form-top span {
+  font-size: 8pt;
+  font-weight: 700;
+  color: var(--gs-magenta-deep);
+}
+.gs-passbook-form-top strong {
+  min-height: 6mm;
+  border-bottom: 0.7pt dotted #7a5a2b;
+  font-size: 9.5pt;
+  padding-bottom: 0.6mm;
+}
+.gs-passbook-form-fields {
+  margin: 0;
+  padding: 1mm 4mm 3.5mm;
+  display: grid;
+  gap: 2.2mm;
+}
+.gs-passbook-form-fields > div {
+  display: grid;
+  grid-template-columns: 16mm 1fr;
+  gap: 2mm;
+  align-items: end;
+}
+.gs-passbook-form-fields dt {
+  margin: 0;
+  font-weight: 700;
+  color: var(--gs-magenta-deep);
+  font-size: 8.5pt;
+}
+.gs-passbook-form-fields dd {
+  margin: 0;
+  min-height: 6.5mm;
+  border-bottom: 0.7pt dotted #7a5a2b;
+  font-weight: 700;
+  font-size: 9.5pt;
+  padding-bottom: 0.6mm;
+}
+
+.gs-passbook table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: #fff;
+}
+.gs-col-month { width: 9%; }
+.gs-col-date { width: 16%; }
+.gs-col-receipt { width: 18%; }
+.gs-col-amount { width: 13%; }
+.gs-col-rate { width: 15%; }
+.gs-col-weight { width: 13%; }
+.gs-col-sign { width: 16%; }
+.gs-passbook th,
+.gs-passbook td {
+  border: 0.6pt solid var(--gs-gold-dark);
+  padding: 2mm 1mm;
+  text-align: center;
+  word-break: break-word;
+}
+.gs-passbook th {
+  background: var(--gs-magenta);
+  color: #fff;
+  font-size: 8pt;
+  font-weight: 700;
+}
+.gs-sign-cell {
+  min-height: 9.5mm;
+  height: 9.5mm;
+}
+
+.gs-passbook-footer {
+  margin-top: 3mm;
+  background: var(--gs-magenta);
+  color: #fff;
+  text-align: center;
+  padding: 2.4mm 3mm;
+  border-radius: 0 0 2mm 2mm;
+}
+.gs-passbook-footer p {
+  margin: 0;
+  font-weight: 800;
+  font-size: 9pt;
+  line-height: 1.4;
+}
+.gs-passbook-footer p + p {
+  margin-top: 0.8mm;
+  color: var(--gs-gold);
+}
+.gs-passbook-footer-sep {
+  margin: 0 2.5mm;
+  color: #fff;
+}
+
+.gs-passbook-print-status {
+  padding: 1rem;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 6mm;
+  }
+  .gs-passbook-root {
+    width: auto;
+    min-height: 0;
+  }
+  .gs-passbook {
+    min-height: 0;
+  }
+}

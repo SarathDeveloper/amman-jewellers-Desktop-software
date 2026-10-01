@@ -30,6 +30,7 @@ test('inward finalize increases product piece stock', async ({ window }) => {
         makingCharges: 0,
         stockQty: 1,
         imagePath: '',
+        huids: ['IW0001'],
       }),
     })
   }, productName)
@@ -42,6 +43,8 @@ test('inward finalize increases product piece stock', async ({ window }) => {
   await dialog.getByLabel('Supplier').selectOption({ label: 'Inward Supplier' })
   await dialog.getByLabel('Product').selectOption({ label: productName })
   await dialog.getByLabel('Qty').fill('2')
+  await dialog.getByLabel('HUID 1').fill('IW0002')
+  await dialog.getByLabel('HUID 2').fill('IW0003')
   await dialog.getByLabel('Net weight').fill('8')
   await dialog.getByLabel('Rate').fill('100')
   await dialog.getByRole('button', { name: 'Save & finalize' }).click()

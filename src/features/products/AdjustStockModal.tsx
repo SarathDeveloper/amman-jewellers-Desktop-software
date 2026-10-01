@@ -7,6 +7,7 @@ import { Modal } from '../../components/Modal'
 import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
 import { productHasVariants, variantDisplayName } from './productDisplay'
+import { HuidEntryList, resizeHuidRows } from './HuidEntryList'
 
 type Direction = 'add' | 'reduce'
 
@@ -26,6 +27,8 @@ export function AdjustStockModal({
   const [direction, setDirection] = useState<Direction>('add')
   const [qtyRaw, setQtyRaw] = useState('0')
   const [remarks, setRemarks] = useState('')
+  const [huids, setHuids] = useState<string[]>([])
+  const [removedHuids, setRemovedHuids] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,12 +44,37 @@ export function AdjustStockModal({
 
   const qtyDelta = direction === 'add' ? qty : -qty
   const newStock = currentStock + qtyDelta
+  const existingHuids = product.huids ?? []
+  const removeNeeded =
+    direction === 'reduce' ? Math.min(qty, existingHuids.length) : 0
+
   const validationError = useMemo(() => {
     if (!date.trim()) return 'Date is required'
     if (qty <= 0) return 'Enter a quantity greater than 0'
     if (newStock < 0) return `Cannot reduce below 0 pcs (current stock is ${currentStock})`
+    if (direction === 'add') {
+      const filled = huids.map((value) => value.trim().toUpperCase()).filter(Boolean)
+      if (filled.length !== qty) return 'Add one HUID for each new piece'
+      const duplicate = filled.find((huid, index) => filled.indexOf(huid) !== index)
+      if (duplicate) return `HUID ${duplicate} is duplicated`
+    }
+    if (direction === 'reduce' && existingHuids.length > 0 && removedHuids.length !== removeNeeded) {
+      return removeNeeded === 1
+        ? 'Select 1 HUID to remove'
+        : `Select ${removeNeeded} HUIDs to remove`
+    }
     return null
-  }, [date, qty, newStock, currentStock])
+  }, [
+    date,
+    qty,
+    newStock,
+    currentStock,
+    direction,
+    huids,
+    existingHuids.length,
+    removedHuids.length,
+    removeNeeded,
+  ])
 
   const shownError = error ?? (qty > 0 && newStock < 0 ? validationError : null)
 
@@ -69,6 +97,10 @@ export function AdjustStockModal({
             category: product.category,
             qtyDelta,
             weightDelta: qtyDelta * product.netWeight,
+            huids:
+              direction === 'add'
+                ? huids.map((value) => value.trim().toUpperCase()).filter(Boolean)
+                : removedHuids,
           },
         ],
       })
@@ -130,6 +162,12 @@ export function AdjustStockModal({
                   onChange={(event) => {
                     setDirection(event.target.value as Direction)
                     setError(null)
+                    setRemovedHuids([])
+                    setHuids((current) =>
+                      event.target.value === 'add'
+                        ? resizeHuidRows(current, Math.max(0, Math.trunc(Number(qtyRaw) || 0)))
+                        : [],
+                    )
                   }}
                 >
                   <option value="add">Add (+)</option>
@@ -147,9 +185,11 @@ export function AdjustStockModal({
                     inputMode="numeric"
                     value={qtyRaw}
                     onChange={(event) => {
-                      setQtyRaw(event.target.value)
-                      setError(null)
-                    }}
+                    setQtyRaw(event.target.value)
+                    setError(null)
+                    const nextQty = Math.max(0, Math.trunc(Number(event.target.value) || 0))
+                    setHuids((current) => resizeHuidRows(current, nextQty))
+                  }}
                   />
                   <span className="adjust-stock-qty-unit">pcs</span>
                 </span>
@@ -166,6 +206,44 @@ export function AdjustStockModal({
                 onChange={(event) => setRemarks(event.target.value)}
               />
             </label>
+
+          {direction === 'add' && qty > 0 ? (
+            <div>
+              <p className="muted">HUID (Hallmark Unique ID) for each new piece</p>
+              <HuidEntryList values={resizeHuidRows(huids, qty)} onChange={setHuids} />
+            </div>
+          ) : null}
+
+          {direction === 'reduce' && qty > 0 && existingHuids.length > 0 ? (
+            <fieldset className="product-attr-editor">
+              <legend className="product-attr-head">Select HUIDs to remove</legend>
+              {existingHuids.map((huid) => {
+                const checked = removedHuids.includes(huid)
+                const disableUnchecked = !checked && removedHuids.length >= removeNeeded
+                return (
+                  <label key={huid} className="product-form-toggle">
+                    <input
+                      type="checkbox"
+                      aria-label={huid}
+                      checked={checked}
+                      disabled={disableUnchecked}
+                      onChange={(event) => {
+                        setRemovedHuids((current) =>
+                          event.target.checked
+                            ? [...current, huid]
+                            : current.filter((value) => value !== huid),
+                        )
+                        setError(null)
+                      }}
+                    />
+                    <span>
+                      <strong>{huid}</strong>
+                    </span>
+                  </label>
+                )
+              })}
+            </fieldset>
+          ) : null}
           </div>
 
           <aside className="adjust-stock-panel">

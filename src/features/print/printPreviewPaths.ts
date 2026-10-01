@@ -19,4 +19,6 @@ export const printPreviewPaths = {
   metalDay: (date: string, metal: string) => `/print/metal-day/${date}/${metal}`,
   stockClosing: (date: string, mode: string) => `/print/stock-closing/${date}?mode=${encodeURIComponent(mode)}`,
   sample: (kind: SamplePrintKind) => `/print/sample/${kind}`,
+  gsReceipt: (paymentId: number) => `/print/gs-receipt/${paymentId}`,
+  gsPassbook: (accountId: number) => `/print/gs-passbook/${accountId}`,
 }

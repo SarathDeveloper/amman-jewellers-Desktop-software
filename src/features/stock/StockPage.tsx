@@ -34,6 +34,7 @@ import type {
 } from '@shared/types'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingState } from '../../components/LoadingState'
+import { MetalBarIcon } from '../../components/MetalBarIcon'
 import { Modal } from '../../components/Modal'
 import { PageHeader } from '../../components/PageHeader'
 import { SearchBar } from '../../components/SearchBar'
@@ -608,24 +609,7 @@ export function StockPage() {
         <div className={`stock-metal-card stock-metal-card-gold${metal === 'Gold' ? ' active' : ''}`}>
           <div className="stock-metal-card-head">
             <span>
-              <span className="stock-metal-hero-icon" aria-hidden>
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 4L19 7.5L12 11L5 7.5L12 4Z" fill="url(#sGoldTop)" />
-                  <path d="M5 7.5V13.5L12 17V11L5 7.5Z" fill="url(#sGoldLeft)" />
-                  <path d="M19 7.5V13.5L12 17V11L19 7.5Z" fill="url(#sGoldRight)" />
-                  <path d="M6 10L13 13.5L6 17L-1 13.5L6 10Z" fill="url(#sGoldTop)" />
-                  <path d="M-1 13.5V19.5L6 23V17L-1 13.5Z" fill="url(#sGoldLeft)" />
-                  <path d="M13 13.5V19.5L6 23V17L13 13.5Z" fill="url(#sGoldRight)" />
-                  <path d="M18 10L25 13.5L18 17L11 13.5L18 10Z" fill="url(#sGoldTop)" />
-                  <path d="M11 13.5V19.5L18 23V17L11 13.5Z" fill="url(#sGoldLeft)" />
-                  <path d="M25 13.5V19.5L18 23V17L25 13.5Z" fill="url(#sGoldRight)" />
-                  <defs>
-                    <linearGradient id="sGoldTop" x1="12" y1="4" x2="12" y2="11" gradientUnits="userSpaceOnUse"><stop stopColor="#FDE68A"/><stop offset="1" stopColor="#F59E0B"/></linearGradient>
-                    <linearGradient id="sGoldLeft" x1="8.5" y1="7.5" x2="8.5" y2="17" gradientUnits="userSpaceOnUse"><stop stopColor="#D97706"/><stop offset="1" stopColor="#92400E"/></linearGradient>
-                    <linearGradient id="sGoldRight" x1="15.5" y1="7.5" x2="15.5" y2="17" gradientUnits="userSpaceOnUse"><stop stopColor="#F59E0B"/><stop offset="1" stopColor="#B45309"/></linearGradient>
-                  </defs>
-                </svg>
-              </span>
+              <MetalBarIcon metal="gold" />
               Gold Stock Summary
             </span>
             <button type="button" className="btn ghost view-details" onClick={() => setMetal('Gold')}>
@@ -654,24 +638,7 @@ export function StockPage() {
         <div className={`stock-metal-card stock-metal-card-silver${metal === 'Silver' ? ' active' : ''}`}>
           <div className="stock-metal-card-head">
             <span>
-              <span className="stock-metal-hero-icon" aria-hidden>
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 4L19 7.5L12 11L5 7.5L12 4Z" fill="url(#sSilvTop)" />
-                  <path d="M5 7.5V13.5L12 17V11L5 7.5Z" fill="url(#sSilvLeft)" />
-                  <path d="M19 7.5V13.5L12 17V11L19 7.5Z" fill="url(#sSilvRight)" />
-                  <path d="M6 10L13 13.5L6 17L-1 13.5L6 10Z" fill="url(#sSilvTop)" />
-                  <path d="M-1 13.5V19.5L6 23V17L-1 13.5Z" fill="url(#sSilvLeft)" />
-                  <path d="M13 13.5V19.5L6 23V17L13 13.5Z" fill="url(#sSilvRight)" />
-                  <path d="M18 10L25 13.5L18 17L11 13.5L18 10Z" fill="url(#sSilvTop)" />
-                  <path d="M11 13.5V19.5L18 23V17L11 13.5Z" fill="url(#sSilvLeft)" />
-                  <path d="M25 13.5V19.5L18 23V17L25 13.5Z" fill="url(#sSilvRight)" />
-                  <defs>
-                    <linearGradient id="sSilvTop" x1="12" y1="4" x2="12" y2="11" gradientUnits="userSpaceOnUse"><stop stopColor="#F3F4F6"/><stop offset="1" stopColor="#D1D5DB"/></linearGradient>
-                    <linearGradient id="sSilvLeft" x1="8.5" y1="7.5" x2="8.5" y2="17" gradientUnits="userSpaceOnUse"><stop stopColor="#9CA3AF"/><stop offset="1" stopColor="#4B5563"/></linearGradient>
-                    <linearGradient id="sSilvRight" x1="15.5" y1="7.5" x2="15.5" y2="17" gradientUnits="userSpaceOnUse"><stop stopColor="#D1D5DB"/><stop offset="1" stopColor="#6B7280"/></linearGradient>
-                  </defs>
-                </svg>
-              </span>
+              <MetalBarIcon metal="silver" />
               Silver Stock Summary
             </span>
             <button type="button" className="btn ghost view-details" onClick={() => setMetal('Silver')}>

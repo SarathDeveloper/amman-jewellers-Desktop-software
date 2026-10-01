@@ -258,7 +258,13 @@ export function SettingsPage() {
   }
 
   async function pickImage(
-    field: 'logoImagePath' | 'signatureImagePath' | 'bisLogoPath' | 'qrCodePath',
+    field:
+      | 'logoImagePath'
+      | 'signatureImagePath'
+      | 'bisLogoPath'
+      | 'qrCodePath'
+      | 'passbookBannerPath'
+      | 'passbookSideImagePath',
     file: File,
   ) {
     try {
@@ -552,6 +558,50 @@ export function SettingsPage() {
                       label="Promo line"
                       value={shop.promoLine}
                       onChange={(promoLine) => patchShop({ promoLine })}
+                    />
+                  </div>
+                </section>
+
+                <section className="settings-identity-panel">
+                  <h3 className="settings-identity-panel-title">
+                    <BookOpen size={16} strokeWidth={1.75} aria-hidden />
+                    Gold Savings Passbook
+                  </h3>
+                  <p className="muted settings-card-subtitle">
+                    Optional decorative images for the gold savings passbook print. Leave empty to hide the slots.
+                  </p>
+                  <div className="settings-identity-grid">
+                    <DashedImageField
+                      label="Passbook banner"
+                      optional
+                      title="Upload Passbook Banner"
+                      hint="Jewellery strip at the top of the passbook. PNG, JPG (Max 2MB)"
+                      preview={
+                        shop.passbookBannerPath ? (
+                          <span className="settings-upload-thumb">
+                            <img src={localImageSrc(shop.passbookBannerPath, '')} alt="" />
+                          </span>
+                        ) : (
+                          <Image className="settings-upload-icon" size={18} strokeWidth={1.75} aria-hidden />
+                        )
+                      }
+                      onPick={(file) => void pickImage('passbookBannerPath', file)}
+                    />
+                    <DashedImageField
+                      label="Passbook side image"
+                      optional
+                      title="Upload Passbook Side Image"
+                      hint="Photo beside the customer form. PNG, JPG (Max 2MB)"
+                      preview={
+                        shop.passbookSideImagePath ? (
+                          <span className="settings-upload-thumb">
+                            <img src={localImageSrc(shop.passbookSideImagePath, '')} alt="" />
+                          </span>
+                        ) : (
+                          <Image className="settings-upload-icon" size={18} strokeWidth={1.75} aria-hidden />
+                        )
+                      }
+                      onPick={(file) => void pickImage('passbookSideImagePath', file)}
                     />
                   </div>
                 </section>

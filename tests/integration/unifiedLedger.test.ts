@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { IPC_CHANNELS, ipc, useIntegrationEnv } from './helpers/testEnv'
+import { IPC_CHANNELS, ipc, useIntegrationEnv, withHuids } from './helpers/testEnv'
 
 describe('unified stock ledger', () => {
   useIntegrationEnv()
 
   it('does not change weight stock for old-gold exchange lines', async () => {
-    const stockDate = '2026-09-30'
+    const stockDate = '2026-09-24'
     const customer = await ipc<{ id: number }>(IPC_CHANNELS.CUSTOMERS_CREATE, {
       name: 'Exchange Customer',
       phone: '9000000030',
       address: 'Salem',
       notes: '',
     })
-    const product = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Gold chain',
       category: 'Chain',
       metal: 'Gold',
@@ -22,7 +22,7 @@ describe('unified stock ledger', () => {
       makingCharges: 0,
       stockQty: 5,
       imagePath: '',
-    })
+    }))
 
     await ipc(IPC_CHANNELS.STOCK_UPSERT, {
       stockDate,

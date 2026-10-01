@@ -404,7 +404,15 @@ export function toInvoiceItems(lines: EditorLine[]): InvoiceItemInput[] {
     })
 }
 
-export const OLD_GOLD_PURITIES = ['22K', '24K', 'Silver'] as const
+export const OLD_GOLD_PURITIES = ['24K', '22K', '20K', '18K', '999', '925'] as const
+
+export function oldGoldPurityOptions(current: string): string[] {
+  const base = [...OLD_GOLD_PURITIES]
+  if (current && !base.includes(current as (typeof OLD_GOLD_PURITIES)[number])) {
+    return [current, ...base]
+  }
+  return base
+}
 
 export type OldGoldEditorRow = {
   key: string
@@ -420,7 +428,7 @@ export type OldGoldEditorRow = {
 export function rateForOldGoldPurity(purity: string, rates: MetalRates | null): number {
   const value = purity.toLowerCase()
   if (value.includes('925')) return rates?.silver925 ?? 0
-  if (value.includes('silver')) return rates?.silverFine ?? 0
+  if (value.includes('999') || value.includes('silver')) return rates?.silverFine ?? 0
   if (value.includes('24')) return rates?.gold24k ?? 0
   if (value.includes('20')) return rates?.gold20k ?? 0
   if (value.includes('18')) return rates?.gold18k ?? 0

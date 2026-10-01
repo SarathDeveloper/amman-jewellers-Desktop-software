@@ -31,7 +31,8 @@ export function BillingLayout() {
   const navigate = useNavigate()
   const pathType = billingTypeFromPath(location.pathname)
   const listMode = useMemo(() => location.pathname === '/billing', [location.pathname])
-  const activeType = listMode ? getBillingType() : (pathType ?? getBillingType())
+  const [preferredType, setPreferredType] = useState<BillingType>(getBillingType)
+  const activeType = listMode ? preferredType : (pathType ?? preferredType)
   const activeTab = BILLING_TAB_OPTIONS.find((tab) => tab.value === activeType) ?? BILLING_TAB_OPTIONS[0]
   const [menuOpen, setMenuOpen] = useState(false)
   const [pendingLeave, setPendingLeave] = useState<PendingLeave | null>(null)
@@ -39,7 +40,10 @@ export function BillingLayout() {
   const dirtyRef = useRef(false)
 
   useEffect(() => {
-    if (pathType) setBillingType(pathType)
+    if (pathType) {
+      setBillingType(pathType)
+      setPreferredType(pathType)
+    }
   }, [pathType])
 
   useEffect(() => {
@@ -74,7 +78,12 @@ export function BillingLayout() {
   }
 
   function selectTab(type: BillingType) {
-    if (!listMode && type === activeType) return
+    if (listMode) {
+      setBillingType(type)
+      setPreferredType(type)
+      return
+    }
+    if (type === activeType) return
     if (isEditorPath(location.pathname) && dirtyRef.current) {
       setPendingLeave({ kind: 'tab', type })
       return

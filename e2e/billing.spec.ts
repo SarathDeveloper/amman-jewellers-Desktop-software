@@ -24,6 +24,7 @@ test('billing create, finalize, and stock deduction', async ({ window }) => {
   await window.getByRole('button', { name: 'Add customer' }).click()
   await window.getByLabel('Name', { exact: true }).fill('Bill Customer')
   await window.getByLabel('Mobile').fill('9999999999')
+  await window.getByLabel('Address').fill('Salem')
   await window.getByRole('button', { name: 'Save' }).click()
 
   await sidebarLink(window, 'Billing').click()
@@ -39,16 +40,23 @@ test('billing create, finalize, and stock deduction', async ({ window }) => {
 
   await window.getByLabel('Bill date').fill(today)
 
-  await window.getByRole('tab', { name: 'Quick add (Manual)' }).click()
-  await window.locator('.billing-add-row--primary select.select').selectOption({ label: productName })
-  await window.locator('.billing-add-row--weights input[type="number"]').nth(1).fill('1500')
-  await window.getByRole('button', { name: 'Add', exact: true }).click()
+  await window.getByPlaceholder('Search product by name, metal, category, SKU…').fill(productName)
+  await window.getByRole('option', { name: new RegExp(productName) }).click()
+  const itemRow = window.locator('.sale-bill-items-table tbody tr').filter({
+    has: window.locator(`.sale-bill-product-name[value*="${productName}"]`),
+  })
+  await expect(itemRow).toBeVisible()
+  await itemRow.getByLabel('Gold rate').fill('1500')
 
   await window.getByRole('button', { name: 'Save draft' }).first().click()
-  await expect(window.locator('.badge.draft')).toBeVisible()
+  await expect(window.locator('.sale-bill-meta-status')).toHaveText('Draft')
 
   await window.getByRole('button', { name: 'Finalize', exact: true }).click()
-  await expect(window.locator('.badge.final')).toBeVisible()
+  await expect(window.locator('.sale-bill-meta-status')).toHaveText('Paid')
+  const finalized = window.getByRole('dialog', { name: 'Bill finalized' })
+  await expect(finalized).toBeVisible()
+  await window.locator('.modal-backdrop').click({ position: { x: 8, y: 8 } })
+  await expect(finalized).toBeHidden()
 
   await openInventoryTab(window, 'Products')
   const row = window.getByRole('row').filter({ hasText: productName })
@@ -66,6 +74,7 @@ test('billing add customer from new bill page', async ({ window }) => {
   await window.getByRole('button', { name: 'No customer found — Add new' }).click()
   await window.getByRole('dialog', { name: 'Add customer' }).getByLabel('Name', { exact: true }).fill(customerName)
   await window.getByRole('dialog', { name: 'Add customer' }).getByLabel('Mobile').fill('9999999999')
+  await window.getByRole('dialog', { name: 'Add customer' }).getByLabel('Address').fill('Salem')
   await window.getByRole('dialog', { name: 'Add customer' }).getByRole('button', { name: 'Save' }).click()
 
   await expect(window.getByText(customerName).first()).toBeVisible()

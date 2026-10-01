@@ -4,15 +4,16 @@ import {
   STOCK_ITEM_NAMES,
   STOCK_METALS,
 } from '@shared/itemTypes'
-import { EMPTY_PRODUCT_VARIANT_FIELDS, type Product, type ProductInput } from '@shared/types'
+import { type Product, type ProductInput } from '@shared/types'
 import { numericFieldToNumber, type NumericField } from '../../lib/numericField'
+import { resizeHuidRows } from './HuidEntryList'
 import { isGold, isSilver, stockTone, type StockTone } from './productDisplay'
 
 export type ProductAttributeRow = { key: string; value: string }
 
 export type ProductFormState = Omit<
   ProductInput,
-  'grossWeight' | 'netWeight' | 'makingCharges' | 'stockQty' | 'stoneWeight' | 'attributes'
+  'grossWeight' | 'netWeight' | 'makingCharges' | 'stockQty' | 'stoneWeight' | 'attributes' | 'huids'
 > & {
   grossWeight: NumericField
   netWeight: NumericField
@@ -25,10 +26,11 @@ export type ProductFormState = Omit<
   size: string
   stoneDetails: string
   isActive: boolean
+  huids: string[]
 }
 
 export type ProductFormErrors = Partial<
-  Record<'name' | 'category' | 'metal' | 'purity' | 'netWeight' | 'stoneWeight', string>
+  Record<'name' | 'category' | 'metal' | 'purity' | 'netWeight' | 'stoneWeight' | 'huids', string>
 >
 
 export const emptyProductForm: ProductFormState = {
@@ -39,7 +41,7 @@ export const emptyProductForm: ProductFormState = {
   grossWeight: '',
   netWeight: '',
   makingCharges: '',
-  stockQty: '',
+  stockQty: 1,
   imagePath: '',
   parentId: null,
   variantCode: '',
@@ -48,6 +50,7 @@ export const emptyProductForm: ProductFormState = {
   stoneDetails: '',
   attributes: [],
   isActive: true,
+  huids: [''],
 }
 
 export function defaultPurityForMetal(metal: string): string {
@@ -90,6 +93,7 @@ export function productToForm(product: Product | null, parent?: Product | null):
     stoneDetails: product.stoneDetails,
     attributes: attributesToRows(product.attributes),
     isActive: product.isActive,
+    huids: resizeHuidRows(product.huids ?? [], product.stockQty, true),
   }
 }
 
@@ -99,6 +103,14 @@ export function formToProductInput(form: ProductFormState): ProductInput {
       .map((row) => [row.key.trim(), row.value.trim()] as const)
       .filter(([key, value]) => key && value),
   )
+  const seen = new Set<string>()
+  const huids: string[] = []
+  for (const raw of form.huids) {
+    const huid = raw.trim().toUpperCase()
+    if (!huid || seen.has(huid)) continue
+    seen.add(huid)
+    huids.push(huid)
+  }
   return {
     name: form.name.trim(),
     category: form.category.trim(),
@@ -116,6 +128,7 @@ export function formToProductInput(form: ProductFormState): ProductInput {
     stoneDetails: form.stoneDetails.trim(),
     attributes,
     isActive: form.isActive,
+    huids,
   }
 }
 
@@ -191,6 +204,27 @@ export function validateProductForm(
     errors.stoneWeight = 'Stone weight cannot exceed gross weight'
   }
 
+  const seenHuids = new Set<string>()
+  for (const raw of form.huids) {
+    const huid = raw.trim().toUpperCase()
+    if (!huid) continue
+    if (!/^[0-9A-Z]{6}$/.test(huid)) {
+      errors.huids = 'HUID must be 6 letters or digits'
+      break
+    }
+    if (seenHuids.has(huid)) {
+      errors.huids = `HUID ${huid} is duplicated`
+      break
+    }
+    seenHuids.add(huid)
+  }
+
+  const filledHuidCount = form.huids.filter((value) => value.trim()).length
+  const stockQty = Math.max(0, Math.trunc(numericFieldToNumber(form.stockQty)))
+  if (!errors.huids && filledHuidCount !== stockQty) {
+    errors.huids = 'Add one HUID for each piece in stock'
+  }
+
   return errors
 }
 
@@ -211,6 +245,7 @@ export function productMatchesListContext(
     input.variantCode ?? '',
     input.size ?? '',
     input.stoneDetails ?? '',
+    ...(input.huids ?? []),
   ]
   if (query && !haystack.some((value) => value.toLowerCase().includes(query))) {
     return false

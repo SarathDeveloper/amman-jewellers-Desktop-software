@@ -43,6 +43,7 @@ function featureForPath(pathname: string): FeatureKey | 'users' | null {
   if (pathname.startsWith('/users')) return 'users'
   if (pathname.startsWith('/dashboard')) return 'dashboard'
   if (pathname.startsWith('/billing') || pathname.startsWith('/invoices')) return 'billing'
+  if (pathname.startsWith('/gold-savings')) return 'gold_savings'
   if (pathname.startsWith('/inventory/products')) return 'products'
   if (pathname.startsWith('/inventory/stock')) return 'stock'
   if (pathname.startsWith('/inventory/inwards') || pathname.startsWith('/inventory/suppliers') || pathname.startsWith('/inventory/old-gold')) {

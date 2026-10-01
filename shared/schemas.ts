@@ -8,6 +8,12 @@ export const productMetalSchema = z.enum(STOCK_METALS)
 
 export const productAttributesSchema = z.record(z.string().trim().min(1).max(80), z.string().max(200))
 
+export const huidSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[0-9A-Z]{6}$/, 'HUID must be 6 letters or digits')
+
 export const productInputSchema = z
   .object({
     name: z.string().min(1).max(200),
@@ -26,6 +32,7 @@ export const productInputSchema = z
     stoneDetails: z.string().trim().max(500).optional().default(''),
     attributes: productAttributesSchema.optional().default({}),
     isActive: z.boolean().optional().default(true),
+    huids: z.array(huidSchema).max(500).optional().default([]),
   })
   .refine((data) => data.netWeight <= data.grossWeight, {
     message: 'Net weight cannot exceed gross weight',
@@ -42,6 +49,28 @@ export const productInputSchema = z
         code: z.ZodIssueCode.custom,
         message: `Purity must be one of ${allowed.join(', ')} for ${data.metal}`,
         path: ['purity'],
+      })
+    }
+
+    const seen = new Map<string, number>()
+    data.huids.forEach((huid, index) => {
+      const previous = seen.get(huid)
+      if (previous !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `HUID ${huid} is duplicated`,
+          path: ['huids', index],
+        })
+        return
+      }
+      seen.set(huid, index)
+    })
+
+    if (data.huids.length !== data.stockQty) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Add one HUID for each piece in stock',
+        path: ['huids'],
       })
     }
   })
@@ -329,6 +358,8 @@ export const shopSettingsSchema = z.object({
   signatureImagePath: z.string().max(500),
   bisLogoPath: z.string().max(500).default(''),
   qrCodePath: z.string().max(500).default(''),
+  passbookBannerPath: z.string().max(500).default(''),
+  passbookSideImagePath: z.string().max(500).default(''),
   defaultPrinterCash: z.string().max(200),
   defaultPrinterTax: z.string().max(200),
   paperSizeCash: paperSizeSchema,
@@ -375,6 +406,7 @@ export const FEATURE_KEY_VALUES = [
   'reports',
   'rates',
   'settings',
+  'gold_savings',
 ] as const
 
 export const featureKeySchema = z.enum(FEATURE_KEY_VALUES)
@@ -500,6 +532,7 @@ export const stockAdjustmentLineInputSchema = z.object({
   qtyDelta: z.number().int().default(0),
   weightDelta: z.number().default(0),
   reason: z.string().trim().max(200).optional(),
+  huids: z.array(huidSchema).max(500).optional().default([]),
 })
 
 export const stockAdjustmentInputSchema = z.object({
@@ -544,18 +577,49 @@ export const supplierInputSchema = z.object({
     .transform((value) => value.trim().toUpperCase()),
 })
 
-export const inwardItemInputSchema = z.object({
-  productId: z.number().int().positive().nullable().optional(),
-  metal: z.string().trim().min(1).max(50),
-  category: z.string().trim().min(1).max(100),
-  purity: z.string().max(50).default(''),
-  qty: z.number().int().positive(),
-  grossWeight: z.number().nonnegative().optional().default(0),
-  netWeight: z.number().positive(),
-  rate: z.number().nonnegative().default(0),
-  makingCharges: z.number().nonnegative().optional().default(0),
-  hsnCode: z.string().trim().max(20).optional().default('7113'),
-})
+export const inwardItemInputSchema = z
+  .object({
+    productId: z.number().int().positive().nullable().optional(),
+    metal: z.string().trim().min(1).max(50),
+    category: z.string().trim().min(1).max(100),
+    purity: z.string().max(50).default(''),
+    qty: z.number().int().positive(),
+    grossWeight: z.number().nonnegative().optional().default(0),
+    netWeight: z.number().positive(),
+    rate: z.number().nonnegative().default(0),
+    makingCharges: z.number().nonnegative().optional().default(0),
+    hsnCode: z.string().trim().max(20).optional().default('7113'),
+    huids: z.array(huidSchema).max(500).optional().default([]),
+  })
+  .superRefine((data, ctx) => {
+    const seen = new Map<string, number>()
+    data.huids.forEach((huid, index) => {
+      const previous = seen.get(huid)
+      if (previous !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `HUID ${huid} is duplicated`,
+          path: ['huids', index],
+        })
+        return
+      }
+      seen.set(huid, index)
+    })
+    if (data.productId != null && data.huids.length !== data.qty) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Add one HUID for each piece on this line',
+        path: ['huids'],
+      })
+    }
+    if (data.productId == null && data.huids.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Raw metal lines cannot have HUIDs',
+        path: ['huids'],
+      })
+    }
+  })
 
 const inwardBaseSchema = z.object({
   supplierId: z.number().int().positive(),
@@ -716,6 +780,153 @@ export const restoreBackupNameSchema = z.object({
 export const backupSettingsSchema = z.object({
   frequency: z.enum(['daily', 'weekly']),
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Time must be HH:mm'),
+})
+
+const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date')
+const optionalIsoDateSchema = z
+  .union([isoDateSchema, z.literal(''), z.null()])
+  .optional()
+  .transform((value) => (value ? value : null))
+
+export const goldSavingPuritySchema = z.enum(['24K', '22K', '18K'])
+export const goldSavingRateSourceSchema = z.enum(['configured', 'manual_allowed'])
+export const goldSavingBonusTypeSchema = z.enum(['none', 'fixed_amount', 'percentage', 'additional_gold'])
+export const goldSavingRedemptionTypeSchema = z.enum(['gold', 'jewellery', 'configurable'])
+export const goldSavingSchemeStatusSchema = z.enum(['active', 'inactive'])
+export const goldSavingPaymentModeSchema = z.enum(['cash', 'upi', 'card', 'bank_transfer', 'other'])
+export const goldSavingRedemptionKindSchema = z.enum(['gold', 'jewellery', 'invoice'])
+export const goldSavingReportIdSchema = z.enum([
+  'daily-collections',
+  'monthly-collections',
+  'customer-ledger',
+  'scheme-performance',
+  'active-schemes',
+  'matured-schemes',
+  'overdue-installments',
+  'cancelled-schemes',
+  'gold-accumulation',
+  'redemption-history',
+  'outstanding-obligations',
+])
+
+export const goldSavingSchemeInputSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Scheme name is required').max(200),
+    description: z.string().max(2000).optional().default(''),
+    monthlyAmount: z.number().positive('Monthly installment must be greater than zero'),
+    durationMonths: z.number().int().min(1).max(120),
+    minInstallment: z.number().positive().nullable().optional(),
+    maxInstallment: z.number().positive().nullable().optional(),
+    purity: goldSavingPuritySchema,
+    goldRateSource: goldSavingRateSourceSchema,
+    bonusType: goldSavingBonusTypeSchema,
+    bonusValue: z.number().nonnegative().optional().default(0),
+    bonusEligibility: z.string().max(2000).optional().default(''),
+    allowLatePayments: z.boolean().optional().default(true),
+    gracePeriodDays: z.number().int().min(0).max(90).optional().default(0),
+    allowMissedInstallments: z.boolean().optional().default(false),
+    allowEarlyClosure: z.boolean().optional().default(false),
+    allowPartialRedemption: z.boolean().optional().default(false),
+    allowMultipleAccounts: z.boolean().optional().default(false),
+    redemptionType: goldSavingRedemptionTypeSchema,
+    makingChargeRules: z.string().max(2000).optional().default(''),
+    wastageRules: z.string().max(2000).optional().default(''),
+    availableFrom: optionalIsoDateSchema,
+    availableTo: optionalIsoDateSchema,
+    terms: z.string().max(8000).optional().default(''),
+    status: goldSavingSchemeStatusSchema.optional().default('active'),
+  })
+  .superRefine((data, ctx) => {
+    if (data.minInstallment != null && data.minInstallment > data.monthlyAmount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Minimum installment cannot exceed the monthly amount',
+        path: ['minInstallment'],
+      })
+    }
+    if (data.maxInstallment != null && data.maxInstallment < data.monthlyAmount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Maximum installment cannot be below the monthly amount',
+        path: ['maxInstallment'],
+      })
+    }
+    if (data.bonusType !== 'none' && (data.bonusValue ?? 0) <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Bonus value is required when a bonus type is selected',
+        path: ['bonusValue'],
+      })
+    }
+  })
+
+export const goldSavingInitialPaymentSchema = z.object({
+  amount: z.number().positive(),
+  paymentDate: isoDateSchema,
+  paymentMode: goldSavingPaymentModeSchema,
+  transactionRef: z.string().max(120).optional().default(''),
+  goldRate: z.number().positive().optional(),
+  goldRateOverrideReason: z.string().max(500).optional().default(''),
+  remarks: z.string().max(500).optional().default(''),
+  idempotencyKey: z.string().max(80).optional(),
+})
+
+export const goldSavingAccountInputSchema = z.object({
+  customerId: z.number().int().positive(),
+  schemeId: z.number().int().positive(),
+  monthlyAmount: z.number().positive().optional(),
+  enrollmentDate: isoDateSchema,
+  firstInstallmentDate: isoDateSchema,
+  preferredPaymentDay: z.number().int().min(1).max(28).nullable().optional(),
+  nomineeName: z.string().max(200).optional().default(''),
+  nomineeRelationship: z.string().max(80).optional().default(''),
+  nomineePhone: z
+    .string()
+    .optional()
+    .default('')
+    .refine((value) => value === '' || /^\d{10}$/.test(value), {
+      message: 'Nominee mobile number must be exactly 10 digits',
+    }),
+  termsAccepted: z.boolean().refine((value) => value === true, {
+    message: 'Scheme terms must be accepted',
+  }),
+  initialPayment: goldSavingInitialPaymentSchema.optional(),
+})
+
+export const goldSavingPaymentInputSchema = z.object({
+  accountId: z.number().int().positive(),
+  installmentId: z.number().int().positive().optional(),
+  paymentDate: isoDateSchema,
+  amount: z.number().positive(),
+  lateFee: z.number().nonnegative().optional().default(0),
+  discount: z.number().nonnegative().optional().default(0),
+  paymentMode: goldSavingPaymentModeSchema,
+  transactionRef: z.string().max(120).optional().default(''),
+  goldRate: z.number().positive().optional(),
+  goldRateOverrideReason: z.string().max(500).optional().default(''),
+  remarks: z.string().max(500).optional().default(''),
+  idempotencyKey: z.string().max(80).optional(),
+})
+
+export const goldSavingReversePaymentSchema = z.object({
+  reason: z.string().trim().min(1, 'Reason is required').max(500),
+})
+
+export const goldSavingCancelAccountSchema = z.object({
+  reason: z.string().trim().min(1, 'Reason is required').max(500),
+})
+
+export const goldSavingRedemptionInputSchema = z.object({
+  accountId: z.number().int().positive(),
+  redemptionDate: isoDateSchema,
+  redemptionKind: goldSavingRedemptionKindSchema,
+  goldWeight: z.number().positive().optional(),
+  invoiceId: z.number().int().positive().nullable().optional(),
+  makingCharges: z.number().nonnegative().optional().default(0),
+  wastage: z.number().nonnegative().optional().default(0),
+  taxes: z.number().nonnegative().optional().default(0),
+  invoiceValue: z.number().nonnegative().optional().default(0),
+  notes: z.string().max(1000).optional().default(''),
 })
 
 const emptyToUndefined = (value: unknown) =>

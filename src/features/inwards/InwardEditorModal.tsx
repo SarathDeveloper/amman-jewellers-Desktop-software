@@ -29,6 +29,7 @@ import { api } from '../../lib/api'
 import { formatCurrency, formatWeight } from '../../lib/format'
 import { numericFieldToNumber, parseNumericField, type NumericField } from '../../lib/numericField'
 import { isSilver } from '../products/productDisplay'
+import { HuidEntryList, resizeHuidRows } from '../products/HuidEntryList'
 import { SupplierFormModal } from '../suppliers/SupplierFormModal'
 import { PrintPreviewModal } from '../print/PrintPreviewModal'
 import { printPreviewPaths } from '../print/printPreviewPaths'
@@ -48,6 +49,7 @@ type LineState = {
   rate: NumericField
   makingCharges: NumericField
   hsnCode: string
+  huids: string[]
 }
 
 let lineSeq = 0
@@ -79,6 +81,7 @@ function blankProductLine(): LineState {
     rate: '',
     makingCharges: '',
     hsnCode: DEFAULT_HSN,
+    huids: [''],
   }
 }
 
@@ -96,6 +99,7 @@ function blankRawLine(category: string): LineState {
     rate: '',
     makingCharges: '',
     hsnCode: DEFAULT_HSN,
+    huids: [],
   }
 }
 
@@ -113,6 +117,10 @@ function linesFromInward(inward: Inward): LineState[] {
     rate: item.rate,
     makingCharges: item.makingCharges || '',
     hsnCode: item.hsnCode || DEFAULT_HSN,
+    huids:
+      item.productId == null
+        ? []
+        : resizeHuidRows(item.huids ?? [], item.qty),
   }))
 }
 
@@ -301,6 +309,8 @@ export function InwardEditorModal({
 
   function selectProduct(key: string, productId: number | '') {
     const product = productId === '' ? undefined : productById.get(productId)
+    const current = lines.find((line) => line.key === key)
+    const n = Math.max(1, Math.trunc(numericFieldToNumber(current?.qty ?? 1, 1)))
     updateLine(key, {
       productId,
       metal: product?.metal ?? 'Gold',
@@ -310,6 +320,7 @@ export function InwardEditorModal({
       netWeight: product ? product.netWeight || '' : '',
       makingCharges: product ? product.makingCharges || '' : '',
       hsnCode: DEFAULT_HSN,
+      huids: product ? resizeHuidRows(current?.huids ?? [], n) : [],
     })
   }
 
@@ -329,6 +340,14 @@ export function InwardEditorModal({
         if (!product) {
           throw new Error(`${label} needs a product`)
         }
+        const huids = line.huids.map((value) => value.trim().toUpperCase()).filter(Boolean)
+        if (huids.length !== qty) {
+          throw new Error('Add one HUID for each piece on this line')
+        }
+        const duplicate = huids.find((huid, index) => huids.indexOf(huid) !== index)
+        if (duplicate) {
+          throw new Error(`HUID ${duplicate} is duplicated`)
+        }
         return {
           productId: product.id,
           metal: product.metal,
@@ -340,6 +359,7 @@ export function InwardEditorModal({
           rate: numericFieldToNumber(line.rate),
           makingCharges: numericFieldToNumber(line.makingCharges),
           hsnCode: line.hsnCode.trim() || DEFAULT_HSN,
+          huids,
         }
       }
       if (!line.metal.trim() || !line.category.trim()) {
@@ -356,6 +376,7 @@ export function InwardEditorModal({
         rate: numericFieldToNumber(line.rate),
         makingCharges: numericFieldToNumber(line.makingCharges),
         hsnCode: line.hsnCode.trim() || DEFAULT_HSN,
+        huids: [],
       }
     })
   }
@@ -704,9 +725,17 @@ export function InwardEditorModal({
                                 type="number"
                                 min={1}
                                 value={line.qty}
-                                onChange={(event) =>
-                                  updateLine(line.key, { qty: parseNumericField(event.target.value) })
-                                }
+                                onChange={(event) => {
+                                  const qty = parseNumericField(event.target.value)
+                                  const n = Math.max(1, Math.trunc(numericFieldToNumber(qty, 1)))
+                                  updateLine(line.key, {
+                                    qty,
+                                    huids:
+                                      line.kind === 'product'
+                                        ? resizeHuidRows(line.huids, n)
+                                        : [],
+                                  })
+                                }}
                               />
                             </Control>
                           )}
@@ -827,6 +856,20 @@ export function InwardEditorModal({
                           )}
                         </Field>
                       </div>
+
+                      {line.kind === 'product' ? (
+                        <div>
+                          <p className="muted">
+                            HUID (Hallmark Unique ID) — {line.huids.filter((value) => value.trim()).length} of{' '}
+                            {qty} pieces
+                          </p>
+                          <HuidEntryList
+                            values={line.huids}
+                            disabled={readOnly}
+                            onChange={(huids) => updateLine(line.key, { huids })}
+                          />
+                        </div>
+                      ) : null}
                     </article>
                   )
                 })}

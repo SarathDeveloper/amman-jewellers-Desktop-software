@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, Fragment } from 'react'
 import { Plus } from 'lucide-react'
 import { GOLD_PURITIES, SILVER_PURITIES } from '@shared/itemTypes'
 import { localTodayIso } from '@shared/localDate'
@@ -10,6 +10,7 @@ import { api } from '../../lib/api'
 import { formatCurrency, formatWeight } from '../../lib/format'
 import { numericFieldToNumber, parseNumericField, type NumericField } from '../../lib/numericField'
 import { SupplierFormModal } from '../suppliers/SupplierFormModal'
+import { HuidEntryList, resizeHuidRows } from './HuidEntryList'
 import { isSilver } from './productDisplay'
 
 type LineState = {
@@ -18,6 +19,7 @@ type LineState = {
   netWeight: NumericField
   rate: NumericField
   purity: string
+  huids: string[]
 }
 
 function puritiesForMetal(metal: string, current: string): string[] {
@@ -35,6 +37,7 @@ function linesFromProducts(products: Product[]): LineState[] {
     netWeight: product.netWeight || '',
     rate: '',
     purity: product.purity || (isSilver(product.metal) ? SILVER_PURITIES[0] : '22K'),
+    huids: [''],
   }))
 }
 
@@ -114,6 +117,14 @@ export function AddInwardStockModal({
       if (netWeight <= 0) {
         throw new Error(`${product.name} needs a net weight greater than 0`)
       }
+      const huids = line.huids.map((value) => value.trim().toUpperCase()).filter(Boolean)
+      if (huids.length !== qty) {
+        throw new Error('Add one HUID for each piece on this line')
+      }
+      const duplicate = huids.find((huid, index) => huids.indexOf(huid) !== index)
+      if (duplicate) {
+        throw new Error(`HUID ${duplicate} is duplicated`)
+      }
       return {
         productId: product.id,
         metal: product.metal,
@@ -122,6 +133,7 @@ export function AddInwardStockModal({
         qty,
         netWeight,
         rate: numericFieldToNumber(line.rate),
+        huids,
       }
     })
   }
@@ -239,7 +251,8 @@ export function AddInwardStockModal({
                   const rate = numericFieldToNumber(line.rate)
                   const purities = puritiesForMetal(product.metal, line.purity)
                   return (
-                    <tr key={line.productId}>
+                    <Fragment key={line.productId}>
+                    <tr>
                       <td>{product.name}</td>
                       <td>{product.metal}</td>
                       <td>{product.category || '—'}</td>
@@ -262,9 +275,14 @@ export function AddInwardStockModal({
                           type="number"
                           min={1}
                           value={line.qty}
-                          onChange={(event) =>
-                            updateLine(line.productId, { qty: parseNumericField(event.target.value) })
-                          }
+                          onChange={(event) => {
+                            const qty = parseNumericField(event.target.value)
+                            const n = Math.max(1, Math.trunc(numericFieldToNumber(qty, 1)))
+                            updateLine(line.productId, {
+                              qty,
+                              huids: resizeHuidRows(line.huids, n),
+                            })
+                          }}
                         />
                       </td>
                       <td className="num">
@@ -295,6 +313,19 @@ export function AddInwardStockModal({
                       </td>
                       <td className="num">{formatCurrency(netWeight * qty * rate)}</td>
                     </tr>
+                    <tr key={`${line.productId}-huids`}>
+                      <td colSpan={8}>
+                        <p className="muted">
+                          HUID (Hallmark Unique ID) — {line.huids.filter((value) => value.trim()).length} of{' '}
+                          {Math.max(1, Math.trunc(qty))} pieces
+                        </p>
+                        <HuidEntryList
+                          values={line.huids}
+                          onChange={(huids) => updateLine(line.productId, { huids })}
+                        />
+                      </td>
+                    </tr>
+                    </Fragment>
                   )
                 })}
               </tbody>

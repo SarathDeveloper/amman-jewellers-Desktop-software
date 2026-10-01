@@ -22,6 +22,8 @@ export interface ShopDisplayInfo {
   logoImagePath: string
   bisLogoPath: string
   qrCodePath: string
+  passbookBannerPath: string
+  passbookSideImagePath: string
   billTemplate: BillTemplateSettings
   cashVisibility: CashBillVisibility
   taxVisibility: TaxInvoiceVisibility
@@ -40,6 +42,8 @@ export const EMPTY_SHOP_DISPLAY: ShopDisplayInfo = {
   logoImagePath: '',
   bisLogoPath: '',
   qrCodePath: '',
+  passbookBannerPath: '',
+  passbookSideImagePath: '',
   billTemplate: DEFAULT_BILL_TEMPLATE,
   cashVisibility: DEFAULT_CASH_VISIBILITY,
   taxVisibility: DEFAULT_TAX_VISIBILITY,
@@ -102,6 +106,8 @@ export function shopSettingsToDisplay(settings: ShopSettings | null): ShopDispla
     logoImagePath: settings.logoImagePath,
     bisLogoPath: settings.bisLogoPath ?? '',
     qrCodePath: settings.qrCodePath ?? '',
+    passbookBannerPath: settings.passbookBannerPath ?? '',
+    passbookSideImagePath: settings.passbookSideImagePath ?? '',
     billTemplate: settings.billTemplate ?? DEFAULT_BILL_TEMPLATE,
     cashVisibility: settings.cashVisibility ?? DEFAULT_CASH_VISIBILITY,
     taxVisibility: settings.taxVisibility ?? DEFAULT_TAX_VISIBILITY,

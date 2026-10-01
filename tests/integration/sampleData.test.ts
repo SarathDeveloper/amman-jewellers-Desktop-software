@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { getDatabase } from '../../server/db'
 import {
+  countSeededGoldSavingAccounts,
+  countSeededGoldSavingSchemes,
   countSeededInvoices,
   seedSampleDashboardIfEmpty,
   seedSampleDataIfEmpty,
+  seedSampleGoldSavingsIfEmpty,
 } from '../../server/db/sampleData'
-import { IPC_CHANNELS, ipc, useIntegrationEnv } from './helpers/testEnv'
+import { IPC_CHANNELS, ipc, useIntegrationEnv, withHuids } from './helpers/testEnv'
 
 describe('sample data seed helpers', () => {
   useIntegrationEnv()
@@ -14,7 +17,10 @@ describe('sample data seed helpers', () => {
     const db = getDatabase()
     expect(seedSampleDataIfEmpty(db)).toBe(true)
     expect(seedSampleDashboardIfEmpty(db)).toBe(true)
+    expect(seedSampleGoldSavingsIfEmpty(db)).toBe(true)
     expect(countSeededInvoices(db)).toBe(32)
+    expect(countSeededGoldSavingSchemes(db)).toBe(2)
+    expect(countSeededGoldSavingAccounts(db)).toBe(5)
 
     const products = await ipc(IPC_CHANNELS.PRODUCTS_LIST)
     const customers = await ipc(IPC_CHANNELS.CUSTOMERS_LIST)
@@ -22,10 +28,17 @@ describe('sample data seed helpers', () => {
     expect(products).toHaveLength(10)
     expect(customers.length).toBeGreaterThanOrEqual(16)
     expect(invoices).toHaveLength(32)
+
+    const accounts = db
+      .prepare(`SELECT c.name AS name, a.status AS status FROM gold_saving_accounts a JOIN customers c ON c.id = a.customer_id ORDER BY a.id`)
+      .all() as { name: string; status: string }[]
+    expect(accounts.map((row) => row.name)).toEqual(['Ravi Kumar', 'Priya', 'Suresh', 'Meena', 'Kumar'])
+    expect(accounts.find((row) => row.name === 'Kumar')?.status).toBe('cancelled')
+    expect(accounts.find((row) => row.name === 'Meena')?.status).toBe('matured')
   })
 
   it('seeds dashboard demo when catalogue already exists', async () => {
-    await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+    await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Demo ring',
       category: 'Ring',
       metal: 'Gold',
@@ -35,7 +48,7 @@ describe('sample data seed helpers', () => {
       makingCharges: 500,
       stockQty: 5,
       imagePath: '',
-    })
+    }))
     await ipc(IPC_CHANNELS.CUSTOMERS_CREATE, {
       name: 'Ravi Kumar',
       phone: '9000000001',
@@ -56,7 +69,9 @@ describe('sample data seed helpers', () => {
     const db = getDatabase()
     expect(seedSampleDataIfEmpty(db)).toBe(true)
     expect(seedSampleDashboardIfEmpty(db)).toBe(true)
+    expect(seedSampleGoldSavingsIfEmpty(db)).toBe(true)
     expect(seedSampleDataIfEmpty(db)).toBe(false)
     expect(seedSampleDashboardIfEmpty(db)).toBe(false)
+    expect(seedSampleGoldSavingsIfEmpty(db)).toBe(false)
   })
 })

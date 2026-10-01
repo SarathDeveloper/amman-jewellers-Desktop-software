@@ -49,6 +49,21 @@ import type {
   TaxReportRow,
   UpdatePermissionsInput,
   User,
+  GoldSavingAccount,
+  GoldSavingAccountDetail,
+  GoldSavingAccountInput,
+  GoldSavingAuditLog,
+  GoldSavingDashboard,
+  GoldSavingLedgerEntry,
+  GoldSavingPassbook,
+  GoldSavingPayment,
+  GoldSavingPaymentInput,
+  GoldSavingRedemption,
+  GoldSavingRedemptionInput,
+  GoldSavingReportId,
+  GoldSavingReportResult,
+  GoldSavingScheme,
+  GoldSavingSchemeInput,
   Inward,
   InwardInput,
   InwardUpdateInput,
@@ -177,4 +192,26 @@ export interface JewelTrackerProApi {
       qtyCutoff?: number
     },
   ) => Promise<ReportResult>
+
+  listGsSchemes: () => Promise<GoldSavingScheme[]>
+  getGsScheme: (id: number) => Promise<GoldSavingScheme>
+  createGsScheme: (input: GoldSavingSchemeInput) => Promise<GoldSavingScheme>
+  updateGsScheme: (id: number, input: GoldSavingSchemeInput) => Promise<GoldSavingScheme>
+  listGsAccounts: (search?: string) => Promise<GoldSavingAccount[]>
+  getGsAccount: (id: number) => Promise<GoldSavingAccountDetail>
+  createGsAccount: (input: GoldSavingAccountInput) => Promise<GoldSavingAccountDetail>
+  cancelGsAccount: (id: number, reason: string) => Promise<GoldSavingAccountDetail>
+  collectGsPayment: (input: GoldSavingPaymentInput) => Promise<GoldSavingPayment>
+  getGsPayment: (id: number) => Promise<GoldSavingPayment>
+  reverseGsPayment: (id: number, reason: string) => Promise<GoldSavingPayment>
+  getGsLedger: (accountId: number, query?: { from?: string; to?: string }) => Promise<GoldSavingLedgerEntry[]>
+  getGsPassbook: (accountId: number) => Promise<GoldSavingPassbook>
+  getGsAudit: (accountId: number) => Promise<GoldSavingAuditLog[]>
+  processGsRedemption: (input: GoldSavingRedemptionInput) => Promise<GoldSavingRedemption>
+  listGsRedemptions: (accountId?: number) => Promise<GoldSavingRedemption[]>
+  getGsDashboard: () => Promise<GoldSavingDashboard>
+  runGsReport: (
+    id: GoldSavingReportId,
+    query?: { from?: string; to?: string; schemeId?: number; q?: string; customerId?: number },
+  ) => Promise<GoldSavingReportResult>
 }

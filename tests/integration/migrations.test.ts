@@ -10,8 +10,16 @@ describe('database migrations', () => {
   it('applies all migrations on a fresh database', () => {
     expect(dbVersions()).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-      27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+      27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
     ])
+    const huidTable = getDatabase()
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'product_huids'`)
+      .get() as { name: string } | undefined
+    expect(huidTable?.name).toBe('product_huids')
+    const inwardHuidCol = getDatabase()
+      .prepare(`SELECT name FROM pragma_table_info('inward_items') WHERE name = 'huids'`)
+      .get() as { name: string } | undefined
+    expect(inwardHuidCol?.name).toBe('huids')
   })
 
   it('strips trailing Date.now suffixes from customer names', () => {

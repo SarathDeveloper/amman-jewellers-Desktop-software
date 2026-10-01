@@ -4,6 +4,7 @@ import type { StockAdjustment, StockAdjustmentInput, StockAdjustmentLine } from 
 import { getDatabase } from '../db'
 import { assertMetalDayOpen } from '../db/metalDayClosing'
 import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
+import { appendHuids, listHuids, removeHuids, requireHuidsForNewPieces } from '../products/huids'
 import { recordAdjustment } from '../stock/movements'
 
 const router = Router()
@@ -26,6 +27,28 @@ type AdjustmentLineRow = {
   qty_delta: number
   weight_delta: number
   reason: string
+}
+
+function applyAdjustmentHuids(
+  db: ReturnType<typeof getDatabase>,
+  lines: StockAdjustmentInput['lines'],
+): void {
+  for (const line of lines) {
+    if (line.productId == null) continue
+    const huids = line.huids ?? []
+    if (line.qtyDelta > 0) {
+      requireHuidsForNewPieces(huids, line.qtyDelta)
+      appendHuids(db, line.productId, huids)
+    } else if (line.qtyDelta < 0) {
+      const existing = listHuids(db, line.productId)
+      if (existing.length === 0) continue
+      const needed = Math.min(Math.abs(line.qtyDelta), existing.length)
+      if (huids.length !== needed) {
+        throw new Error(needed === 1 ? 'Select 1 HUID to remove' : `Select ${needed} HUIDs to remove`)
+      }
+      removeHuids(db, line.productId, huids)
+    }
+  }
 }
 
 function mapLine(row: AdjustmentLineRow): StockAdjustmentLine {
@@ -136,6 +159,7 @@ router.post(
           line.reason ?? '',
         )
       }
+      applyAdjustmentHuids(db, input.lines)
       recordAdjustment(db, {
         adjustmentId,
         adjustmentDate: input.adjustmentDate,

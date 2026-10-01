@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getTestAgent, ipc, IPC_CHANNELS, useIntegrationEnv } from './helpers/testEnv'
+import { getTestAgent, ipc, IPC_CHANNELS, useIntegrationEnv, withHuids } from './helpers/testEnv'
 
 describe('pledges API', () => {
   useIntegrationEnv()
@@ -51,7 +51,7 @@ describe('pledges API', () => {
       guardianName: 'Perumal',
       notes: '',
     })
-    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Shop Ring',
       category: 'Ring',
       metal: 'Gold',
@@ -61,7 +61,7 @@ describe('pledges API', () => {
       makingCharges: 0,
       stockQty: 10,
       imagePath: '',
-    })
+    }))
 
     const created = await getTestAgent().post('/api/pledges').send({
       customerId: customer.id,
@@ -196,7 +196,7 @@ describe('pledges API', () => {
       address: 'Salem',
       notes: '',
     })
-    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Prefix Item',
       category: 'Ring',
       metal: 'Gold',
@@ -206,7 +206,7 @@ describe('pledges API', () => {
       makingCharges: 0,
       stockQty: 5,
       imagePath: '',
-    })
+    }))
 
     const cash = await ipc(IPC_CHANNELS.INVOICES_CREATE, {
       customerId: customer.id,

@@ -1,5 +1,11 @@
 import type { Page } from '@playwright/test'
+import { getDatabase } from '../../server/db'
+import { seedSampleGoldSavingsIfEmpty } from '../../server/db/sampleGoldSavings'
 import { localTodayIso } from './dates'
+
+export function seedGoldSavingsDemo(): boolean {
+  return seedSampleGoldSavingsIfEmpty(getDatabase())
+}
 
 async function apiCall<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -54,6 +60,7 @@ export async function seedFinalInvoice(page: Page): Promise<number> {
         makingCharges: 0,
         stockQty: 5,
         imagePath: '',
+        huids: ['E00001', 'E00002', 'E00003', 'E00004', 'E00005'],
       }),
     })
     const invoice = await api<{ id: number }>('/api/invoices', {

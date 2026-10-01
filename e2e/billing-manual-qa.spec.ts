@@ -35,11 +35,10 @@ test.describe('Manual QA: New bill generation', () => {
     await expect(window.getByRole('heading', { name: 'New Cash Bill' })).toBeVisible()
     await expect(window.getByPlaceholder('Search customer by name, phone or ID…')).toBeVisible()
     await expect(window.getByLabel('Bill date')).toBeVisible()
-    await expect(window.getByRole('heading', { name: 'Bill summary' })).toBeVisible()
-    await expect(window.getByRole('tab', { name: 'Add from products' })).toBeVisible()
-    await expect(window.getByRole('tab', { name: 'Scan barcode' })).toBeVisible()
-    await expect(window.getByRole('tab', { name: 'Quick add (Manual)' })).toBeVisible()
-    await expect(window.getByRole('button', { name: 'Finalize & Print' })).toBeVisible()
+    await expect(window.getByRole('heading', { name: 'Bill Summary' })).toBeVisible()
+    await expect(window.getByPlaceholder('Search product by name, metal, category, SKU…')).toBeVisible()
+    await expect(window.getByRole('button', { name: 'Add Item' })).toBeVisible()
+    await expect(window.getByRole('button', { name: 'Finalize', exact: true })).toBeVisible()
 
     // --- New customer on bill page ---
     await window.getByPlaceholder('Search customer by name, phone or ID…').fill(customerName)
@@ -47,29 +46,35 @@ test.describe('Manual QA: New bill generation', () => {
     const customerDialog = window.getByRole('dialog', { name: 'Add customer' })
     await customerDialog.getByLabel('Name', { exact: true }).fill(customerName)
     await customerDialog.getByLabel('Mobile').fill('9876501234')
+    await customerDialog.getByLabel('Address').fill('Salem')
     await customerDialog.getByRole('button', { name: 'Save' }).click()
     await expect(window.getByText(customerName).first()).toBeVisible()
 
     await window.getByLabel('Bill date').fill(today)
 
-    // --- Manual add row ---
-    await window.getByRole('tab', { name: 'Quick add (Manual)' }).click()
-    await window.locator('.billing-add-row--primary select.select').selectOption({
-      label: productName,
+    // --- Add the product from search ---
+    await window.getByPlaceholder('Search product by name, metal, category, SKU…').fill(productName)
+    await window.getByRole('option', { name: new RegExp(productName) }).click()
+    const itemRow = window.locator('.sale-bill-items-table tbody tr').filter({
+      has: window.locator(`.sale-bill-product-name[value*="${productName}"]`),
     })
-    await window.locator('.billing-add-row--weights input[type="number"]').nth(1).fill('6200')
-    await window.getByRole('button', { name: 'Add', exact: true }).click()
-    await expect(window.locator('tbody tr')).toHaveCount(1)
-    await expect(window.getByText('Items').locator('..').getByRole('strong')).not.toHaveText('0')
+    await expect(itemRow).toBeVisible()
+    await itemRow.getByLabel('Gold rate').fill('6200')
+    await expect(window.locator('.sale-bill-summary-stat', { hasText: 'Total Items' }).locator('strong')).toHaveText('1')
 
     // --- Payment + discount ---
-    await window.getByLabel('Discount (%)').fill('5')
-    await window.getByRole('button', { name: 'UPI' }).click()
+    await window.locator('.sale-bill-summary-adjust').filter({ hasText: 'Discount' }).locator('input').fill('5')
+    await window.locator('.payment-mode-select-trigger').click()
+    await window.getByRole('option', { name: 'UPI', exact: true }).evaluate((el) => {
+      ;(el as HTMLButtonElement).click()
+    })
 
     // --- Save draft ---
     await window.getByRole('button', { name: 'Save draft' }).first().click()
-    await expect(window.locator('.badge.draft')).toBeVisible()
-    await expect(window.getByLabel('Bill No.')).not.toHaveValue('')
+    await expect(window.locator('.sale-bill-meta-status')).toHaveText('Draft')
+    const billNo = window.locator('.sale-bill-meta-field').filter({ hasText: 'Bill No.' }).locator('input')
+    await expect(billNo).not.toHaveValue('')
+    await expect(billNo).not.toHaveValue('…')
 
     // --- Print preview opens modal path (save already done) ---
     await window.getByRole('button', { name: 'Preview', exact: true }).click()
@@ -79,7 +84,11 @@ test.describe('Manual QA: New bill generation', () => {
 
     // --- Finalize ---
     await window.getByRole('button', { name: 'Finalize', exact: true }).click()
-    await expect(window.locator('.badge.final')).toBeVisible()
+    const finalized = window.getByRole('dialog', { name: 'Bill finalized' })
+    await expect(finalized).toBeVisible()
+    await expect(window.locator('.sale-bill-meta-status')).not.toHaveText('Draft')
+    await window.locator('.modal-backdrop').click({ position: { x: 8, y: 8 } })
+    await expect(finalized).toBeHidden()
 
     // --- Stock deducted ---
     await openInventoryTab(window, 'Products')
@@ -96,13 +105,15 @@ test.describe('Manual QA: New bill generation', () => {
     await window.getByRole('button', { name: 'No customer found — Add new' }).click()
     await window.getByRole('dialog', { name: 'Add customer' }).getByLabel('Name', { exact: true }).fill('Reset Test')
     await window.getByRole('dialog', { name: 'Add customer' }).getByLabel('Mobile').fill('9876500000')
+    await window.getByRole('dialog', { name: 'Add customer' }).getByLabel('Address').fill('Salem')
     await window.getByRole('dialog', { name: 'Add customer' }).getByRole('button', { name: 'Save' }).click()
+    await expect(window.getByText('Reset Test').first()).toBeVisible()
 
-    await window.getByRole('tab', { name: 'Quick add (Manual)' }).click()
     await window.getByRole('button', { name: 'Reset' }).click()
     await window.getByRole('dialog', { name: 'Reset bill' }).getByRole('button', { name: 'Reset' }).click()
 
     await expect(window.getByPlaceholder('Search customer by name, phone or ID…')).toHaveValue('')
-    await expect(window.getByText('No items yet. Add products above.')).toBeVisible()
+    await expect(window.getByText('Reset Test')).toHaveCount(0)
+    await expect(window.locator('.sale-bill-items-table tbody tr')).toHaveCount(0)
   })
 })

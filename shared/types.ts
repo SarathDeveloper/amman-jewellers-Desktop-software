@@ -58,6 +58,7 @@ export const EMPTY_PRODUCT_VARIANT_FIELDS = {
   stoneDetails: '',
   attributes: {} as ProductAttributes,
   isActive: true,
+  huids: [] as string[],
 }
 
 export interface Product {
@@ -79,6 +80,7 @@ export interface Product {
   stoneDetails: string
   attributes: ProductAttributes
   isActive: boolean
+  huids: string[]
 }
 
 export interface ProductInput {
@@ -98,6 +100,7 @@ export interface ProductInput {
   stoneDetails?: string
   attributes?: ProductAttributes
   isActive?: boolean
+  huids?: string[]
 }
 
 export interface Customer {
@@ -396,6 +399,8 @@ export interface ShopSettings {
   signatureImagePath: string
   bisLogoPath: string
   qrCodePath: string
+  passbookBannerPath: string
+  passbookSideImagePath: string
   defaultPrinterCash: string
   defaultPrinterTax: string
   paperSizeCash: PaperSize
@@ -563,6 +568,7 @@ export type FeatureKey =
   | 'reports'
   | 'rates'
   | 'settings'
+  | 'gold_savings'
 
 export const FEATURE_KEYS: FeatureKey[] = [
   'dashboard',
@@ -575,6 +581,7 @@ export const FEATURE_KEYS: FeatureKey[] = [
   'reports',
   'rates',
   'settings',
+  'gold_savings',
 ]
 
 export interface User {
@@ -822,6 +829,7 @@ export interface StockAdjustmentLineInput {
   qtyDelta: number
   weightDelta: number
   reason?: string
+  huids?: string[]
 }
 
 export interface StockAdjustmentInput {
@@ -912,6 +920,7 @@ export interface InwardItem {
   makingCharges: number
   hsnCode: string
   lineTotal: number
+  huids: string[]
 }
 
 export interface InwardItemInput {
@@ -925,6 +934,7 @@ export interface InwardItemInput {
   rate: number
   makingCharges?: number
   hsnCode?: string
+  huids?: string[]
 }
 
 export interface Inward {
@@ -1104,4 +1114,312 @@ export interface PledgeCollectInput {
 export interface PledgeForfeitInput {
   id: number
   forfeitedDate: string
+}
+
+export type GoldSavingSchemeStatus = 'active' | 'inactive'
+export type GoldSavingGoldRateSource = 'configured' | 'manual_allowed'
+export type GoldSavingBonusType = 'none' | 'fixed_amount' | 'percentage' | 'additional_gold'
+export type GoldSavingRedemptionType = 'gold' | 'jewellery' | 'configurable'
+export type GoldSavingAccountStatus = 'active' | 'matured' | 'redeemed' | 'cancelled' | 'closed'
+export type GoldSavingInstallmentStatus = 'upcoming' | 'due' | 'paid' | 'overdue' | 'waived'
+export type GoldSavingPaymentStatus = 'posted' | 'reversed'
+export type GoldSavingPaymentMode = 'cash' | 'upi' | 'card' | 'bank_transfer' | 'other'
+export type GoldSavingLedgerType = 'payment' | 'reversal' | 'bonus' | 'redemption' | 'correction'
+export type GoldSavingRedemptionKind = 'gold' | 'jewellery' | 'invoice'
+export type GoldSavingReportId =
+  | 'daily-collections'
+  | 'monthly-collections'
+  | 'customer-ledger'
+  | 'scheme-performance'
+  | 'active-schemes'
+  | 'matured-schemes'
+  | 'overdue-installments'
+  | 'cancelled-schemes'
+  | 'gold-accumulation'
+  | 'redemption-history'
+  | 'outstanding-obligations'
+
+export interface GoldSavingScheme {
+  id: number
+  name: string
+  code: string
+  description: string
+  monthlyAmount: number
+  durationMonths: number
+  minInstallment: number | null
+  maxInstallment: number | null
+  purity: string
+  goldRateSource: GoldSavingGoldRateSource
+  goldRateUnit: string
+  bonusType: GoldSavingBonusType
+  bonusValue: number
+  bonusEligibility: string
+  allowLatePayments: boolean
+  gracePeriodDays: number
+  allowMissedInstallments: boolean
+  allowEarlyClosure: boolean
+  allowPartialRedemption: boolean
+  allowMultipleAccounts: boolean
+  redemptionType: GoldSavingRedemptionType
+  makingChargeRules: string
+  wastageRules: string
+  availableFrom: string | null
+  availableTo: string | null
+  terms: string
+  status: GoldSavingSchemeStatus
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GoldSavingSchemeInput {
+  name: string
+  description?: string
+  monthlyAmount: number
+  durationMonths: number
+  minInstallment?: number | null
+  maxInstallment?: number | null
+  purity: string
+  goldRateSource: GoldSavingGoldRateSource
+  bonusType: GoldSavingBonusType
+  bonusValue?: number
+  bonusEligibility?: string
+  allowLatePayments?: boolean
+  gracePeriodDays?: number
+  allowMissedInstallments?: boolean
+  allowEarlyClosure?: boolean
+  allowPartialRedemption?: boolean
+  allowMultipleAccounts?: boolean
+  redemptionType: GoldSavingRedemptionType
+  makingChargeRules?: string
+  wastageRules?: string
+  availableFrom?: string | null
+  availableTo?: string | null
+  terms?: string
+  status?: GoldSavingSchemeStatus
+}
+
+export interface GoldSavingAccount {
+  id: number
+  accountNo: string
+  customerId: number
+  customerName: string
+  customerPhone: string
+  customerAddress: string
+  schemeId: number
+  schemeName: string
+  schemeCode: string
+  monthlyAmount: number
+  durationMonths: number
+  purity: string
+  enrollmentDate: string
+  firstInstallmentDate: string
+  maturityDate: string
+  preferredPaymentDay: number | null
+  nomineeName: string
+  nomineeRelationship: string
+  nomineePhone: string
+  termsAccepted: boolean
+  status: GoldSavingAccountStatus
+  closedAt: string | null
+  paidInstallments: number
+  pendingInstallments: number
+  totalPaid: number
+  goldAccumulated: number
+  nextDueDate: string | null
+  createdAt: string
+}
+
+export interface GoldSavingInitialPaymentInput {
+  amount: number
+  paymentDate: string
+  paymentMode: GoldSavingPaymentMode
+  transactionRef?: string
+  goldRate?: number
+  goldRateOverrideReason?: string
+  remarks?: string
+  idempotencyKey?: string
+}
+
+export interface GoldSavingAccountInput {
+  customerId: number
+  schemeId: number
+  monthlyAmount?: number
+  enrollmentDate: string
+  firstInstallmentDate: string
+  preferredPaymentDay?: number | null
+  nomineeName?: string
+  nomineeRelationship?: string
+  nomineePhone?: string
+  termsAccepted: boolean
+  initialPayment?: GoldSavingInitialPaymentInput
+}
+
+export interface GoldSavingInstallment {
+  id: number
+  accountId: number
+  installmentNo: number
+  dueDate: string
+  amount: number
+  status: GoldSavingInstallmentStatus
+  paidAt: string | null
+}
+
+export interface GoldSavingPayment {
+  id: number
+  accountId: number
+  accountNo: string
+  customerId: number
+  customerName: string
+  customerPhone: string
+  schemeName: string
+  durationMonths: number
+  installmentId: number | null
+  receiptNo: string
+  installmentNo: number
+  paymentDate: string
+  dueDate: string
+  amount: number
+  lateFee: number
+  discount: number
+  totalReceived: number
+  goldRate: number
+  goldWeight: number
+  goldRateSource: string
+  goldRateOverrideReason: string
+  purity: string
+  paymentMode: GoldSavingPaymentMode
+  transactionRef: string
+  remarks: string
+  status: GoldSavingPaymentStatus
+  createdAt: string
+  totalPaidToDate: number
+  goldAccumulatedToDate: number
+}
+
+export interface GoldSavingPaymentInput {
+  accountId: number
+  installmentId?: number
+  paymentDate: string
+  amount: number
+  lateFee?: number
+  discount?: number
+  paymentMode: GoldSavingPaymentMode
+  transactionRef?: string
+  goldRate?: number
+  goldRateOverrideReason?: string
+  remarks?: string
+  idempotencyKey?: string
+}
+
+export interface GoldSavingLedgerEntry {
+  id: number
+  accountId: number
+  entryDate: string
+  entryType: GoldSavingLedgerType
+  paymentId: number | null
+  redemptionId: number | null
+  receiptNo: string
+  installmentNo: number | null
+  amount: number
+  goldRate: number
+  goldWeight: number
+  cumulativeGold: number
+  paymentMode: string
+  paymentStatus: string
+  txnRef: string
+  notes: string
+  createdAt: string
+}
+
+export interface GoldSavingRedemption {
+  id: number
+  accountId: number
+  accountNo: string
+  customerName: string
+  receiptNo: string
+  redemptionDate: string
+  redemptionKind: GoldSavingRedemptionKind
+  goldWeight: number
+  bonusGoldWeight: number
+  invoiceId: number | null
+  invoiceNo: string
+  makingCharges: number
+  wastage: number
+  taxes: number
+  invoiceValue: number
+  remainingGold: number
+  closesAccount: boolean
+  notes: string
+  createdAt: string
+}
+
+export interface GoldSavingRedemptionInput {
+  accountId: number
+  redemptionDate: string
+  redemptionKind: GoldSavingRedemptionKind
+  goldWeight?: number
+  invoiceId?: number | null
+  makingCharges?: number
+  wastage?: number
+  taxes?: number
+  invoiceValue?: number
+  notes?: string
+}
+
+export interface GoldSavingAuditLog {
+  id: number
+  entityType: string
+  entityId: number
+  action: string
+  changedBy: number | null
+  beforeJson: string
+  afterJson: string
+  createdAt: string
+}
+
+export interface GoldSavingAccountDetail {
+  account: GoldSavingAccount
+  scheme: GoldSavingScheme
+  installments: GoldSavingInstallment[]
+  payments: GoldSavingPayment[]
+  ledger: GoldSavingLedgerEntry[]
+  redemptions: GoldSavingRedemption[]
+  audit: GoldSavingAuditLog[]
+}
+
+export interface GoldSavingDashboardChartPoint {
+  key: string
+  label: string
+  amount: number
+}
+
+export interface GoldSavingDashboard {
+  activeSchemes: number
+  enrolledCustomers: number
+  todayCollections: number
+  monthCollections: number
+  totalCollected: number
+  totalGold: number
+  upcomingMaturities: number
+  overdueInstallments: number
+  monthlyChart: GoldSavingDashboardChartPoint[]
+  schemeEnrollments: { schemeName: string; count: number }[]
+  upcomingDues: GoldSavingAccount[]
+  recentCollections: GoldSavingPayment[]
+  recentEnrollments: GoldSavingAccount[]
+  maturingAccounts: GoldSavingAccount[]
+}
+
+export interface GoldSavingReportResult {
+  id: GoldSavingReportId
+  title: string
+  generatedAt: string
+  columns: string[]
+  rows: Array<Record<string, string | number>>
+}
+
+export interface GoldSavingPassbook {
+  account: GoldSavingAccount
+  scheme: GoldSavingScheme
+  rows: GoldSavingLedgerEntry[]
 }

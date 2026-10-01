@@ -31,6 +31,7 @@ test('stock opening and auto sales from finalized invoice', async ({ window }) =
         makingCharges: 0,
         stockQty: 5,
         imagePath: '',
+        huids: ['ST0001', 'ST0002', 'ST0003', 'ST0004', 'ST0005'],
       }),
     })
     const invoice = await api<{ id: number }>('/api/invoices', {
@@ -156,6 +157,7 @@ test('closing summary hides quiet categories in transacted mode', async ({ windo
           makingCharges: 0,
           stockQty: 5,
           imagePath: '',
+          huids: ['ST1001', 'ST1002', 'ST1003', 'ST1004', 'ST1005'],
         }),
       })
       const invoice = await api<{ id: number }>('/api/invoices', {

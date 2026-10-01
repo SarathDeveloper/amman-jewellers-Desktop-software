@@ -55,6 +55,8 @@ export function ProductDetailModal({
 }) {
   const title = variantDisplayName(product)
   const stockQty = effectiveStockQty(product, products)
+  const taggedHuidCount = (product.huids ?? []).length
+  const ownStockQty = product.stockQty
   const hasVariants = productHasVariants(products, product.id)
   const variants = childProducts(products, product.id)
   const isParent = product.parentId == null
@@ -123,6 +125,13 @@ export function ProductDetailModal({
               <div className="product-detail-fields">
                 <DetailField label="Item name" value={dash(product.name)} wide />
                 <DetailField label="Variant code" value={dash(product.variantCode)} />
+                <DetailField label="HUID" value={dash((product.huids ?? []).join(', '))} wide />
+                {taggedHuidCount !== ownStockQty ? (
+                  <p className="muted product-detail-huid-mismatch">
+                    {taggedHuidCount === 1 ? '1 HUID tagged' : `${taggedHuidCount} HUIDs tagged`} ·{' '}
+                    {ownStockQty} pcs in stock
+                  </p>
+                ) : null}
                 <DetailField label="Category" value={dash(product.category)} />
                 <DetailField label="Metal" value={dash(product.metal)} />
                 <DetailField label="Purity" value={dash(product.purity)} />

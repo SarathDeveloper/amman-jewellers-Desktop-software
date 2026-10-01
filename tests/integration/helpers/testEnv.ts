@@ -417,3 +417,16 @@ export function dbVersions(): number[] {
     .all()
     .map((row) => (row as { version: number }).version)
 }
+
+let huidSerial = 0
+
+export function testHuids(count: number): string[] {
+  return Array.from({ length: Math.max(0, count) }, () => {
+    huidSerial += 1
+    return `H${String(huidSerial).padStart(5, '0')}`
+  })
+}
+
+export function withHuids<T extends { stockQty?: number }>(input: T): T & { huids: string[] } {
+  return { ...input, huids: testHuids(input.stockQty ?? 0) }
+}

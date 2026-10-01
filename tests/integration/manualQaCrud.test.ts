@@ -7,7 +7,7 @@ import { DEFAULT_BILL_TEMPLATE } from '@shared/billTemplate'
 import { localTodayIso } from '@shared/localDate'
 import { deriveGoldRates, deriveSilverRates } from '@shared/billing/metalRateDerivation'
 import type { Customer, Invoice, Product, ShopSettings } from '@shared/types'
-import { invokeIpcForTests } from './helpers/testEnv'
+import { invokeIpcForTests, withHuids } from './helpers/testEnv'
 import { IPC_CHANNELS, ipc, useIntegrationEnv } from './helpers/testEnv'
 
 const TODAY = localTodayIso()
@@ -108,7 +108,7 @@ describe('manual QA CRUD catalogue', () => {
     await ipc(IPC_CHANNELS.CUSTOMERS_DELETE, disposable.id)
 
     // --- Products (PROD-01..06, validation) ---
-    const ring = await ipc<Product>(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const ring = await ipc<Product>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: '22K Plain Ring',
       category: 'Ring',
       metal: 'Gold',
@@ -118,8 +118,8 @@ describe('manual QA CRUD catalogue', () => {
       makingCharges: 650,
       stockQty: 12,
       imagePath: '',
-    })
-    const chain = await ipc<Product>(IPC_CHANNELS.PRODUCTS_CREATE, {
+    }))
+    const chain = await ipc<Product>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: '22K Rope Chain',
       category: 'Chain',
       metal: 'Gold',
@@ -129,8 +129,8 @@ describe('manual QA CRUD catalogue', () => {
       makingCharges: 1800,
       stockQty: 6,
       imagePath: '',
-    })
-    const bangle = await ipc<Product>(IPC_CHANNELS.PRODUCTS_CREATE, {
+    }))
+    const bangle = await ipc<Product>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: '22K Screw Bangle Pair',
       category: 'Bangle',
       metal: 'Gold',
@@ -140,8 +140,8 @@ describe('manual QA CRUD catalogue', () => {
       makingCharges: 4200,
       stockQty: 4,
       imagePath: '',
-    })
-    const silverAnklet = await ipc<Product>(IPC_CHANNELS.PRODUCTS_CREATE, {
+    }))
+    const silverAnklet = await ipc<Product>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: '925 Silver Anklet',
       category: 'Stud',
       metal: 'Silver',
@@ -151,10 +151,10 @@ describe('manual QA CRUD catalogue', () => {
       makingCharges: 350,
       stockQty: 20,
       imagePath: '',
-    })
+    }))
 
 
-    const badWeights = await invokeIpcForTests(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const badWeights = await invokeIpcForTests(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Bad weights',
       category: 'Ring',
       metal: 'Gold',
@@ -164,7 +164,7 @@ describe('manual QA CRUD catalogue', () => {
       makingCharges: 0,
       stockQty: 1,
       imagePath: '',
-    })
+    }))
     expect(badWeights.ok).toBe(false)
 
 
@@ -180,12 +180,13 @@ describe('manual QA CRUD catalogue', () => {
         makingCharges: 700,
         stockQty: 12,
         imagePath: '',
+        huids: ring.huids,
       },
     })
     expect(ringEdited.name).toContain('polished')
     expect(ringEdited.stockQty).toBe(12)
 
-    const disposableProduct = await ipc<Product>(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const disposableProduct = await ipc<Product>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Disposable sample',
       category: 'Ring',
       metal: 'Gold',
@@ -195,7 +196,7 @@ describe('manual QA CRUD catalogue', () => {
       makingCharges: 100,
       stockQty: 1,
       imagePath: '',
-    })
+    }))
     await ipc(IPC_CHANNELS.PRODUCTS_DELETE, disposableProduct.id)
 
     // --- Gold & Silver categories (GS-02, GS-07..09) ---

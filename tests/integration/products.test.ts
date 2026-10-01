@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { invokeIpcForTests } from './helpers/testEnv'
+import { invokeIpcForTests, testHuids, withHuids } from './helpers/testEnv'
 import { IPC_CHANNELS, ipc, useIntegrationEnv } from './helpers/testEnv'
 
-const sampleProduct = {
+const sampleProduct = withHuids({
   name: 'Test chain',
   category: 'Chain',
   metal: 'Gold',
@@ -12,7 +12,7 @@ const sampleProduct = {
   makingCharges: 100,
   stockQty: 5,
   imagePath: '',
-}
+})
 
 describe('products IPC', () => {
   useIntegrationEnv()
@@ -27,7 +27,7 @@ describe('products IPC', () => {
 
     const updated = await ipc(IPC_CHANNELS.PRODUCTS_UPDATE, {
       id: created.id,
-      input: { ...sampleProduct, name: 'Updated chain', stockQty: 8, imagePath: '/tmp/chain.jpg' },
+      input: withHuids({ ...sampleProduct, name: 'Updated chain', stockQty: 8, imagePath: '/tmp/chain.jpg' }),
     })
     expect(updated.name).toBe('Updated chain')
     expect(updated.stockQty).toBe(8)
@@ -44,20 +44,23 @@ describe('products IPC', () => {
       name: 'Gold Ring',
       category: 'Ring',
       stockQty: 0,
+      huids: [],
     })
     const variant = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
-      ...sampleProduct,
-      name: 'Gold Ring',
-      category: 'Ring',
-      parentId: parent.id,
-      variantCode: 'GR-2.5-16',
-      size: '16',
-      netWeight: 2.5,
-      grossWeight: 2.7,
-      stoneWeight: 0.2,
-      stoneDetails: 'Ruby',
-      attributes: { finish: 'Matt' },
-      stockQty: 3,
+      ...withHuids({
+        ...sampleProduct,
+        name: 'Gold Ring',
+        category: 'Ring',
+        parentId: parent.id,
+        variantCode: 'GR-2.5-16',
+        size: '16',
+        netWeight: 2.5,
+        grossWeight: 2.7,
+        stoneWeight: 0.2,
+        stoneDetails: 'Ruby',
+        attributes: { finish: 'Matt' },
+        stockQty: 3,
+      }),
     })
     expect(variant.parentId).toBe(parent.id)
     expect(variant.size).toBe('16')
@@ -82,19 +85,19 @@ describe('products IPC', () => {
   })
 
   it('rejects a variant of a variant', async () => {
-    const parent = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, { ...sampleProduct, name: 'Parent ring', category: 'Ring' })
-    const child = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const parent = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({ ...sampleProduct, name: 'Parent ring', category: 'Ring' }))
+    const child = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       ...sampleProduct,
       name: 'Child ring',
       category: 'Ring',
       parentId: parent.id,
-    })
-    const nested = await invokeIpcForTests(IPC_CHANNELS.PRODUCTS_CREATE, {
+    }))
+    const nested = await invokeIpcForTests(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       ...sampleProduct,
       name: 'Nested ring',
       category: 'Ring',
       parentId: child.id,
-    })
+    }))
     expect(nested.ok).toBe(false)
     if (!nested.ok) {
       expect(nested.error).toMatch(/cannot have their own variants/i)
@@ -129,13 +132,15 @@ describe('products IPC', () => {
           category: 'Chain',
           qtyDelta: 3,
           weightDelta: 28.5,
+          huids: testHuids(3),
         },
       ],
     })
     expect(added.lines[0].qtyDelta).toBe(3)
 
-    const afterAdd = await ipc<{ stockQty: number }>(IPC_CHANNELS.PRODUCTS_GET, created.id)
+    const afterAdd = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, created.id)
     expect(afterAdd.stockQty).toBe(8)
+    expect(afterAdd.huids).toHaveLength(8)
 
     await ipc(IPC_CHANNELS.STOCK_ADJUSTMENT_CREATE, {
       adjustmentDate: '2026-09-28',
@@ -147,10 +152,82 @@ describe('products IPC', () => {
           category: 'Chain',
           qtyDelta: -2,
           weightDelta: -19,
+          huids: afterAdd.huids.slice(0, 2),
         },
       ],
     })
-    const afterReduce = await ipc<{ stockQty: number }>(IPC_CHANNELS.PRODUCTS_GET, created.id)
+    const afterReduce = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, created.id)
     expect(afterReduce.stockQty).toBe(6)
+    expect(afterReduce.huids).toHaveLength(6)
+    expect(afterReduce.huids).not.toContain(afterAdd.huids[0])
+    expect(afterReduce.huids).not.toContain(afterAdd.huids[1])
+
+    const missingAdd = await invokeIpcForTests(IPC_CHANNELS.STOCK_ADJUSTMENT_CREATE, {
+      adjustmentDate: '2026-09-28',
+      reason: 'Stock addition',
+      lines: [
+        {
+          productId: created.id,
+          metal: 'Gold',
+          category: 'Chain',
+          qtyDelta: 1,
+          weightDelta: 9.5,
+        },
+      ],
+    })
+    expect(missingAdd.ok).toBe(false)
+    if (!missingAdd.ok) {
+      expect(missingAdd.error).toMatch(/Add 1 HUID for the new piece/)
+    }
+  })
+
+  it('stores unique per-piece HUIDs and rejects duplicates', async () => {
+    const created = await ipc<{ id: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+      ...sampleProduct,
+      name: 'Hallmarked chain',
+      stockQty: 2,
+      huids: ['a1b2c3', 'D4E5F6'],
+    })
+    expect(created.huids).toEqual(['A1B2C3', 'D4E5F6'])
+
+    const listed = await ipc<Array<{ id: number; huids: string[] }>>(IPC_CHANNELS.PRODUCTS_LIST, 'A1B2C3')
+    expect(listed.some((row) => row.id === created.id)).toBe(true)
+
+    const updated = await ipc<{ huids: string[] }>(IPC_CHANNELS.PRODUCTS_UPDATE, {
+      id: created.id,
+      input: { ...sampleProduct, name: 'Hallmarked chain', stockQty: 1, huids: ['D4E5F6'] },
+    })
+    expect(updated.huids).toEqual(['D4E5F6'])
+
+    const tooFew = await invokeIpcForTests(IPC_CHANNELS.PRODUCTS_CREATE, {
+      ...sampleProduct,
+      name: 'Missing huid chain',
+      stockQty: 2,
+      huids: ['ZZZZZ1'],
+    })
+    expect(tooFew.ok).toBe(false)
+    if (!tooFew.ok) {
+      expect(tooFew.error).toMatch(/Add one HUID for each piece in stock/)
+    }
+
+    const duplicate = await invokeIpcForTests(IPC_CHANNELS.PRODUCTS_CREATE, {
+      ...sampleProduct,
+      name: 'Second chain',
+      stockQty: 1,
+      huids: ['D4E5F6'],
+    })
+    expect(duplicate.ok).toBe(false)
+    if (!duplicate.ok) {
+      expect(duplicate.error).toMatch(/HUID D4E5F6 is already used by Hallmarked chain/)
+    }
+
+    await ipc(IPC_CHANNELS.PRODUCTS_DELETE, created.id)
+    const reused = await ipc<{ huids: string[] }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+      ...sampleProduct,
+      name: 'Reused chain',
+      stockQty: 1,
+      huids: ['D4E5F6'],
+    })
+    expect(reused.huids).toEqual(['D4E5F6'])
   })
 })

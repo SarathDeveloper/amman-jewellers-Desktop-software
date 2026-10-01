@@ -48,5 +48,10 @@ export function getMigrations(): { version: number; sql: string }[] {
     { version: 38, sql: loadMigrationSql('038_purchase_invoice.sql') },
     { version: 39, sql: loadMigrationSql('039_amman_jewellers_shop.sql') },
     { version: 40, sql: loadMigrationSql('040_strip_customer_epoch_suffix.sql') },
+    { version: 41, sql: loadMigrationSql('041_gold_savings_core.sql') },
+    { version: 42, sql: loadMigrationSql('042_gold_savings_transactions.sql') },
+    { version: 43, sql: loadMigrationSql('043_product_huids.sql') },
+    { version: 44, sql: loadMigrationSql('044_inward_item_huids.sql') },
+    { version: 45, sql: loadMigrationSql('045_passbook_images.sql') },
   ]
 }

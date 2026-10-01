@@ -13,6 +13,7 @@ import { assertMetalsOpenForDate } from '../db/metalDayClosing'
 import { assertCategoryExists } from '../db/stockCategories'
 import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
 import { recordPieceMovement, recordWeightMovement } from '../stock/movements'
+import { appendHuids, parseHuidsJson, requireHuidsForNewPieces, stringifyHuids } from '../products/huids'
 import { computePurchaseTotals } from '@shared/billing/billSummary'
 import { computePurchaseLineAmount, DEFAULT_HSN } from '@shared/billing/pricing'
 
@@ -55,6 +56,7 @@ type InwardItemRow = {
   making_charges: number
   hsn_code: string
   line_total: number
+  huids: string | null
 }
 
 function mapPaymentMode(value: string | null | undefined): PurchasePaymentMode {
@@ -89,6 +91,7 @@ function mapItem(row: InwardItemRow): InwardItem {
     makingCharges: row.making_charges ?? 0,
     hsnCode: row.hsn_code || DEFAULT_HSN,
     lineTotal: row.line_total,
+    huids: parseHuidsJson(row.huids),
   }
 }
 
@@ -174,8 +177,8 @@ function replaceItems(
   const insert = db.prepare(
     `INSERT INTO inward_items (
        inward_id, product_id, metal, category, purity, qty, gross_weight, net_weight, rate,
-       making_charges, hsn_code, line_total
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       making_charges, hsn_code, line_total, huids
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const lineAmounts: number[] = []
   for (const item of items) {
@@ -222,6 +225,7 @@ function replaceItems(
       item.makingCharges ?? 0,
       item.hsnCode?.trim() || DEFAULT_HSN,
       amount,
+      stringifyHuids(item.productId != null ? item.huids : []),
     )
   }
   return { lineAmounts }
@@ -381,6 +385,8 @@ router.post(
           })
           continue
         }
+        requireHuidsForNewPieces(item.huids ?? [], item.qty)
+        appendHuids(db, item.productId, item.huids ?? [])
         recordPieceMovement(db, {
           type: 'purchase',
           productId: item.productId,

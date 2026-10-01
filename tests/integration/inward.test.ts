@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { IPC_CHANNELS, ipc, useIntegrationEnv } from './helpers/testEnv'
+import { IPC_CHANNELS, ipc, invokeIpcForTests, useIntegrationEnv, testHuids, withHuids } from './helpers/testEnv'
 
 describe('inward and metal day close', () => {
   useIntegrationEnv()
@@ -12,17 +12,20 @@ describe('inward and metal day close', () => {
       address: '',
       notes: '',
     })
-    const product = await ipc<{ id: number; stockQty: number }>(IPC_CHANNELS.PRODUCTS_CREATE, {
-      name: 'Gold chain inward',
-      category: 'Chain',
-      metal: 'Gold',
-      purity: '22K',
-      grossWeight: 10,
-      netWeight: 4,
-      makingCharges: 0,
-      stockQty: 2,
-      imagePath: '',
-    })
+    const product = await ipc<{ id: number; stockQty: number; huids: string[] }>(
+      IPC_CHANNELS.PRODUCTS_CREATE,
+      withHuids({
+        name: 'Gold chain inward',
+        category: 'Chain',
+        metal: 'Gold',
+        purity: '22K',
+        grossWeight: 10,
+        netWeight: 4,
+        makingCharges: 0,
+        stockQty: 2,
+        imagePath: '',
+      }),
+    )
 
     await ipc(IPC_CHANNELS.STOCK_UPSERT, {
       stockDate,
@@ -31,7 +34,8 @@ describe('inward and metal day close', () => {
       openingWeight: 50,
     })
 
-    const inward = await ipc<{ id: number }>(IPC_CHANNELS.INWARDS_CREATE, {
+    const newHuids = testHuids(3)
+    const inward = await ipc<{ id: number; items: Array<{ huids: string[] }> }>(IPC_CHANNELS.INWARDS_CREATE, {
       supplierId: supplier.id,
       inwardDate: stockDate,
       notes: '',
@@ -44,13 +48,16 @@ describe('inward and metal day close', () => {
           qty: 3,
           netWeight: 2,
           rate: 100,
+          huids: newHuids,
         },
       ],
     })
+    expect(inward.items[0].huids).toEqual(newHuids)
     await ipc(IPC_CHANNELS.INWARDS_FINALIZE, inward.id)
 
-    const productAfter = await ipc<{ stockQty: number }>(IPC_CHANNELS.PRODUCTS_GET, product.id)
+    const productAfter = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, product.id)
     expect(productAfter.stockQty).toBe(5)
+    expect(productAfter.huids).toEqual([...product.huids, ...newHuids])
 
     const rows = await ipc<
       Array<{
@@ -72,6 +79,102 @@ describe('inward and metal day close', () => {
     )
     expect(dayLines).toHaveLength(1)
     expect(dayLines[0].weightTotal).toBe(6)
+  })
+
+  it('appends one inward HUID per piece and rejects a duplicate of an existing code', async () => {
+    const supplier = await ipc<{ id: number }>(IPC_CHANNELS.SUPPLIERS_CREATE, {
+      name: 'HUID Supplier',
+      phone: '',
+      address: '',
+      notes: '',
+    })
+    const product = await ipc<{ id: number; huids: string[] }>(
+      IPC_CHANNELS.PRODUCTS_CREATE,
+      withHuids({
+        name: 'Gold ring inward',
+        category: 'Ring',
+        metal: 'Gold',
+        purity: '22K',
+        grossWeight: 3,
+        netWeight: 2.5,
+        makingCharges: 0,
+        stockQty: 1,
+        imagePath: '',
+      }),
+    )
+    expect(product.huids).toHaveLength(1)
+
+    const extra = testHuids(1)
+    const inward = await ipc<{ id: number; items: Array<{ huids: string[] }> }>(IPC_CHANNELS.INWARDS_CREATE, {
+      supplierId: supplier.id,
+      inwardDate: '2026-09-25',
+      notes: '',
+      items: [
+        {
+          productId: product.id,
+          metal: 'Gold',
+          category: 'Ring',
+          purity: '22K',
+          qty: 1,
+          netWeight: 2.5,
+          rate: 100,
+          huids: extra,
+        },
+      ],
+    })
+    expect(inward.items[0].huids).toEqual(extra)
+    await ipc(IPC_CHANNELS.INWARDS_FINALIZE, inward.id)
+
+    const after = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, product.id)
+    expect(after.stockQty).toBe(2)
+    expect(after.huids).toEqual([...product.huids, ...extra])
+
+    const sameLineDup = await invokeIpcForTests(IPC_CHANNELS.INWARDS_CREATE, {
+      supplierId: supplier.id,
+      inwardDate: '2026-09-25',
+      notes: '',
+      items: [
+        {
+          productId: product.id,
+          metal: 'Gold',
+          category: 'Ring',
+          purity: '22K',
+          qty: 2,
+          netWeight: 2.5,
+          rate: 100,
+          huids: ['ZZZZZ1', 'ZZZZZ1'],
+        },
+      ],
+    })
+    expect(sameLineDup.ok).toBe(false)
+    if (!sameLineDup.ok) {
+      expect(sameLineDup.error).toMatch(/duplicated/)
+    }
+
+    const duplicate = await invokeIpcForTests<{ id: number }>(IPC_CHANNELS.INWARDS_CREATE, {
+      supplierId: supplier.id,
+      inwardDate: '2026-09-25',
+      notes: '',
+      items: [
+        {
+          productId: product.id,
+          metal: 'Gold',
+          category: 'Ring',
+          purity: '22K',
+          qty: 1,
+          netWeight: 2.5,
+          rate: 100,
+          huids: product.huids,
+        },
+      ],
+    })
+    expect(duplicate.ok).toBe(true)
+    if (!duplicate.ok) return
+    const finalized = await invokeIpcForTests(IPC_CHANNELS.INWARDS_FINALIZE, duplicate.data.id)
+    expect(finalized.ok).toBe(false)
+    if (!finalized.ok) {
+      expect(finalized.error).toMatch(/already used/)
+    }
   })
 
   it('closes a metal day into a snapshot and blocks further finalize', async () => {

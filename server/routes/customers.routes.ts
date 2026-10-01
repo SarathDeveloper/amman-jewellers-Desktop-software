@@ -156,6 +156,12 @@ router.delete(
     if (pledge) {
       throw new Error('Cannot delete customer with existing pledges')
     }
+    const schemeAccount = db
+      .prepare('SELECT id FROM gold_saving_accounts WHERE customer_id = ? LIMIT 1')
+      .get(id)
+    if (schemeAccount) {
+      throw new Error('Cannot delete customer with existing gold savings accounts')
+    }
     const result = db.prepare('DELETE FROM customers WHERE id = ?').run(id)
     if (result.changes === 0) {
       throw new Error('Customer not found')

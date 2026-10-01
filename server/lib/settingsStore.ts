@@ -41,6 +41,8 @@ const SHOP_KEYS = {
   signatureImagePath: 'signature_image_path',
   bisLogoPath: 'bis_logo_path',
   qrCodePath: 'qr_code_path',
+  passbookBannerPath: 'passbook_banner_path',
+  passbookSideImagePath: 'passbook_side_image_path',
   defaultPrinterCash: 'default_printer_cash',
   defaultPrinterTax: 'default_printer_tax',
   paperSizeCash: 'paper_size_cash',
@@ -191,6 +193,8 @@ export function loadShopSettings(db: ReturnType<typeof getDatabase>): ShopSettin
     signatureImagePath: getShopSetting(db, SHOP_KEYS.signatureImagePath, ''),
     bisLogoPath: getShopSetting(db, SHOP_KEYS.bisLogoPath, ''),
     qrCodePath: getShopSetting(db, SHOP_KEYS.qrCodePath, ''),
+    passbookBannerPath: getShopSetting(db, SHOP_KEYS.passbookBannerPath, ''),
+    passbookSideImagePath: getShopSetting(db, SHOP_KEYS.passbookSideImagePath, ''),
     defaultPrinterCash: getShopSetting(db, SHOP_KEYS.defaultPrinterCash, ''),
     defaultPrinterTax: getShopSetting(db, SHOP_KEYS.defaultPrinterTax, ''),
     paperSizeCash: parsePaperSize(getShopSetting(db, SHOP_KEYS.paperSizeCash, 'a5')),
@@ -233,6 +237,8 @@ export function saveShopSettings(db: ReturnType<typeof getDatabase>, input: Shop
   setShopSetting(db, SHOP_KEYS.signatureImagePath, input.signatureImagePath)
   setShopSetting(db, SHOP_KEYS.bisLogoPath, input.bisLogoPath ?? '')
   setShopSetting(db, SHOP_KEYS.qrCodePath, input.qrCodePath ?? '')
+  setShopSetting(db, SHOP_KEYS.passbookBannerPath, input.passbookBannerPath ?? '')
+  setShopSetting(db, SHOP_KEYS.passbookSideImagePath, input.passbookSideImagePath ?? '')
   setShopSetting(db, SHOP_KEYS.defaultPrinterCash, input.defaultPrinterCash)
   setShopSetting(db, SHOP_KEYS.defaultPrinterTax, input.defaultPrinterTax)
   setShopSetting(db, SHOP_KEYS.paperSizeCash, input.paperSizeCash)

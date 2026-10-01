@@ -63,6 +63,21 @@ import type {
   StockReconciliationRow,
   StockAdjustment,
   StockAdjustmentInput,
+  GoldSavingAccount,
+  GoldSavingAccountDetail,
+  GoldSavingAccountInput,
+  GoldSavingAuditLog,
+  GoldSavingDashboard,
+  GoldSavingLedgerEntry,
+  GoldSavingPassbook,
+  GoldSavingPayment,
+  GoldSavingPaymentInput,
+  GoldSavingRedemption,
+  GoldSavingRedemptionInput,
+  GoldSavingReportId,
+  GoldSavingReportResult,
+  GoldSavingScheme,
+  GoldSavingSchemeInput,
 } from '@shared/types'
 import type { ReportDefinition, ReportId, ReportLookups, ReportResult } from '@shared/reportsCatalog'
 
@@ -338,6 +353,71 @@ export const api = {
         productId: query.productId ? String(query.productId) : undefined,
         metal: query.metal,
         qtyCutoff: query.qtyCutoff !== undefined ? String(query.qtyCutoff) : undefined,
+      })}`,
+    ),
+
+  listGsSchemes: () => request<GoldSavingScheme[]>('/api/gold-savings/schemes'),
+  getGsScheme: (id: number) => request<GoldSavingScheme>(`/api/gold-savings/schemes/${id}`),
+  createGsScheme: (input: GoldSavingSchemeInput) =>
+    request<GoldSavingScheme>('/api/gold-savings/schemes', { method: 'POST', body: JSON.stringify(input) }),
+  updateGsScheme: (id: number, input: GoldSavingSchemeInput) =>
+    request<GoldSavingScheme>(`/api/gold-savings/schemes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  listGsAccounts: (search?: string) =>
+    request<GoldSavingAccount[]>(`/api/gold-savings/accounts${qs({ q: search })}`),
+  getGsAccount: (id: number) => request<GoldSavingAccountDetail>(`/api/gold-savings/accounts/${id}`),
+  createGsAccount: (input: GoldSavingAccountInput) =>
+    request<GoldSavingAccountDetail>('/api/gold-savings/accounts', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  cancelGsAccount: (id: number, reason: string) =>
+    request<GoldSavingAccountDetail>(`/api/gold-savings/accounts/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  collectGsPayment: (input: GoldSavingPaymentInput) =>
+    request<GoldSavingPayment>('/api/gold-savings/payments', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getGsPayment: (id: number) => request<GoldSavingPayment>(`/api/gold-savings/payments/${id}`),
+  reverseGsPayment: (id: number, reason: string) =>
+    request<GoldSavingPayment>(`/api/gold-savings/payments/${id}/reverse`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  getGsLedger: (accountId: number, query?: { from?: string; to?: string }) =>
+    request<GoldSavingLedgerEntry[]>(
+      `/api/gold-savings/accounts/${accountId}/ledger${qs({ from: query?.from, to: query?.to })}`,
+    ),
+  getGsPassbook: (accountId: number) =>
+    request<GoldSavingPassbook>(`/api/gold-savings/accounts/${accountId}/passbook`),
+  getGsAudit: (accountId: number) =>
+    request<GoldSavingAuditLog[]>(`/api/gold-savings/accounts/${accountId}/audit`),
+  processGsRedemption: (input: GoldSavingRedemptionInput) =>
+    request<GoldSavingRedemption>('/api/gold-savings/redemptions', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  listGsRedemptions: (accountId?: number) =>
+    request<GoldSavingRedemption[]>(
+      `/api/gold-savings/redemptions${qs({ accountId: accountId ? String(accountId) : undefined })}`,
+    ),
+  getGsDashboard: () => request<GoldSavingDashboard>('/api/gold-savings/dashboard'),
+  runGsReport: (
+    id: GoldSavingReportId,
+    query?: { from?: string; to?: string; schemeId?: number; q?: string; customerId?: number },
+  ) =>
+    request<GoldSavingReportResult>(
+      `/api/gold-savings/reports/${id}${qs({
+        from: query?.from,
+        to: query?.to,
+        schemeId: query?.schemeId ? String(query.schemeId) : undefined,
+        q: query?.q,
+        customerId: query?.customerId ? String(query.customerId) : undefined,
       })}`,
     ),
 

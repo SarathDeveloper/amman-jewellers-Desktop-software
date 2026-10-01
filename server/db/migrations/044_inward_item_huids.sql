@@ -1,0 +1,1 @@
+ALTER TABLE inward_items ADD COLUMN huids TEXT NOT NULL DEFAULT '[]';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { IPC_CHANNELS, ipc, useIntegrationEnv } from './helpers/testEnv'
+import { IPC_CHANNELS, ipc, useIntegrationEnv, withHuids } from './helpers/testEnv'
 
 describe('stock IPC', () => {
   useIntegrationEnv()
@@ -36,7 +36,7 @@ describe('stock IPC', () => {
       address: 'Salem',
       notes: '',
     })
-    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Gold chain',
       category: 'Chain',
       metal: 'Gold',
@@ -46,7 +46,7 @@ describe('stock IPC', () => {
       makingCharges: 0,
       stockQty: 10,
       imagePath: '',
-    })
+    }))
 
     await ipc(IPC_CHANNELS.STOCK_UPSERT, {
       stockDate,
@@ -83,7 +83,7 @@ describe('stock IPC', () => {
       address: 'Salem',
       notes: '',
     })
-    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Gold chain',
       category: 'Chain',
       metal: 'Gold',
@@ -93,7 +93,7 @@ describe('stock IPC', () => {
       makingCharges: 0,
       stockQty: 10,
       imagePath: '',
-    })
+    }))
 
     const invoice = await ipc(IPC_CHANNELS.INVOICES_CREATE, {
       customerId: customer.id,
@@ -106,7 +106,7 @@ describe('stock IPC', () => {
 
     await ipc(IPC_CHANNELS.PRODUCTS_UPDATE, {
       id: product.id,
-      input: {
+      input: withHuids({
         name: 'Gold chain',
         category: 'Ring',
         metal: 'Gold',
@@ -116,7 +116,7 @@ describe('stock IPC', () => {
         makingCharges: 0,
         stockQty: 9,
         imagePath: '',
-      },
+      }),
     })
 
     const rows = await ipc(IPC_CHANNELS.STOCK_LIST, { stockDate, metal: 'Gold' })
@@ -194,7 +194,7 @@ describe('stock IPC', () => {
   })
 
   it('cascades category rename to products and blocks delete when in use', async () => {
-    const product = await ipc<{ id: number; category: string }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc<{ id: number; category: string }>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Temple ring',
       category: 'Ring',
       metal: 'Gold',
@@ -204,7 +204,7 @@ describe('stock IPC', () => {
       makingCharges: 0,
       stockQty: 1,
       imagePath: '',
-    })
+    }))
     expect(product.category).toBe('Ring')
 
     await ipc(IPC_CHANNELS.STOCK_UPDATE_CATEGORY, {
@@ -224,7 +224,7 @@ describe('stock IPC', () => {
 
   it('rejects a product in a category that does not exist', async () => {
     await expect(
-      ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+      ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
         name: 'Unknown item',
         category: 'DoesNotExist',
         metal: 'Gold',
@@ -234,7 +234,7 @@ describe('stock IPC', () => {
         makingCharges: 0,
         stockQty: 1,
         imagePath: '',
-      }),
+      })),
     ).rejects.toThrow(/Category does not exist/)
   })
 

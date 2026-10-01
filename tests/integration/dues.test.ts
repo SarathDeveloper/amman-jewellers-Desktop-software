@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getTestAgent, invokeIpcForTests } from './helpers/testEnv'
+import { getTestAgent, invokeIpcForTests, withHuids } from './helpers/testEnv'
 import { IPC_CHANNELS, ipc, useIntegrationEnv } from './helpers/testEnv'
 
 describe('dues IPC', () => {
@@ -12,7 +12,7 @@ describe('dues IPC', () => {
       address: 'Salem',
       notes: '',
     })
-    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Ring',
       category: 'Ring',
       metal: 'Gold',
@@ -22,7 +22,7 @@ describe('dues IPC', () => {
       makingCharges: 0,
       stockQty: 2,
       imagePath: '',
-    })
+    }))
     const invoice = await ipc(IPC_CHANNELS.INVOICES_CREATE, {
       customerId: customer.id,
       invoiceDate: '2026-09-24',
@@ -53,7 +53,7 @@ describe('dues IPC', () => {
       address: 'Salem',
       notes: '',
     })
-    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Chain',
       category: 'Chain',
       metal: 'Gold',
@@ -63,7 +63,7 @@ describe('dues IPC', () => {
       makingCharges: 0,
       stockQty: 3,
       imagePath: '',
-    })
+    }))
     const invoice = await ipc(IPC_CHANNELS.INVOICES_CREATE, {
       customerId: customer.id,
       invoiceDate: '2026-09-24',
@@ -129,7 +129,7 @@ describe('dues IPC', () => {
       address: 'Salem',
       notes: '',
     })
-    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Chain',
       category: 'Chain',
       metal: 'Gold',
@@ -139,7 +139,7 @@ describe('dues IPC', () => {
       makingCharges: 0,
       stockQty: 3,
       imagePath: '',
-    })
+    }))
     const invoice = await ipc(IPC_CHANNELS.INVOICES_CREATE, {
       customerId: customer.id,
       invoiceDate: '2026-09-24',

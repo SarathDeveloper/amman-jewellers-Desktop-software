@@ -21,6 +21,7 @@ export function FatalErrorGate({ children }: { children: ReactNode }) {
 
     function onError(event: ErrorEvent): void {
       const message = event.error instanceof Error ? event.error.message : event.message
+      if (/ResizeObserver loop|Script error\.?/i.test(message)) return
       const stack = event.error instanceof Error ? event.error.stack : undefined
       void reportFatal({ message, stack, source: 'window' }).then((report) => {
         if (!cancelled) {

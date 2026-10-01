@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures/web-app'
 import { openInventoryTab } from './helpers/nav'
-import { fillProductDialog, saveProductDialog } from './helpers/productForm'
+import { fillHuidFields, fillProductDialog, saveProductDialog } from './helpers/productForm'
 import type { Page } from '@playwright/test'
 
 async function openProductDetail(page: Page, name: string) {
@@ -35,6 +35,7 @@ test('products CRUD', async ({ window }) => {
   const editDialog = window.getByRole('dialog', { name: 'Edit product' })
   await editDialog.getByLabel('Product name').fill('E2E Product Updated')
   await editDialog.getByLabel('Stock quantity').fill('8')
+  await fillHuidFields(editDialog, 4, 4)
   await saveProductDialog(editDialog)
   await expect(window.getByRole('row').filter({ hasText: 'E2E Product Updated' })).toBeVisible()
   await expect(window.getByRole('row').filter({ hasText: 'E2E Product Updated' }).locator('.stock-qty')).toHaveText(
@@ -69,6 +70,9 @@ test('adjust stock quantity', async ({ window }) => {
   await expect(dialog.getByText('Current Stock')).toBeVisible()
   await expect(dialog.getByText('4 pcs').first()).toBeVisible()
   await dialog.getByLabel('Adjust quantity').fill('3')
+  await dialog.getByLabel('HUID 1').fill('AD0001')
+  await dialog.getByLabel('HUID 2').fill('AD0002')
+  await dialog.getByLabel('HUID 3').fill('AD0003')
   await dialog.getByRole('button', { name: 'Save' }).click()
   await expect(dialog).toBeHidden()
   await expect(row.locator('.stock-qty')).toHaveText('7')
@@ -76,6 +80,8 @@ test('adjust stock quantity', async ({ window }) => {
   await detail.getByRole('button', { name: 'Adjust stock' }).click()
   await dialog.getByLabel('Add or Reduce Stock').selectOption('reduce')
   await dialog.getByLabel('Adjust quantity').fill('2')
+  await dialog.getByRole('checkbox', { name: 'AD0001' }).check()
+  await dialog.getByRole('checkbox', { name: 'AD0002' }).check()
   await dialog.getByRole('button', { name: 'Save' }).click()
   await expect(dialog).toBeHidden()
   await expect(row.locator('.stock-qty')).toHaveText('5')

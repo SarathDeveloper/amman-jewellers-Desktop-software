@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { IPC_CHANNELS, ipc, invokeIpcForTests, useIntegrationEnv } from './helpers/testEnv'
+import { IPC_CHANNELS, ipc, invokeIpcForTests, useIntegrationEnv, withHuids } from './helpers/testEnv'
 
 async function seedCustomerAndProduct() {
   const customer = await ipc<{ id: number }>(IPC_CHANNELS.CUSTOMERS_CREATE, {
@@ -8,7 +8,7 @@ async function seedCustomerAndProduct() {
     address: 'Salem',
     notes: '',
   })
-  const product = await ipc<{ id: number; stockQty: number }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+  const product = await ipc<{ id: number; stockQty: number }>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
     name: 'Chain item',
     category: 'Chain',
     metal: 'Gold',
@@ -18,7 +18,7 @@ async function seedCustomerAndProduct() {
     makingCharges: 0,
     stockQty: 3,
     imagePath: '',
-  })
+  }))
   return { customer, product }
 }
 

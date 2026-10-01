@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   Lock,
   Package,
+  PiggyBank,
   Plus,
   RefreshCw,
   Search,
@@ -46,6 +47,7 @@ const FEATURE_LABELS: Record<FeatureKey, string> = {
   reports: 'Reports',
   rates: 'Gold & Silver Rates',
   settings: 'Settings',
+  gold_savings: 'Gold Savings',
 }
 
 const FEATURE_ICONS: Record<FeatureKey, LucideIcon> = {
@@ -59,6 +61,7 @@ const FEATURE_ICONS: Record<FeatureKey, LucideIcon> = {
   reports: BarChart3,
   rates: ChartNoAxesCombined,
   settings: Settings,
+  gold_savings: PiggyBank,
 }
 
 type UserFilter = 'all' | 'admin' | 'staff' | 'active' | 'inactive'

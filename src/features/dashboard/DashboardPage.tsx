@@ -5,7 +5,6 @@ import {
   Bell,
   Calendar,
   ChevronDown,
-  Coins,
   FileEdit,
   FileText,
   IndianRupee,
@@ -24,6 +23,7 @@ import { localTodayIso } from '@shared/localDate'
 import type { DuesLedger, Invoice, ItemStockRow, MetalRates, PaymentMode } from '@shared/types'
 import { FilterBar } from '../../components/FilterBar'
 import { DateInput } from '../../components/DateInput'
+import { MetalBarIcon } from '../../components/MetalBarIcon'
 import { formatCurrency, formatDisplayDate } from '../../lib/format'
 import { api } from '../../lib/api'
 import {
@@ -311,20 +311,20 @@ function GoldRateTicker({ rates }: { rates: MetalRates | null }) {
 
 function MetalStockBlock({
   title,
+  metal,
   summary,
   closingLabel,
-  icon: Icon,
 }: {
   title: string
+  metal: 'gold' | 'silver'
   summary: { opening: number; inward: number; sold: number; closing: number }
   closingLabel: string
-  icon: LucideIcon
 }) {
   return (
     <div className="dashboard-metal-block">
       <div className="dashboard-metal-head">
         <h3 className="dashboard-metal-title">
-          <Icon size={16} strokeWidth={1.75} aria-hidden />
+          <MetalBarIcon metal={metal} />
           {title}
         </h3>
         <Link to="/inventory/stock" className="dashboard-panel-link">View stock</Link>
@@ -574,15 +574,15 @@ export function DashboardPage() {
               </div>
               <MetalStockBlock
                 title="Gold"
+                metal="gold"
                 summary={stats.metalStock.gold}
                 closingLabel="Gold closing"
-                icon={Coins}
               />
               <MetalStockBlock
                 title="Silver"
+                metal="silver"
                 summary={stats.metalStock.silver}
                 closingLabel="Silver closing"
-                icon={Coins}
               />
             </section>
           </div>

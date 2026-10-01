@@ -270,3 +270,8 @@ export function seedSampleDataIfEmpty(database: Database.Database): boolean {
 }
 
 export { seedSampleDashboardIfEmpty, countSeededInvoices } from './sampleDashboard'
+export {
+  seedSampleGoldSavingsIfEmpty,
+  countSeededGoldSavingAccounts,
+  countSeededGoldSavingSchemes,
+} from './sampleGoldSavings'

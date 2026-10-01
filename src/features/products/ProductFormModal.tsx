@@ -23,6 +23,7 @@ import { Modal } from '../../components/Modal'
 import { localImageSrc } from '../invoices/mapShopDisplay'
 import { api } from '../../lib/api'
 import { numericFieldToNumber, parseNumericField } from '../../lib/numericField'
+import { HuidEntryList, resizeHuidRows } from './HuidEntryList'
 import { ProductThumb } from './productDisplay'
 import {
   categoryOptions,
@@ -220,6 +221,22 @@ export function ProductFormModal({
     () => purityOptions(form.metal, products, form.purity),
     [form.metal, products, form.purity],
   )
+  const stockQty = Math.max(0, Math.trunc(numericFieldToNumber(form.stockQty)))
+  const taggedHuidCount = form.huids.filter((value) => value.trim()).length
+
+  useEffect(() => {
+    setForm((current) => {
+      const nextQty = Math.max(0, Math.trunc(numericFieldToNumber(current.stockQty)))
+      const nextHuids = resizeHuidRows(current.huids, nextQty, true)
+      if (
+        nextHuids.length === current.huids.length &&
+        nextHuids.every((value, index) => value === current.huids[index])
+      ) {
+        return current
+      }
+      return { ...current, huids: nextHuids }
+    })
+  }, [form.stockQty])
 
   const previewName = form.name.trim() || 'Untitled product'
   const formTitle = isEdit
@@ -572,6 +589,28 @@ export function ProductFormModal({
                   />
                 </Control>
               </Field>
+            </div>
+            <div className="product-attr-editor">
+              <div className="product-attr-head">
+                <span>HUID (Hallmark Unique ID)</span>
+              </div>
+              <p className="muted">
+                {taggedHuidCount} of {stockQty} pieces tagged
+              </p>
+              {stockQty === 0 && taggedHuidCount === 0 ? (
+                <p className="muted">No HUID needed while stock is 0.</p>
+              ) : (
+                <HuidEntryList
+                  values={form.huids}
+                  error={errors.huids}
+                  allowRemove={form.huids.length > stockQty}
+                  onChange={(huids) => {
+                    setForm((current) => ({ ...current, huids }))
+                    setErrors((current) => ({ ...current, huids: undefined }))
+                    setFormError(null)
+                  }}
+                />
+              )}
             </div>
             <label className="product-form-toggle">
               <input

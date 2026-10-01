@@ -5,6 +5,7 @@ import { EMPTY_PRODUCT_VARIANT_FIELDS } from '@shared/types'
 import { getDatabase } from '../db'
 import { assertCategoryExists, listCategoryRows, mapCategory } from '../db/stockCategories'
 import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
+import { assertUniqueHuids, loadHuidsFor, replaceHuids } from '../products/huids'
 import { recordOpeningSnapshot, recordPieceMovement } from '../stock/movements'
 
 const router = Router()
@@ -53,7 +54,7 @@ function stringifyAttributes(attributes: ProductAttributes | undefined): string 
   return JSON.stringify(cleaned)
 }
 
-function mapProduct(row: ProductRow): Product {
+function mapProduct(row: ProductRow, huids: string[] = []): Product {
   return {
     id: row.id,
     name: row.name,
@@ -73,7 +74,16 @@ function mapProduct(row: ProductRow): Product {
     stoneDetails: row.stone_details ?? '',
     attributes: parseAttributes(row.attributes),
     isActive: (row.is_active ?? 1) === 1,
+    huids,
   }
+}
+
+function mapProductRows(db: ReturnType<typeof getDatabase>, rows: ProductRow[]): Product[] {
+  const huidsByProduct = loadHuidsFor(
+    db,
+    rows.map((row) => row.id),
+  )
+  return rows.map((row) => mapProduct(row, huidsByProduct.get(row.id) ?? []))
 }
 
 function getProductRow(
@@ -167,11 +177,16 @@ function listProductRows(
              AND (
                name LIKE ? OR category LIKE ? OR IFNULL(variant_code, '') LIKE ?
                OR IFNULL(size, '') LIKE ? OR IFNULL(stone_details, '') LIKE ?
+               OR EXISTS (
+                 SELECT 1 FROM product_huids ph
+                 WHERE ph.product_id = products.id AND ph.huid LIKE ?
+               )
              )
            ORDER BY updated_at DESC`,
         )
         .all(
           options.parentId,
+          `%${term}%`,
           `%${term}%`,
           `%${term}%`,
           `%${term}%`,
@@ -190,9 +205,13 @@ function listProductRows(
           `SELECT * FROM products
            WHERE name LIKE ? OR category LIKE ? OR IFNULL(variant_code, '') LIKE ?
              OR IFNULL(size, '') LIKE ? OR IFNULL(stone_details, '') LIKE ?
+             OR EXISTS (
+               SELECT 1 FROM product_huids ph
+               WHERE ph.product_id = products.id AND ph.huid LIKE ?
+             )
            ORDER BY updated_at DESC`,
         )
-        .all(`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`) as ProductRow[])
+        .all(`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`) as ProductRow[])
     : (db.prepare('SELECT * FROM products ORDER BY updated_at DESC').all() as ProductRow[])
 
   if (!term) return rows
@@ -228,7 +247,7 @@ router.get(
     const term = typeof req.query.q === 'string' ? req.query.q.trim() : ''
     const parentIdRaw = typeof req.query.parentId === 'string' ? req.query.parentId.trim() : ''
     const parentId = parentIdRaw ? parseIdParam(parentIdRaw) : undefined
-    res.json(listProductRows(db, { term, parentId }).map(mapProduct))
+    res.json(mapProductRows(db, listProductRows(db, { term, parentId })))
   }),
 )
 
@@ -238,7 +257,7 @@ router.get(
     const id = parseIdParam(req.params.id)
     const db = getDatabase()
     requireProductRow(db, id)
-    res.json(listProductRows(db, { parentId: id }).map(mapProduct))
+    res.json(mapProductRows(db, listProductRows(db, { parentId: id })))
   }),
 )
 
@@ -247,7 +266,9 @@ router.get(
   asyncHandler((req, res) => {
     const id = parseIdParam(req.params.id)
     idSchema.parse(id)
-    res.json(mapProduct(requireProductRow(getDatabase(), id)))
+    const db = getDatabase()
+    const row = requireProductRow(db, id)
+    res.json(mapProductRows(db, [row])[0])
   }),
 )
 
@@ -262,6 +283,8 @@ router.post(
       assertCategoryExists(db, input.category)
       const variantCode = variantCodeValue(input.variantCode)
       assertUniqueVariantCode(db, variantCode)
+      const huids = input.huids ?? []
+      assertUniqueHuids(db, huids)
       const result = db
         .prepare(
           `INSERT INTO products (
@@ -288,6 +311,7 @@ router.post(
           input.isActive === false ? 0 : 1,
         )
       const id = Number(result.lastInsertRowid)
+      replaceHuids(db, id, huids)
       if (input.stockQty > 0) {
         recordOpeningSnapshot(db, id, {
           operatorId: req.user?.id ?? null,
@@ -296,7 +320,8 @@ router.post(
       }
       return requireProductRow(db, id)
     })
-    res.status(201).json(mapProduct(tx()))
+    const row = tx()
+    res.status(201).json(mapProductRows(getDatabase(), [row])[0])
   }),
 )
 
@@ -320,6 +345,8 @@ router.put(
       assertCategoryExists(db, input.category)
       const variantCode = variantCodeValue(input.variantCode)
       assertUniqueVariantCode(db, variantCode, id)
+      const huids = input.huids ?? []
+      assertUniqueHuids(db, huids, id)
       db.prepare(
         `UPDATE products SET
           name = ?, category = ?, metal = ?, purity = ?,
@@ -345,6 +372,7 @@ router.put(
         input.isActive === false ? 0 : 1,
         id,
       )
+      replaceHuids(db, id, huids)
       const delta = input.stockQty - existing.stock_qty
       if (delta !== 0) {
         recordPieceMovement(db, {
@@ -359,7 +387,8 @@ router.put(
       }
       return requireProductRow(db, id)
     })
-    res.json(mapProduct(tx()))
+    const row = tx()
+    res.json(mapProductRows(getDatabase(), [row])[0])
   }),
 )
 

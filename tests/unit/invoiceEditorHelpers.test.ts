@@ -7,6 +7,9 @@ import {
   editorLineFromInvoiceItem,
   exclusiveVamc,
   newEditorLine,
+  OLD_GOLD_PURITIES,
+  oldGoldPurityOptions,
+  rateForOldGoldPurity,
   toInvoiceItems,
   vamcPatch,
   vamcValue,
@@ -230,5 +233,38 @@ describe('applyCurrentMetalRate', () => {
       metalRateAuto: false,
     })
     expect(applyCurrentMetalRate(line, rates)).toBe(line)
+  })
+})
+
+describe('old gold purities', () => {
+  const rates = {
+    id: 1,
+    effectiveDate: '2026-09-30',
+    gold24k: 16500,
+    gold22k: 15125,
+    gold20k: 13750,
+    gold18k: 12375,
+    silverFine: 250,
+    silver925: 231.48,
+    createdAt: '2026-09-30',
+  }
+
+  it('lists gold karats and silver fineness', () => {
+    expect(OLD_GOLD_PURITIES).toEqual(['24K', '22K', '20K', '18K', '999', '925'])
+  })
+
+  it('keeps a saved Silver value in the select options', () => {
+    expect(oldGoldPurityOptions('Silver')).toEqual(['Silver', '24K', '22K', '20K', '18K', '999', '925'])
+    expect(oldGoldPurityOptions('22K')).toEqual(['24K', '22K', '20K', '18K', '999', '925'])
+  })
+
+  it('fills the matching metal rate for each purity', () => {
+    expect(rateForOldGoldPurity('24K', rates)).toBe(16500)
+    expect(rateForOldGoldPurity('22K', rates)).toBe(15125)
+    expect(rateForOldGoldPurity('20K', rates)).toBe(13750)
+    expect(rateForOldGoldPurity('18K', rates)).toBe(12375)
+    expect(rateForOldGoldPurity('999', rates)).toBe(250)
+    expect(rateForOldGoldPurity('925', rates)).toBe(231.48)
+    expect(rateForOldGoldPurity('Silver', rates)).toBe(250)
   })
 })

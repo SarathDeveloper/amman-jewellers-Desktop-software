@@ -4,7 +4,7 @@ import type { MetalRates } from '@shared/types'
 import { formatCurrency } from '../../lib/format'
 import { numericFieldToNumber, parseNumericField } from '../../lib/numericField'
 import {
-  OLD_GOLD_PURITIES,
+  oldGoldPurityOptions,
   newOldGoldRow,
   rateForOldGoldPurity,
   type OldGoldEditorRow,
@@ -120,6 +120,7 @@ export function OldGoldEditor({
             <tbody>
               {rows.map((row) => {
                 const values = rowValues(row)
+                const purityOptions = oldGoldPurityOptions(row.purity)
                 return (
                   <tr key={row.key}>
                     <td className="old-gold-col-desc">
@@ -160,13 +161,13 @@ export function OldGoldEditor({
                     <td className="old-gold-col-purity">
                       <select
                         disabled={disabled}
-                        value={OLD_GOLD_PURITIES.includes(row.purity as (typeof OLD_GOLD_PURITIES)[number]) ? row.purity : '22K'}
+                        value={purityOptions.includes(row.purity) ? row.purity : '22K'}
                         onChange={(event) => {
                           const purity = event.target.value
                           update(row.key, { purity, ratePerGram: rateForOldGoldPurity(purity, metalRates) || '' })
                         }}
                       >
-                        {OLD_GOLD_PURITIES.map((purity) => (
+                        {purityOptions.map((purity) => (
                           <option key={purity} value={purity}>
                             {purity}
                           </option>

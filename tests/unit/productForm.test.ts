@@ -26,6 +26,7 @@ function form(overrides: Partial<ProductFormState> = {}): ProductFormState {
     makingCharges: 100,
     stockQty: 4,
     imagePath: '',
+    huids: ['AA0001', 'AA0002', 'AA0003', 'AA0004'],
     ...overrides,
   }
 }
@@ -95,6 +96,21 @@ describe('validateProductForm', () => {
     const errors = validateProductForm(form({ grossWeight: 2, stoneWeight: 3 }), [], null)
     expect(errors.stoneWeight).toBe('Stone weight cannot exceed gross weight')
   })
+
+  it('rejects a 5-character HUID', () => {
+    const errors = validateProductForm(form({ huids: ['A1B2C'] }), [], null)
+    expect(errors.huids).toBe('HUID must be 6 letters or digits')
+  })
+
+  it('rejects a duplicated HUID in the form', () => {
+    const errors = validateProductForm(form({ huids: ['a1b2c3', 'A1B2C3'] }), [], null)
+    expect(errors.huids).toBe('HUID A1B2C3 is duplicated')
+  })
+
+  it('requires one HUID per piece in stock', () => {
+    const errors = validateProductForm(form({ stockQty: 2, huids: ['A1B2C3'] }), [], null)
+    expect(errors.huids).toBe('Add one HUID for each piece in stock')
+  })
 })
 
 describe('formToProductInput', () => {
@@ -107,6 +123,11 @@ describe('formToProductInput', () => {
   it('keeps the uploaded image path', () => {
     const input = formToProductInput(form({ imagePath: ' /tmp/ring.jpg ' }))
     expect(input.imagePath).toBe('/tmp/ring.jpg')
+  })
+
+  it('uppercases and dedupes HUIDs', () => {
+    const input = formToProductInput(form({ huids: [' a1b2c3 ', 'A1B2C3', '', 'd4e5f6'] }))
+    expect(input.huids).toEqual(['A1B2C3', 'D4E5F6'])
   })
 })
 

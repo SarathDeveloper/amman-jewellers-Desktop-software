@@ -440,9 +440,18 @@ export function BillDuesTab({
               <button type="button" className="btn secondary" onClick={() => setDetail(null)}>
                 Close
               </button>
-              {detailRemaining > 0 ? (
+              {detailRemaining > 0 && paymentAmount >= detailRemaining ? (
                 <button type="button" className="btn" disabled={settling} onClick={() => void markPaid()}>
                   Mark paid
+                </button>
+              ) : detailRemaining > 0 ? (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={settling || paymentAmount <= 0 || paymentAmount >= detailRemaining}
+                  onClick={() => void recordPayment()}
+                >
+                  Record payment
                 </button>
               ) : null}
             </div>
@@ -531,16 +540,6 @@ export function BillDuesTab({
                     onChange={(event) => setPaymentNote(event.target.value)}
                   />
                 </label>
-                <div className="full">
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    disabled={settling || paymentAmount <= 0}
-                    onClick={() => void recordPayment()}
-                  >
-                    Record payment
-                  </button>
-                </div>
               </div>
             ) : null}
           </div>

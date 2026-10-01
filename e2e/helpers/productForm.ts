@@ -1,5 +1,12 @@
 import type { Locator, Page } from '@playwright/test'
 
+let huidSerial = 0
+
+function nextHuid(): string {
+  huidSerial += 1
+  return `E${String(huidSerial).padStart(5, '0')}`
+}
+
 export async function fillProductDialog(
   dialog: Locator | Page,
   values: {
@@ -23,6 +30,16 @@ export async function fillProductDialog(
     await dialog.getByLabel('Making charges').fill(values.makingCharges)
   }
   await dialog.getByLabel('Stock quantity').fill(values.stockQty)
+  const qty = Math.max(0, Number.parseInt(values.stockQty, 10) || 0)
+  for (let index = 0; index < qty; index += 1) {
+    await dialog.getByLabel(`HUID ${index + 1}`).fill(nextHuid())
+  }
+}
+
+export async function fillHuidFields(dialog: Locator | Page, fromIndex: number, count: number) {
+  for (let index = 0; index < count; index += 1) {
+    await dialog.getByLabel(`HUID ${fromIndex + index + 1}`).fill(nextHuid())
+  }
 }
 
 export async function saveProductDialog(dialog: Locator | Page) {

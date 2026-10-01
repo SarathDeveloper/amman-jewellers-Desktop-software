@@ -5,6 +5,32 @@ export function sidebarLink(page: Page, name: string | RegExp) {
   return page.locator('.sidebar-nav').getByRole('link', { name })
 }
 
+const GOLD_SAVINGS_TAB_PATHS = {
+  Dashboard: '/gold-savings/dashboard',
+  Schemes: '/gold-savings/schemes',
+  Enroll: '/gold-savings/enroll',
+  Accounts: '/gold-savings/accounts',
+  Collections: '/gold-savings/collections',
+  Ledger: '/gold-savings/ledger',
+  Maturity: '/gold-savings/maturity',
+  Reports: '/gold-savings/reports',
+} as const
+
+/** Open a Monthly Gold Savings chrome tab. The sidebar item is hidden, so tests go to the route. */
+export async function openGoldSavingsTab(
+  page: Page,
+  tab: keyof typeof GOLD_SAVINGS_TAB_PATHS,
+) {
+  const path = GOLD_SAVINGS_TAB_PATHS[tab]
+  const origin = new URL(page.url()).origin
+  if (!page.url().startsWith(`${origin}${path}`)) {
+    await page.goto(`${origin}${path}`)
+  }
+  const tabEl = page.locator('.billing-chrome').getByRole('tab', { name: tab, exact: true })
+  await expect(tabEl).toBeVisible()
+  await expect(tabEl).toHaveAttribute('aria-selected', 'true')
+}
+
 /** Open an Inventory hub tab (Products, Gold & Silver, Purchase, Old Gold Purchase, or Suppliers). */
 export async function openInventoryTab(
   page: Page,

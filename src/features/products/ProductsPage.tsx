@@ -148,6 +148,7 @@ export function ProductsPage() {
         product.variantCode,
         product.size,
         product.stoneDetails,
+        ...(product.huids ?? []),
       ].some((value) => value.toLowerCase().includes(query))
     })
   }, [products, metal, category, purity, stockStatus, search])
@@ -329,7 +330,7 @@ export function ProductsPage() {
               setSearch(value)
               setPage(1)
             }}
-            placeholder="Search products, variants, size or code..."
+            placeholder="Search products, variants, size, code or HUID..."
           />
         </div>
         <div className="products-header-actions">

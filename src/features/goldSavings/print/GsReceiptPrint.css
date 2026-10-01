@@ -1,0 +1,90 @@
+.gs-receipt-root {
+  --gs-magenta: #9b1b6f;
+  --gs-purple: #7e3af2;
+  --gs-gold: #c9a227;
+  --gs-cream: #fbf6ea;
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 148mm;
+  margin: 0 auto;
+  padding: 0;
+  color: #111;
+  background: #fff;
+  font-family: Arial, "Noto Sans Tamil", sans-serif;
+  font-size: 10pt;
+}
+.gs-receipt-root.paper-a5 { width: 148mm; font-size: 8.5pt; }
+.gs-receipt-root.paper-thermal { width: 80mm; font-size: 8pt; }
+.gs-receipt-root *,
+.gs-receipt-root *::before,
+.gs-receipt-root *::after { box-sizing: border-box; }
+.gs-receipt {
+  padding: 8mm 10mm;
+  background: linear-gradient(#fff, var(--gs-cream));
+  min-height: 148mm;
+}
+.gs-receipt-header { border-bottom: 2pt solid var(--gs-gold); padding-bottom: 3mm; margin-bottom: 4mm; }
+.gs-receipt-brand {
+  display: grid;
+  grid-template-columns: 18mm 1fr 18mm;
+  gap: 4mm;
+  align-items: start;
+}
+.gs-receipt-logo,
+.gs-receipt-bis { width: 16mm; height: 16mm; object-fit: contain; }
+.gs-receipt h1 {
+  margin: 0 0 1mm;
+  color: var(--gs-magenta);
+  font-size: 16pt;
+  letter-spacing: 0.04em;
+}
+.gs-receipt h2 {
+  margin: 3mm 0 1mm;
+  text-align: center;
+  color: var(--gs-purple);
+  font-size: 11pt;
+}
+.gs-receipt-header p { margin: 0; font-size: 8pt; }
+.gs-receipt-meta { display: flex; justify-content: space-between; font-weight: 700; }
+.gs-receipt h3 {
+  margin: 3mm 0 2mm;
+  font-size: 9pt;
+  color: var(--gs-magenta);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.gs-receipt dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1mm 6mm;
+  margin: 0;
+}
+.gs-receipt dt { color: #555; font-size: 8pt; }
+.gs-receipt dd { margin: 0; font-weight: 700; }
+.gs-receipt table { width: 100%; border-collapse: collapse; }
+.gs-receipt th,
+.gs-receipt td { border-bottom: 0.4pt solid #d6c7a1; padding: 1.4mm 1mm; text-align: left; }
+.gs-receipt th { width: 48%; font-weight: 600; }
+.gs-receipt-words { font-weight: 700; margin: 4mm 0 2mm; }
+.gs-receipt-note,
+.gs-receipt-tnc { font-size: 8pt; color: #444; }
+.gs-receipt-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12mm;
+  margin-top: 12mm;
+}
+.gs-receipt-footer div {
+  border-top: 0.6pt solid #333;
+  padding-top: 2mm;
+  min-height: 14mm;
+  font-size: 8pt;
+}
+.gs-receipt-thanks { text-align: center; color: var(--gs-magenta); font-weight: 700; margin-top: 6mm; }
+
+@media print {
+  .gs-receipt-print-page { margin: 0; }
+  .gs-receipt-print-status { display: none; }
+}
+.gs-receipt-print-status { padding: 1rem; }
+.gs-receipt-print-error { color: #b91c1c; }

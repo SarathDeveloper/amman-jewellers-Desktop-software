@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { invokeIpcForTests } from './helpers/testEnv'
-import { IPC_CHANNELS, ipc, useIntegrationEnv } from './helpers/testEnv'
+import { IPC_CHANNELS, ipc, invokeIpcForTests, useIntegrationEnv, withHuids } from './helpers/testEnv'
 
 async function seedCustomerAndProduct() {
   const customer = await ipc(IPC_CHANNELS.CUSTOMERS_CREATE, {
@@ -9,7 +8,7 @@ async function seedCustomerAndProduct() {
     address: 'Salem',
     notes: '',
   })
-  const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+  const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
     name: 'Chain item',
     category: 'Chain',
     metal: 'Gold',
@@ -19,7 +18,7 @@ async function seedCustomerAndProduct() {
     makingCharges: 0,
     stockQty: 3,
     imagePath: '',
-  })
+  }))
   return { customer, product }
 }
 
@@ -169,7 +168,7 @@ describe('invoices IPC', () => {
   })
 
   it('rejects invoices for missing customers', async () => {
-    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Walk ring',
       category: 'Ring',
       metal: 'Gold',
@@ -179,7 +178,7 @@ describe('invoices IPC', () => {
       makingCharges: 0,
       stockQty: 5,
       imagePath: '',
-    })
+    }))
 
     const missing = await invokeIpcForTests(IPC_CHANNELS.INVOICES_CREATE, {
       customerId: 999999,

@@ -7,9 +7,9 @@ import { assertSqliteIntegrity, ensureDailyBackup, ensureScheduledBackup, LAST_B
 import { getDatabase, getUserDataDir } from '../../server/db'
 import { setShopSetting } from '../../server/lib/settingsStore'
 import { localDateIso } from '../../shared/localDate'
-import { getTestAgent, IPC_CHANNELS, ipc, useIntegrationEnv } from './helpers/testEnv'
+import { getTestAgent, IPC_CHANNELS, ipc, useIntegrationEnv, withHuids } from './helpers/testEnv'
 
-const sampleProduct = {
+const sampleProduct = withHuids({
   name: 'Test chain',
   category: 'Chain',
   metal: 'Gold',
@@ -19,7 +19,7 @@ const sampleProduct = {
   makingCharges: 100,
   stockQty: 5,
   imagePath: '',
-}
+})
 
 describe('database backup and restore', () => {
   useIntegrationEnv()
@@ -52,7 +52,7 @@ describe('database backup and restore', () => {
     const destination = join(process.env.JEWELTRACKERPRO_E2E_USER_DATA as string, 'restore-source.db')
     await ipc(IPC_CHANNELS.APP_EXPORT_DB, { destinationPath: destination })
 
-    await ipc(IPC_CHANNELS.PRODUCTS_CREATE, { ...sampleProduct, name: 'Later ring' })
+    await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({ ...sampleProduct, name: 'Later ring' }))
     expect(await ipc<Product[]>(IPC_CHANNELS.PRODUCTS_LIST)).toHaveLength(2)
 
     await ipc(IPC_CHANNELS.APP_RESTORE_DB, { sourcePath: destination })
@@ -88,7 +88,7 @@ describe('database backup and restore', () => {
       true,
     )
 
-    await ipc(IPC_CHANNELS.PRODUCTS_CREATE, { ...sampleProduct, name: 'Later ring' })
+    await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({ ...sampleProduct, name: 'Later ring' }))
     expect(await ipc<Product[]>(IPC_CHANNELS.PRODUCTS_LIST)).toHaveLength(2)
 
     const restored = await agent.post('/api/backup/restore-local').send({ name: backup.name })

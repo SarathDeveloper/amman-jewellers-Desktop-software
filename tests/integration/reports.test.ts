@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ReportDefinition, ReportResult } from '@shared/reportsCatalog'
-import { IPC_CHANNELS, invokeIpcForTests, ipc, useIntegrationEnv } from './helpers/testEnv'
+import { IPC_CHANNELS, invokeIpcForTests, ipc, useIntegrationEnv, withHuids } from './helpers/testEnv'
 
 const UNAVAILABLE = [
   'adagu-sales',
@@ -30,7 +30,7 @@ describe('reports', () => {
       address: 'Salem',
       notes: '',
     })
-    const product = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const product = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Chain item',
       category: 'Chain',
       metal: 'Gold',
@@ -40,7 +40,7 @@ describe('reports', () => {
       makingCharges: 0,
       stockQty: 3,
       imagePath: '',
-    })
+    }))
     const invoiceDate = '2026-09-24'
     const draft = await ipc<{ id: number }>(IPC_CHANNELS.INVOICES_CREATE, {
       customerId: customer.id,

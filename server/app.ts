@@ -24,6 +24,7 @@ import stockAdjustmentsRoutes from './routes/stockAdjustments.routes'
 import suppliersRoutes from './routes/suppliers.routes'
 import oldGoldPurchasesRoutes from './routes/oldGoldPurchases.routes'
 import usersRoutes from './routes/users.routes'
+import goldSavingsRoutes from './routes/goldSavings.routes'
 
 export function createApp(): express.Express {
   const rootDir = getAppRoot()
@@ -60,6 +61,7 @@ export function createApp(): express.Express {
   app.use('/api/stock/adjustments', requireAuth, requireFeature('stock'), stockAdjustmentsRoutes)
   app.use('/api/stock', requireAuth, requireFeature('stock'), stockRoutes)
   app.use('/api/reports', requireAuth, requireFeature('reports'), reportsRoutes)
+  app.use('/api/gold-savings', requireAuth, requireFeature('gold_savings'), goldSavingsRoutes)
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' })

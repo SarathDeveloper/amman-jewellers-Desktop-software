@@ -241,10 +241,14 @@ function persistStockDay(input: ItemStockUpsertInput): ItemStockRow {
   requireCategory(db, input.itemName)
   assertMetalDayOpen(db, input.stockDate, input.metal)
   const existing = getSavedRow(input.stockDate, input.metal, input.itemName)
+  const openingMovements = getOpeningMovementsOnDate(input.stockDate, input.metal, input.itemName)
+  // The entered opening is the figure shown on the day sheet. Same-day product
+  // opening movements are added again when the row is built, so store the net.
   const openingWeight =
-    input.openingWeight ??
-    existing?.opening_weight ??
-    getOpeningForDate(input.stockDate, input.metal, input.itemName)
+    input.openingWeight !== undefined
+      ? input.openingWeight - openingMovements
+      : (existing?.opening_weight ??
+          getOpeningForDate(input.stockDate, input.metal, input.itemName))
 
   const salesOverride =
     input.salesOverride !== undefined ? input.salesOverride : (existing?.sales_override ?? null)

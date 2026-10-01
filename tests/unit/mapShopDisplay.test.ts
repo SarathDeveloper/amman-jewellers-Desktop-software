@@ -25,6 +25,8 @@ function shop(overrides: Partial<ShopSettings> = {}): ShopSettings {
     signatureImagePath: '',
     bisLogoPath: '',
     qrCodePath: '',
+    passbookBannerPath: '',
+    passbookSideImagePath: '',
     defaultPrinterCash: '',
     defaultPrinterTax: '',
     paperSizeCash: 'a5',
@@ -95,6 +97,17 @@ describe('shopSettingsToDisplay', () => {
     )
     expect(display.bisLogoPath).toBe('/tmp/bis.png')
     expect(display.qrCodePath).toBe('/tmp/qr.png')
+  })
+
+  it('includes gold savings passbook image paths', () => {
+    const display = shopSettingsToDisplay(
+      shop({
+        passbookBannerPath: '/tmp/banner.png',
+        passbookSideImagePath: '/tmp/side.png',
+      }),
+    )
+    expect(display.passbookBannerPath).toBe('/tmp/banner.png')
+    expect(display.passbookSideImagePath).toBe('/tmp/side.png')
   })
 
   it('maps city, proprietor lines, and promo from settings', () => {

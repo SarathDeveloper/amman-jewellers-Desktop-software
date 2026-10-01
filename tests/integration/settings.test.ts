@@ -191,6 +191,22 @@ describe('settings IPC', () => {
     expect(viaIpc.logoImagePath).toBe('/uploads/test-logo.png')
   })
 
+  it('persists gold savings passbook image paths', async () => {
+    const current = await ipc<ShopSettings>(IPC_CHANNELS.SETTINGS_GET)
+    const updated = await ipc<ShopSettings>(IPC_CHANNELS.SETTINGS_UPDATE, {
+      ...current,
+      passbookBannerPath: '/uploads/passbook-banner.png',
+      passbookSideImagePath: '/uploads/passbook-side.png',
+    })
+
+    expect(updated.passbookBannerPath).toBe('/uploads/passbook-banner.png')
+    expect(updated.passbookSideImagePath).toBe('/uploads/passbook-side.png')
+
+    const reloaded = await ipc<ShopSettings>(IPC_CHANNELS.SETTINGS_GET)
+    expect(reloaded.passbookBannerPath).toBe('/uploads/passbook-banner.png')
+    expect(reloaded.passbookSideImagePath).toBe('/uploads/passbook-side.png')
+  })
+
   it('rejects shop settings updates without billTemplate', async () => {
     const current = await ipc<ShopSettings>(IPC_CHANNELS.SETTINGS_GET)
     const { billTemplate: _removed, ...withoutTemplate } = current

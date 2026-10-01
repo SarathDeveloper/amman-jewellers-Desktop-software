@@ -25,14 +25,18 @@ export function PrintPreviewModal({
   const [scale, setScale] = useState(1)
 
   const sizeFrame = useCallback(() => {
-    const doc = frameRef.current?.contentDocument
-    const sheet = sheetRef.current
-    if (!doc || !sheet) return
-    const height = Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight ?? 0, 320)
-    const width = Math.max(doc.documentElement.scrollWidth, doc.body?.scrollWidth ?? 0, 1)
-    setFrameHeight(height)
-    const available = sheet.clientWidth
-    setScale(available > 0 && width > available ? available / width : 1)
+    try {
+      const doc = frameRef.current?.contentDocument
+      const sheet = sheetRef.current
+      if (!doc || !sheet) return
+      const height = Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight ?? 0, 320)
+      const width = Math.max(doc.documentElement.scrollWidth, doc.body?.scrollWidth ?? 0, 1)
+      setFrameHeight(height)
+      const available = sheet.clientWidth
+      setScale(available > 0 && width > available ? available / width : 1)
+    } catch {
+      // iframe document may be unavailable while the preview document is still loading
+    }
   }, [])
 
   useEffect(() => {

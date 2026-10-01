@@ -32,6 +32,21 @@ import { SettingsPage } from '../features/settings/SettingsPage'
 import { ReportsLayout } from '../features/reports/ReportsLayout'
 import { ReportViewPage } from '../features/reports/ReportViewPage'
 import { MetalRatesPage } from '../features/rates/MetalRatesPage'
+import {
+  GoldSavingsIndexRedirect,
+  GoldSavingsLayout,
+} from '../features/goldSavings/GoldSavingsLayout'
+import { GoldSavingsDashboardPage } from '../features/goldSavings/GoldSavingsDashboardPage'
+import { SchemeConfigPage } from '../features/goldSavings/schemes/SchemeConfigPage'
+import { EnrollmentPage } from '../features/goldSavings/enrollment/EnrollmentPage'
+import { AccountsListPage } from '../features/goldSavings/accounts/AccountsListPage'
+import { AccountDetailPage } from '../features/goldSavings/accounts/AccountDetailPage'
+import { CollectionsPage } from '../features/goldSavings/collections/CollectionsPage'
+import { SchemeLedgerPage } from '../features/goldSavings/ledger/SchemeLedgerPage'
+import { MaturityPage } from '../features/goldSavings/maturity/MaturityPage'
+import { GoldSavingsReportsPage } from '../features/goldSavings/reports/GoldSavingsReportsPage'
+import { GsReceiptPrintPage } from '../features/goldSavings/print/GsReceiptPrintPage'
+import { GsPassbookPrintPage } from '../features/goldSavings/print/GsPassbookPrintPage'
 
 export const router = createBrowserRouter([
   {
@@ -69,6 +84,14 @@ export const router = createBrowserRouter([
   {
     path: '/print/sample/:kind',
     element: <SampleBillPrintPage />,
+  },
+  {
+    path: '/print/gs-receipt/:id',
+    element: <GsReceiptPrintPage />,
+  },
+  {
+    path: '/print/gs-passbook/:id',
+    element: <GsPassbookPrintPage />,
   },
   {
     path: '/login',
@@ -143,6 +166,22 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'rates', element: <MetalRatesPage /> },
+      {
+        path: 'gold-savings',
+        element: <GoldSavingsLayout />,
+        children: [
+          { index: true, element: <GoldSavingsIndexRedirect /> },
+          { path: 'dashboard', element: <GoldSavingsDashboardPage /> },
+          { path: 'schemes', element: <SchemeConfigPage /> },
+          { path: 'enroll', element: <EnrollmentPage /> },
+          { path: 'accounts', element: <AccountsListPage /> },
+          { path: 'accounts/:id', element: <AccountDetailPage /> },
+          { path: 'collections', element: <CollectionsPage /> },
+          { path: 'ledger', element: <SchemeLedgerPage /> },
+          { path: 'maturity', element: <MaturityPage /> },
+          { path: 'reports', element: <GoldSavingsReportsPage /> },
+        ],
+      },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'users', element: <UsersPage /> },
     ],
