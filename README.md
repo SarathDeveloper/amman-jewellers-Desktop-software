@@ -13,7 +13,7 @@ Jewellery shop inventory, billing, gold/silver weight tracking, and customer due
 
 - Node.js **20+**
 - npm **10+**
-- **Windows installer builds** need Python and Visual Studio Build Tools (C++ workload) so `better-sqlite3` can compile. Run `npm run electron:build:win` **on a Windows PC** — macOS cannot cross-compile the SQLite native addon.
+- **Windows installer builds** can run on macOS or Windows. `better-sqlite3` is packaged from its N-API prebuild, so Visual Studio Build Tools are not required for the installer itself.
 - **Windows PCs running the installed app** need the [Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) (x64) if Windows reports a missing `VCRUNTIME` DLL
 - **macOS installer builds** need Xcode command-line tools
 
@@ -44,7 +44,7 @@ npm run rebuild:native
 ```bash
 npm run electron:pack      # unpacked app for this OS (fast local test)
 npm run electron:build     # installer for this OS
-npm run electron:build:win # Windows NSIS .exe (run on Windows)
+npm run electron:build:win # Windows NSIS .exe (macOS or Windows)
 npm run electron:build:mac # macOS .dmg
 ```
 

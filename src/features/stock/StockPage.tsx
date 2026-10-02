@@ -1301,6 +1301,7 @@ export function StockPage() {
         <PrintPreviewModal
           title={printTarget.title}
           path={printTarget.path}
+          pdfFilename="stock-report.pdf"
           onClose={() => setPrintTarget(null)}
         />
       ) : null}

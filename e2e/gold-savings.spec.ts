@@ -13,11 +13,6 @@ async function pickCustomer(window: Page, name: string) {
   await window.locator('.billing-customer-option').filter({ hasText: name }).first().click()
 }
 
-async function pickSchemeAccount(window: Page, name: string) {
-  await window.getByPlaceholder('Search account number, name, mobile or customer ID…').fill(name)
-  await window.locator('.billing-customer-option').filter({ hasText: name }).first().click()
-}
-
 async function selectScheme(window: Page, name: string) {
   const schemeSelect = window.locator('label').filter({ hasText: 'Scheme' }).locator('select')
   const value = await schemeSelect.locator('option').filter({ hasText: name }).getAttribute('value')
@@ -50,12 +45,19 @@ test('chrome tabs show seeded personas and dashboard KPIs', async ({ window }) =
     ['Collections', 'Monthly collections'],
     ['Ledger', 'Scheme ledger'],
     ['Maturity', 'Maturity & redemption'],
+    ['Overdue', 'Overdue aging'],
     ['Reports', 'Daily collections'],
   ] as const
   for (const [tab, heading] of tabHeadings) {
     await openGoldSavingsTab(window, tab)
     await expect(window.getByRole('heading', { name: heading })).toBeVisible()
   }
+
+  await openGoldSavingsTab(window, 'Collections')
+  await expect(window.getByRole('row').filter({ hasText: 'Ravi Kumar' })).toBeVisible()
+  await expect(window.getByRole('row').filter({ hasText: 'Priya' })).toBeVisible()
+  await expect(window.getByRole('row').filter({ hasText: 'Suresh' })).toBeVisible()
+  await expect(window.getByRole('row').filter({ hasText: 'Suresh' })).toContainText('Overdue')
 
   await openGoldSavingsTab(window, 'Accounts')
   await expect(window.getByRole('row').filter({ hasText: 'Ravi Kumar' })).toBeVisible()
@@ -123,7 +125,7 @@ test('collect Priya next installment then reverse it', async ({ window }) => {
   seedGoldSavingsDemo()
 
   await openGoldSavingsTab(window, 'Collections')
-  await pickSchemeAccount(window, 'Priya')
+  await window.getByRole('row').filter({ hasText: 'Priya' }).click()
   await window.getByRole('button', { name: 'Collect next installment' }).click()
   await window.getByRole('button', { name: 'Record payment' }).click()
   await window.getByRole('dialog', { name: 'Confirm collection' }).getByRole('button', { name: 'Confirm' }).click()
@@ -210,6 +212,7 @@ test('receipt and passbook print routes render without errors', async ({ window 
   const origin = new URL(window.url()).origin
   await window.goto(`${origin}/print/gs-receipt/${ids.paymentId}`)
   await expect(window.getByRole('heading', { name: 'Gold Savings Print Shop' })).toBeVisible({ timeout: 15_000 })
+  await expect(window.locator('.gs-passbook')).toBeVisible()
   await expect(window.locator('.error-banner')).toHaveCount(0)
   await expect(window.locator('.gs-receipt-print-error')).toHaveCount(0)
 

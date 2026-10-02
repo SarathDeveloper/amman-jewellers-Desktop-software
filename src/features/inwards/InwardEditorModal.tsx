@@ -1005,6 +1005,7 @@ export function InwardEditorModal({
         <PrintPreviewModal
           title="Print preview"
           path={printPreviewPaths.purchase(inwardId)}
+          pdfFilename="purchase.pdf"
           onClose={() => setPrintOpen(false)}
         />
       ) : null}

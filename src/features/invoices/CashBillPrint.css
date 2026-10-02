@@ -281,6 +281,13 @@
   text-align: right;
 }
 
+.cash-bill-signature-img {
+  display: block;
+  max-height: 18mm;
+  margin: 2mm auto 2mm;
+  object-fit: contain;
+}
+
 .cash-bill-print-page {
   min-height: 100vh;
   margin: 0;
@@ -413,4 +420,9 @@
 .cash-bill-root.paper-thermal .cash-bill-signatures .left,
 .cash-bill-root.paper-thermal .cash-bill-signatures .right {
   text-align: left;
+}
+
+.cash-bill-root.paper-thermal .cash-bill-signature-img {
+  max-height: 10mm;
+  margin: 1mm 0;
 }

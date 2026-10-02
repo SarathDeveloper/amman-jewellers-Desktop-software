@@ -28,11 +28,11 @@ test('billing create, finalize, and stock deduction', async ({ window }) => {
   await window.getByRole('button', { name: 'Save' }).click()
 
   await sidebarLink(window, 'Billing').click()
-  await expect(window.getByRole('tab', { name: /Cash Bill/ })).toBeVisible()
-  await window.getByRole('tab', { name: /Cash Bill/ }).click()
+  await expect(window.getByRole('tab', { name: /Quotation/ })).toBeVisible()
+  await window.getByRole('tab', { name: /Quotation/ }).click()
   await expect(window.getByRole('button', { name: 'Reprint last' })).toBeVisible()
-  await window.getByRole('link', { name: 'New Cash Bill' }).click()
-  await expect(window.getByRole('heading', { name: 'New Cash Bill' })).toBeVisible()
+  await window.getByRole('link', { name: 'New Quotation' }).click()
+  await expect(window.getByRole('heading', { name: 'New Quotation' })).toBeVisible()
 
   const customerSearch = window.getByPlaceholder('Search customer by name, phone or ID…')
   await customerSearch.fill('Bill Customer')
@@ -67,8 +67,8 @@ test('billing add customer from new bill page', async ({ window }) => {
   const customerName = `Counter Sale ${Date.now()}`
 
   await sidebarLink(window, 'Billing').click()
-  await window.getByRole('tab', { name: /Cash Bill/ }).click()
-  await window.getByRole('link', { name: 'New Cash Bill' }).click()
+  await window.getByRole('tab', { name: /Quotation/ }).click()
+  await window.getByRole('link', { name: 'New Quotation' }).click()
 
   await window.getByPlaceholder('Search customer by name, phone or ID…').fill(customerName)
   await window.getByRole('button', { name: 'No customer found — Add new' }).click()

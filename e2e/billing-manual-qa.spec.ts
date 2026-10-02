@@ -1,5 +1,5 @@
 /**
- * Executable manual QA checklist for New Cash Bill.
+ * Executable manual QA checklist for New Quotation.
  * Run: npm run build && npx playwright test e2e/billing-manual-qa.spec.ts
  */
 import { expect, test } from './fixtures/web-app'
@@ -30,9 +30,9 @@ test.describe('Manual QA: New bill generation', () => {
 
     // --- Open New bill ---
     await sidebarLink(window, 'Billing').click()
-    await window.getByRole('tab', { name: /Cash Bill/ }).click()
-    await window.getByRole('link', { name: 'New Cash Bill' }).click()
-    await expect(window.getByRole('heading', { name: 'New Cash Bill' })).toBeVisible()
+    await window.getByRole('tab', { name: /Quotation/ }).click()
+    await window.getByRole('link', { name: 'New Quotation' }).click()
+    await expect(window.getByRole('heading', { name: 'New Quotation' })).toBeVisible()
     await expect(window.getByPlaceholder('Search customer by name, phone or ID…')).toBeVisible()
     await expect(window.getByLabel('Bill date')).toBeVisible()
     await expect(window.getByRole('heading', { name: 'Bill Summary' })).toBeVisible()
@@ -98,8 +98,8 @@ test.describe('Manual QA: New bill generation', () => {
 
   test('reset clears draft fields on new bill', async ({ window }) => {
     await sidebarLink(window, 'Billing').click()
-    await window.getByRole('tab', { name: /Cash Bill/ }).click()
-    await window.getByRole('link', { name: 'New Cash Bill' }).click()
+    await window.getByRole('tab', { name: /Quotation/ }).click()
+    await window.getByRole('link', { name: 'New Quotation' }).click()
 
     await window.getByPlaceholder('Search customer by name, phone or ID…').fill('nobody-here')
     await window.getByRole('button', { name: 'No customer found — Add new' }).click()

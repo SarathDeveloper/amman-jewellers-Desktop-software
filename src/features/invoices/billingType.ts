@@ -4,7 +4,7 @@ export type BillingType = SaleBillingType | 'adagu'
 const STORAGE_KEY = 'jeweltrackerpro.billingType'
 
 export const BILLING_TYPE_OPTIONS: { value: SaleBillingType; label: string }[] = [
-  { value: 'cash_bill', label: 'Cash Bill' },
+  { value: 'cash_bill', label: 'Quotation' },
   { value: 'tax_invoice', label: 'Tax Invoice' },
 ]
 
@@ -18,11 +18,11 @@ export const BILLING_TAB_OPTIONS: {
 }[] = [
   {
     value: 'cash_bill',
-    label: 'Cash Bill',
-    subtitle: 'Direct sale without GST',
+    label: 'Quotation',
+    subtitle: 'Quotation without GST',
     path: '/billing/cash',
     newPath: '/billing/cash/new',
-    newLabel: 'New Cash Bill',
+    newLabel: 'New Quotation',
   },
   {
     value: 'tax_invoice',

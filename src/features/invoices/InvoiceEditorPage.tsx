@@ -84,7 +84,7 @@ import {
 function pageTitle(billingType: SaleBillingType, invoiceNo?: string, editingExisting?: boolean): string {
   if (invoiceNo) return invoiceNo
   if (editingExisting) return 'Bill'
-  return billingType === 'tax_invoice' ? 'New Tax Invoice' : 'New Cash Bill'
+  return billingType === 'tax_invoice' ? 'New Tax Invoice' : 'New Quotation'
 }
 
 function saleTypeFromPath(pathname: string): SaleBillingType {

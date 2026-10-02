@@ -87,6 +87,13 @@ export function GsReceiptPrint({
             <span>Customer signature / வாடிக்கையாளர் கையொப்பம்</span>
           </div>
           <div>
+            {shopInfo.signatureImagePath ? (
+              <img
+                className="gs-receipt-signature-img"
+                src={localImageSrc(shopInfo.signatureImagePath, '')}
+                alt=""
+              />
+            ) : null}
             <span>Authorized signature / அங்கீகரிக்கப்பட்ட கையொப்பம்</span>
           </div>
         </footer>

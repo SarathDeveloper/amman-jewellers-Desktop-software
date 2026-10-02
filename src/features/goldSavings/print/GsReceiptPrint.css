@@ -80,6 +80,13 @@
   min-height: 14mm;
   font-size: 8pt;
 }
+.gs-receipt-signature-img {
+  display: block;
+  max-height: 10mm;
+  max-width: 100%;
+  margin: 1mm auto 0;
+  object-fit: contain;
+}
 .gs-receipt-thanks { text-align: center; color: var(--gs-magenta); font-weight: 700; margin-top: 6mm; }
 
 @media print {

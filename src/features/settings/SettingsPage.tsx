@@ -495,7 +495,7 @@ export function SettingsPage() {
                       label="Signature Image"
                       optional
                       title="Upload Signature"
-                      hint="Prints on tax invoices. PNG, JPG (Max 2MB)"
+                      hint="Prints on bills, pledges, and gold savings receipts. PNG, JPG (Max 2MB)"
                       preview={
                         shop.signatureImagePath ? (
                           <span className="settings-upload-thumb">
@@ -805,6 +805,7 @@ export function SettingsPage() {
         <PrintPreviewModal
           title="Print preview"
           path={printPreviewPaths.sample(samplePrintKind)}
+          pdfFilename="sample.pdf"
           onClose={() => setSamplePrintKind(null)}
         />
       ) : null}

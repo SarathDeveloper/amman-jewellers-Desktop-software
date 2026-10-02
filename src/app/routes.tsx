@@ -45,6 +45,7 @@ import { CollectionsPage } from '../features/goldSavings/collections/Collections
 import { SchemeLedgerPage } from '../features/goldSavings/ledger/SchemeLedgerPage'
 import { MaturityPage } from '../features/goldSavings/maturity/MaturityPage'
 import { GoldSavingsReportsPage } from '../features/goldSavings/reports/GoldSavingsReportsPage'
+import { OverdueAgingPage } from '../features/goldSavings/overdue/OverdueAgingPage'
 import { GsReceiptPrintPage } from '../features/goldSavings/print/GsReceiptPrintPage'
 import { GsPassbookPrintPage } from '../features/goldSavings/print/GsPassbookPrintPage'
 
@@ -179,6 +180,7 @@ export const router = createBrowserRouter([
           { path: 'collections', element: <CollectionsPage /> },
           { path: 'ledger', element: <SchemeLedgerPage /> },
           { path: 'maturity', element: <MaturityPage /> },
+          { path: 'overdue', element: <OverdueAgingPage /> },
           { path: 'reports', element: <GoldSavingsReportsPage /> },
         ],
       },

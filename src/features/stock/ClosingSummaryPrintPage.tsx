@@ -47,13 +47,15 @@ export function ClosingSummaryPrintPage() {
   }, [date])
 
   useEffect(() => {
-    if (!goldSheet || !silverSheet || !shop || error) return
+    if (error) {
+      signalPrintReady(error)
+      return
+    }
+    if (!goldSheet || !silverSheet || !shop) return
     let cancelled = false
     void (async () => {
       await waitForPrintLayout()
-      if (!cancelled) {
-        signalPrintReady(null)
-      }
+      if (!cancelled) signalPrintReady(null)
     })()
     return () => {
       cancelled = true

@@ -42,13 +42,11 @@ export function MetalDayPrintPage() {
   }, [date, metalParam])
 
   useEffect(() => {
-    if (!sheet || error) return
+    if (!sheet && !error) return
     let cancelled = false
     void (async () => {
-      await waitForPrintLayout()
-      if (!cancelled) {
-        signalPrintReady(null)
-      }
+      if (sheet) await waitForPrintLayout()
+      if (!cancelled) signalPrintReady(error)
     })()
     return () => {
       cancelled = true

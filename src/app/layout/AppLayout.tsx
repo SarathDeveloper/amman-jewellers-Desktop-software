@@ -6,6 +6,7 @@ import {
   House,
   LogOut,
   Package,
+  PiggyBank,
   Receipt,
   Settings,
   Users,
@@ -30,6 +31,7 @@ const links: {
 }[] = [
   { to: '/dashboard', label: 'Dashboard', icon: House, feature: 'dashboard' },
   { to: '/billing', label: 'Billing', icon: Receipt, feature: 'billing' },
+  { to: '/gold-savings', label: 'Gold Savings', icon: PiggyBank, feature: 'gold_savings' },
   { to: '/inventory', label: 'Inventory', icon: Package, feature: 'inventory' },
   { to: '/dues', label: 'Dues', icon: Wallet, feature: 'dues' },
   { to: '/customers', label: 'Customers', icon: Users, feature: 'customers' },

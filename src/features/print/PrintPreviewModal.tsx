@@ -9,18 +9,21 @@ export function PrintPreviewModal({
   onClose,
   onPrint,
   printLabel = 'Print',
+  pdfFilename = 'document.pdf',
 }: {
   title: string
   path: string
   onClose: () => void
   onPrint?: () => void
   printLabel?: string
+  pdfFilename?: string
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null)
   const frameWrapRef = useRef<HTMLDivElement>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [savingPdf, setSavingPdf] = useState(false)
   const [frameHeight, setFrameHeight] = useState(480)
   const [scale, setScale] = useState(1)
 
@@ -87,6 +90,32 @@ export function PrintPreviewModal({
     onPrint?.()
   }
 
+  async function downloadPdf() {
+    const savePdf = window.electronAPI?.savePdf
+    if (window.electronAPI && typeof savePdf !== 'function') {
+      setError('Restart JewelTrackerPro to enable PDF download')
+      return
+    }
+    if (!savePdf) {
+      printFrame()
+      return
+    }
+    try {
+      setSavingPdf(true)
+      setError(null)
+      const result = await savePdf(path, pdfFilename)
+      if (result.canceled) return
+      onPrint?.()
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : 'Failed to save PDF'
+      setError(raw.replace(/^Error invoking remote method '[^']+': (?:Error: )?/u, ''))
+    } finally {
+      setSavingPdf(false)
+    }
+  }
+
+  const actionsDisabled = !ready || savingPdf
+
   return (
     <Modal
       title={title}
@@ -97,13 +126,13 @@ export function PrintPreviewModal({
           <button type="button" className="btn secondary" onClick={onClose}>
             Close
           </button>
-          <button type="button" className="btn secondary" disabled={!ready} onClick={printFrame}>
+          <button type="button" className="btn secondary" disabled={actionsDisabled} onClick={printFrame}>
             <Printer size={16} strokeWidth={1.75} aria-hidden />
             {printLabel}
           </button>
-          <button type="button" className="btn" disabled={!ready} onClick={printFrame}>
+          <button type="button" className="btn" disabled={actionsDisabled} onClick={() => void downloadPdf()}>
             <FileDown size={16} strokeWidth={1.75} aria-hidden />
-            PDF
+            {savingPdf ? 'Saving…' : 'PDF'}
           </button>
         </div>
       }

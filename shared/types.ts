@@ -1134,6 +1134,7 @@ export type GoldSavingReportId =
   | 'active-schemes'
   | 'matured-schemes'
   | 'overdue-installments'
+  | 'overdue-aging'
   | 'cancelled-schemes'
   | 'gold-accumulation'
   | 'redemption-history'
@@ -1393,15 +1394,30 @@ export interface GoldSavingDashboardChartPoint {
   amount: number
 }
 
+export interface GoldSavingAgingBucket {
+  bucket: string
+  count: number
+  amount: number
+}
+
+export interface GoldSavingMaturityPipelineBucket {
+  bucket: string
+  count: number
+  gold: number
+}
+
 export interface GoldSavingDashboard {
   activeSchemes: number
   enrolledCustomers: number
   todayCollections: number
   monthCollections: number
+  monthTarget: number
   totalCollected: number
   totalGold: number
   upcomingMaturities: number
   overdueInstallments: number
+  overdueAging: GoldSavingAgingBucket[]
+  maturityPipeline: GoldSavingMaturityPipelineBucket[]
   monthlyChart: GoldSavingDashboardChartPoint[]
   schemeEnrollments: { schemeName: string; count: number }[]
   upcomingDues: GoldSavingAccount[]

@@ -7,6 +7,7 @@ type DesktopExportResult = {
 
 type DesktopAPI = {
   exportDatabase: () => Promise<DesktopExportResult>
+  savePdf: (url: string, defaultFilename: string) => Promise<DesktopExportResult>
   getAppVersion: () => Promise<string>
   platform: string
 }

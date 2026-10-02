@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import type { GoldSavingPayment, PaperSize } from '@shared/types'
+import type { GoldSavingPassbook } from '@shared/types'
 import { api } from '../../../lib/api'
 import { shopSettingsToDisplay, type ShopDisplayInfo } from '../../invoices/mapShopDisplay'
-import { applyPaperDataset, paperPageCss } from '../../invoices/paperSize'
+import { applyPaperDataset } from '../../invoices/paperSize'
 import { signalPrintReady, waitForPrintLayout } from '../../invoices/printPageUtils'
-import { GsReceiptPrint } from './GsReceiptPrint'
-import './GsReceiptPrint.css'
+import { GsPassbookPrint } from './GsPassbookPrint'
+import './GsPassbookPrint.css'
 
 export function GsReceiptPrintPage() {
   const { id } = useParams()
-  const [payment, setPayment] = useState<GoldSavingPayment | null>(null)
+  const [passbook, setPassbook] = useState<GoldSavingPassbook | null>(null)
   const [shop, setShop] = useState<ShopDisplayInfo | null>(null)
-  const [paperSize, setPaperSize] = useState<PaperSize>('a4')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -22,11 +21,11 @@ export function GsReceiptPrintPage() {
         const paymentId = Number(id)
         if (!Number.isInteger(paymentId) || paymentId <= 0) throw new Error('Invalid receipt')
         const [next, settings] = await Promise.all([api.getGsPayment(paymentId), api.getShopSettings()])
+        const pb = await api.getGsPassbook(next.accountId)
         if (!active) return
-        setPayment(next)
+        setPassbook(pb)
         setShop(shopSettingsToDisplay(settings))
-        setPaperSize(settings.paperSizeCash === 'thermal' ? 'thermal' : 'a4')
-        applyPaperDataset(settings.paperSizeCash === 'thermal' ? 'thermal' : 'a4')
+        applyPaperDataset('a4')
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Failed to load receipt')
       }
@@ -37,23 +36,22 @@ export function GsReceiptPrintPage() {
   }, [id])
 
   useEffect(() => {
-    if (!payment && !error) return
+    if (!passbook && !error) return
     let cancelled = false
     void (async () => {
-      if (payment) await waitForPrintLayout()
+      if (passbook) await waitForPrintLayout()
       if (!cancelled) signalPrintReady(error)
     })()
     return () => {
       cancelled = true
     }
-  }, [payment, error])
+  }, [passbook, error])
 
   return (
     <div className="gs-receipt-print-page">
-      <style>{paperPageCss(paperSize)}</style>
       {error ? <p className="gs-receipt-print-status gs-receipt-print-error">{error}</p> : null}
-      {!error && !payment ? <p className="gs-receipt-print-status">Preparing receipt…</p> : null}
-      {payment ? <GsReceiptPrint payment={payment} shop={shop ?? undefined} paperSize={paperSize} /> : null}
+      {!error && !passbook ? <p className="gs-receipt-print-status">Preparing receipt…</p> : null}
+      {passbook ? <GsPassbookPrint passbook={passbook} shop={shop ?? undefined} /> : null}
     </div>
   )
 }

@@ -26,6 +26,10 @@ export async function waitForPrintLayout(): Promise<void> {
 }
 
 export function triggerBrowserPrint(error: string | null): void {
+  const payload = error
+    ? { type: 'print-error' as const, message: error }
+    : { type: 'print-ready' as const }
+  Object.assign(window, { __PRINT_SIGNAL__: payload })
   if (error) {
     if (isEmbeddedPrintPreview()) {
       window.parent?.postMessage({ type: 'print-error', message: error }, window.origin)

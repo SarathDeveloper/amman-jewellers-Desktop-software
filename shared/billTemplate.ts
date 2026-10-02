@@ -40,7 +40,7 @@ export interface BillTemplateSettings {
 }
 
 export const DEFAULT_BILL_TEMPLATE: BillTemplateSettings = {
-  cashTitle: "CASH BILL",
+  cashTitle: "QUOTATION",
   cashNoLabel: "No.",
   cashDateLabel: "Date :",
   cashCustomerPrefix: "Thiru",

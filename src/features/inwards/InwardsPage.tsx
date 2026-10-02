@@ -271,6 +271,7 @@ export function InwardsPage() {
         <PrintPreviewModal
           title="Print preview"
           path={printPreviewPaths.purchase(printInwardId)}
+          pdfFilename="purchase.pdf"
           onClose={() => setPrintInwardId(null)}
         />
       ) : null}

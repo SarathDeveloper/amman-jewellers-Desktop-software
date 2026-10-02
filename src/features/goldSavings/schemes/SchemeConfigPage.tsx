@@ -422,11 +422,11 @@ function SchemeFormModal({
         </label>
         <label>
           <span className="field-label">Available from</span>
-          <DateInput value={form.availableFrom ?? ''} onChange={(value) => setForm({ ...form, availableFrom: value || null })} />
+          <DateInput className="input" value={form.availableFrom ?? ''} onChange={(value) => setForm({ ...form, availableFrom: value || null })} showIcon />
         </label>
         <label>
           <span className="field-label">Available to</span>
-          <DateInput value={form.availableTo ?? ''} onChange={(value) => setForm({ ...form, availableTo: value || null })} />
+          <DateInput className="input" value={form.availableTo ?? ''} onChange={(value) => setForm({ ...form, availableTo: value || null })} showIcon />
         </label>
         <label className="full">
           <span className="field-label">Terms and conditions</span>

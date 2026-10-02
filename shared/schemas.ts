@@ -803,6 +803,7 @@ export const goldSavingReportIdSchema = z.enum([
   'active-schemes',
   'matured-schemes',
   'overdue-installments',
+  'overdue-aging',
   'cancelled-schemes',
   'gold-accumulation',
   'redemption-history',

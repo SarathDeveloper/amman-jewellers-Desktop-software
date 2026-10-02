@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Ban, IndianRupee, Printer, RotateCcw } from 'lucide-react'
-import type { GoldSavingAccountDetail } from '@shared/types'
+import { rateForPurity } from '@shared/goldSavings/math'
+import { localTodayIso } from '@shared/localDate'
+import type { GoldSavingAccountDetail, MetalRates } from '@shared/types'
 import { DataTable } from '../../../components/DataTable'
 import { FilterBar } from '../../../components/FilterBar'
 import { LoadingState } from '../../../components/LoadingState'
@@ -15,6 +17,14 @@ import { PrintPreviewModal } from '../../print/PrintPreviewModal'
 import { CollectPaymentModal } from '../collections/CollectPaymentModal'
 import { GsStatusBadge } from '../GsStatusBadge'
 import { formatGsPaymentMode } from '../gsLabels'
+import {
+  bonusConditionText,
+  currentBonusGold,
+  isoDaysBetween,
+  progressPct,
+  projectedBonusGold,
+  projectedGoldAtRate,
+} from '../gsProjection'
 import { useAuth } from '../../auth/authContext'
 
 const TABS = [
@@ -33,10 +43,11 @@ export function AccountDetailPage() {
   const { isAdmin } = useAuth()
   const { showToast } = useToast()
   const [detail, setDetail] = useState<GoldSavingAccountDetail | null>(null)
+  const [rates, setRates] = useState<MetalRates | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<DetailTab>('overview')
   const [collectOpen, setCollectOpen] = useState(false)
-  const [printPaymentId, setPrintPaymentId] = useState<number | null>(null)
+  const [printPassbook, setPrintPassbook] = useState(false)
   const [reasonAction, setReasonAction] = useState<{ kind: 'cancel' } | { kind: 'reverse'; paymentId: number } | null>(
     null,
   )
@@ -54,8 +65,14 @@ export function AccountDetailPage() {
       try {
         const accountId = Number(id)
         if (!Number.isInteger(accountId) || accountId <= 0) throw new Error('Invalid account')
-        const next = await api.getGsAccount(accountId)
-        if (active) setDetail(next)
+        const [next, latest] = await Promise.all([
+          api.getGsAccount(accountId),
+          api.getLatestMetalRates().catch(() => null),
+        ])
+        if (active) {
+          setDetail(next)
+          setRates(latest)
+        }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Failed to load account')
       }
@@ -81,6 +98,35 @@ export function AccountDetailPage() {
   }
 
   const { account, scheme } = detail
+  const schemeValue = account.monthlyAmount * account.durationMonths
+  const remainingInstallments = Math.max(0, account.durationMonths - account.paidInstallments)
+  const remainingAmount = Math.max(0, schemeValue - account.totalPaid)
+  const today = localTodayIso()
+  const daysToMaturity = isoDaysBetween(today, account.maturityDate)
+  const goldRate = rates ? rateForPurity(rates, account.purity) : 0
+  const projectedGold = projectedGoldAtRate({
+    accumulatedGrams: account.goldAccumulated,
+    remainingInstallments,
+    monthlyAmount: account.monthlyAmount,
+    ratePerGram: goldRate,
+  })
+  const bonusNow = currentBonusGold({
+    scheme,
+    accumulatedGrams: account.goldAccumulated,
+    paidInstallments: account.paidInstallments,
+    durationMonths: account.durationMonths,
+    ratePerGram: goldRate,
+  })
+  const bonusProjected = projectedBonusGold({
+    scheme,
+    accumulatedGrams: account.goldAccumulated,
+    remainingInstallments,
+    monthlyAmount: account.monthlyAmount,
+    durationMonths: account.durationMonths,
+    ratePerGram: goldRate,
+  })
+  const installmentPct = progressPct(account.paidInstallments, account.durationMonths)
+  const amountPct = progressPct(account.totalPaid, schemeValue)
 
   async function cancel() {
     try {
@@ -117,10 +163,10 @@ export function AccountDetailPage() {
               <ArrowLeft size={16} strokeWidth={2} aria-hidden />
               Accounts
             </Link>
-            <Link className="btn secondary" to={`/print/gs-passbook/${account.id}`} target="_blank">
+            <button type="button" className="btn secondary" onClick={() => setPrintPassbook(true)}>
               <Printer size={16} strokeWidth={1.75} aria-hidden />
               Print passbook
-            </Link>
+            </button>
             {account.status === 'active' ? (
               <button type="button" className="btn" onClick={() => setCollectOpen(true)}>
                 <IndianRupee size={16} strokeWidth={1.75} aria-hidden />
@@ -153,8 +199,65 @@ export function AccountDetailPage() {
       <FilterBar value={tab} onChange={setTab} options={[...TABS]} />
 
       {tab === 'overview' ? (
-        <section className="card padded">
-          <h2 className="settings-section-title">Account details</h2>
+        <>
+          <section className="card padded gs-progress-card">
+            <h2 className="settings-section-title">Scheme progress</h2>
+            <SchemeProgressBar
+              label={`Installments ${account.paidInstallments} / ${account.durationMonths}`}
+              pct={installmentPct}
+            />
+            <SchemeProgressBar
+              label={`Amount ${formatCurrency(account.totalPaid)} / ${formatCurrency(schemeValue)}`}
+              pct={amountPct}
+            />
+          </section>
+          <div className="dashboard-lifecycle-grid">
+            <section className="card padded">
+              <h2 className="settings-section-title">Account snapshot</h2>
+              <p className="settings-row">
+                <strong>Remaining installments</strong> {remainingInstallments}
+              </p>
+              <p className="settings-row">
+                <strong>Remaining amount</strong> {formatCurrency(remainingAmount)}
+              </p>
+              <p className="settings-row">
+                <strong>Projected gold at maturity</strong>{' '}
+                {goldRate > 0 ? formatWeight(projectedGold, 3) : 'Set today\'s gold rate'}
+              </p>
+              <p className="settings-row">
+                <strong>Days to maturity</strong>{' '}
+                {daysToMaturity < 0
+                  ? `Matured ${Math.abs(daysToMaturity)} day${Math.abs(daysToMaturity) === 1 ? '' : 's'} ago`
+                  : daysToMaturity === 0
+                    ? 'Matures today'
+                    : `${daysToMaturity} day${daysToMaturity === 1 ? '' : 's'}`}
+              </p>
+            </section>
+            <section className="card padded">
+              <h2 className="settings-section-title">Bonus projection</h2>
+              <p className="settings-row">
+                <strong>Current bonus</strong>{' '}
+                {scheme.bonusType === 'none' || scheme.bonusValue <= 0
+                  ? 'None'
+                  : bonusNow > 0
+                    ? formatWeight(bonusNow, 3)
+                    : 'Not yet eligible'}
+              </p>
+              <p className="settings-row">
+                <strong>If completed</strong>{' '}
+                {scheme.bonusType === 'none' || scheme.bonusValue <= 0
+                  ? '—'
+                  : bonusProjected > 0
+                    ? formatWeight(bonusProjected, 3)
+                    : scheme.bonusType === 'fixed_amount'
+                      ? `${formatCurrency(scheme.bonusValue)} after all installments (needs a gold rate)`
+                      : '—'}
+              </p>
+              <p className="muted">{bonusConditionText(scheme, account.paidInstallments, account.durationMonths)}</p>
+            </section>
+          </div>
+          <section className="card padded">
+            <h2 className="settings-section-title">Account details</h2>
           <p className="settings-row"><strong>Customer</strong> {account.customerName}</p>
           <p className="settings-row"><strong>Mobile</strong> {account.customerPhone || '—'}</p>
           <p className="settings-row"><strong>Enrollment</strong> {formatDisplayDate(account.enrollmentDate)}</p>
@@ -173,6 +276,7 @@ export function AccountDetailPage() {
             <p className="muted">No bonus is configured on this scheme.</p>
           )}
         </section>
+        </>
       ) : null}
 
       {tab === 'installments' ? (
@@ -229,7 +333,7 @@ export function AccountDetailPage() {
                   <td><GsStatusBadge status={payment.status} /></td>
                   <td>
                     <div className="row-actions">
-                      <button type="button" className="btn ghost" onClick={() => setPrintPaymentId(payment.id)}>
+                      <button type="button" className="btn ghost" onClick={() => setPrintPassbook(true)}>
                         <Printer size={16} />
                         Reprint
                       </button>
@@ -351,18 +455,19 @@ export function AccountDetailPage() {
         <CollectPaymentModal
           accountId={account.id}
           onClose={() => setCollectOpen(false)}
-          onCollected={(paymentId) => {
+          onCollected={() => {
             setCollectOpen(false)
-            setPrintPaymentId(paymentId)
+            setPrintPassbook(true)
             void reload()
           }}
         />
       ) : null}
-      {printPaymentId ? (
+      {printPassbook ? (
         <PrintPreviewModal
-          title="Scheme receipt"
-          path={`/print/gs-receipt/${printPaymentId}`}
-          onClose={() => setPrintPaymentId(null)}
+          title="Scheme passbook"
+          path={`/print/gs-passbook/${account.id}`}
+          pdfFilename="gs-passbook.pdf"
+          onClose={() => setPrintPassbook(false)}
         />
       ) : null}
       {reasonAction ? (
@@ -402,6 +507,21 @@ export function AccountDetailPage() {
           </label>
         </Modal>
       ) : null}
+    </div>
+  )
+}
+
+function SchemeProgressBar({ label, pct }: { label: string; pct: number }) {
+  const width = Math.min(100, Math.max(0, pct))
+  return (
+    <div className="gs-scheme-progress">
+      <div className="gs-scheme-progress-meta">
+        <span>{label}</span>
+        <strong className="num">{pct}%</strong>
+      </div>
+      <div className="gs-progress-track">
+        <div className="gs-progress-fill" style={{ width: `${width}%` }} />
+      </div>
     </div>
   )
 }

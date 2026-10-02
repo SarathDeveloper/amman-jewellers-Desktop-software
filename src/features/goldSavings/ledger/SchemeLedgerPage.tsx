@@ -91,7 +91,7 @@ export function SchemeLedgerPage() {
           ) : null
         }
       />
-      <section className="card padded">
+      <section className="card padded card--search">
         <GsAccountSearch
           selected={account}
           onSelect={setAccount}
@@ -103,11 +103,11 @@ export function SchemeLedgerPage() {
         <div className="filter-bar reports-filters">
           <label>
             From
-            <DateInput className="input" value={from} onChange={setFrom} />
+            <DateInput className="input" value={from} onChange={setFrom} showIcon />
           </label>
           <label>
             To
-            <DateInput className="input" value={to} onChange={setTo} />
+            <DateInput className="input" value={to} onChange={setTo} showIcon />
           </label>
         </div>
         <FilterBar value={status} onChange={setStatus} options={[...STATUS_FILTERS]} />
@@ -151,6 +151,7 @@ export function SchemeLedgerPage() {
         <PrintPreviewModal
           title="Scheme passbook"
           path={`/print/gs-passbook/${account.id}`}
+          pdfFilename="gs-passbook.pdf"
           onClose={() => setPrintPassbook(false)}
         />
       ) : null}

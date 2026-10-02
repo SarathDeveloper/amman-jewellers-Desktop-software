@@ -5,7 +5,7 @@ module.exports = {
   directories: {
     output: 'release',
   },
-  files: ['electron-dist/**/*', 'dist/**/*', 'package.json'],
+  files: ['electron-dist/**/*', 'dist/**/*', 'package.json', 'src/images/**/*'],
   extraResources: [
     {
       from: 'server/db/migrations',
@@ -14,9 +14,12 @@ module.exports = {
   ],
   asar: true,
   asarUnpack: ['**/*.node', '**/better-sqlite3/**'],
-  npmRebuild: true,
+  // better-sqlite3 ships N-API prebuilds, including win32-x64. Rebuilding from
+  // macOS fails because node-gyp cannot cross-compile that addon.
+  npmRebuild: false,
   electronLanguages: ['en'],
   win: {
+    icon: 'build/icon.ico',
     target: [
       {
         target: 'nsis',
@@ -36,6 +39,7 @@ module.exports = {
     uninstallDisplayName: 'JewelTrackerPro',
   },
   mac: {
+    icon: 'build/icon.icns',
     target: ['dmg'],
     category: 'public.app-category.business',
     artifactName: '${productName}-${version}-${arch}.${ext}',
@@ -45,6 +49,7 @@ module.exports = {
     artifactName: '${productName}-${version}.${ext}',
   },
   linux: {
+    icon: 'build/icon.png',
     target: ['AppImage'],
     category: 'Office',
   },

@@ -12,6 +12,7 @@ export function PledgePreviewModal({
     <PrintPreviewModal
       title="Print preview"
       path={printPreviewPaths.pledge(pledgeId)}
+      pdfFilename="pledge.pdf"
       onClose={onClose}
     />
   )

@@ -315,6 +315,7 @@ export function AdaguDuesTab({
         <PrintPreviewModal
           title="Print preview"
           path={printPreviewPaths.pledgeRelease(releaseTarget)}
+          pdfFilename="pledge-release.pdf"
           onClose={() => setReleaseTarget(null)}
         />
       ) : null}

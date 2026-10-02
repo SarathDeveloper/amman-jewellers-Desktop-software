@@ -225,6 +225,9 @@ describe('gold savings schemes', () => {
     expect(dashboard.status).toBe(200)
     expect(dashboard.body.activeSchemes).toBe(1)
     expect(dashboard.body.totalGold).toBe(0.2)
+    expect(dashboard.body.monthTarget).toBeGreaterThan(0)
+    expect(dashboard.body.overdueAging).toHaveLength(4)
+    expect(dashboard.body.maturityPipeline).toHaveLength(4)
   })
 
   it('credits later installments at the live rate and reprints the original receipt snapshot', async () => {
@@ -380,6 +383,23 @@ describe('gold savings schemes', () => {
     expect(daily.body.columns).toEqual(['Date', 'Receipt', 'Account', 'Customer', 'Amount', 'Rate', 'Gold', 'Mode'])
     expect(daily.body.rows[0].Customer).toBe('Lakshmi')
     expect(daily.body.rows[0].Amount).toBe(2000)
+
+    const aging = await getTestAgent().get('/api/gold-savings/reports/overdue-aging')
+    expect(aging.status).toBe(200)
+    expect(aging.body.columns).toEqual([
+      'Account',
+      'Customer',
+      'Scheme',
+      'Installment',
+      'Due',
+      'Days overdue',
+      'Amount',
+      'Bucket',
+    ])
+    for (const row of aging.body.rows as Array<Record<string, string | number>>) {
+      expect(row['Days overdue']).toBeGreaterThanOrEqual(1)
+      expect(['1-7 days', '8-15 days', '16-30 days', '30+ days']).toContain(row.Bucket)
+    }
   })
 
   it('denies gold savings APIs to staff without the feature', async () => {

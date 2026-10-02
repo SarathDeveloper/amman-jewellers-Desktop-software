@@ -325,9 +325,18 @@ export function TaxInvoicePrint({
             </div>
             <div className="center">{labels.taxThanks}</div>
             <div className="right">
-              {vis.showSignatures
-                ? `${labels.cashForPrefix} ${shopInfo.name}`
-                : null}
+              {vis.showSignatures ? (
+                <>
+                  {shopInfo.signatureImagePath ? (
+                    <img
+                      className="tax-invoice-signature-img"
+                      src={localImageSrc(shopInfo.signatureImagePath, "")}
+                      alt=""
+                    />
+                  ) : null}
+                  {`${labels.cashForPrefix} ${shopInfo.name}`}
+                </>
+              ) : null}
             </div>
           </footer>
         ) : null}

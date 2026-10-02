@@ -11,6 +11,7 @@ const TITLES: Record<GoldSavingReportId, string> = {
   'active-schemes': 'Active Schemes',
   'matured-schemes': 'Matured Schemes',
   'overdue-installments': 'Overdue Installments',
+  'overdue-aging': 'Overdue Aging',
   'cancelled-schemes': 'Cancelled Schemes',
   'gold-accumulation': 'Gold Weight Accumulation',
   'redemption-history': 'Redemption History',
@@ -157,6 +158,67 @@ export function runGoldSavingReport(
       )
       .all(today) as Array<Record<string, string | number>>
     return pack(id, ['Account', 'Customer', 'Scheme', 'Installment', 'Due', 'Amount', 'Monthly'], rows, generatedAt)
+  }
+
+  if (id === 'overdue-aging') {
+    const raw = db
+      .prepare(
+        `SELECT a.account_no AS account, c.name AS customer, s.name AS scheme, i.installment_no AS installment,
+                i.due_date AS due, i.amount AS amount,
+                CAST(julianday(?) - julianday(i.due_date) AS INTEGER) AS days,
+                CASE
+                  WHEN CAST(julianday(?) - julianday(i.due_date) AS INTEGER) <= 7 THEN '1-7 days'
+                  WHEN CAST(julianday(?) - julianday(i.due_date) AS INTEGER) <= 15 THEN '8-15 days'
+                  WHEN CAST(julianday(?) - julianday(i.due_date) AS INTEGER) <= 30 THEN '16-30 days'
+                  ELSE '30+ days'
+                END AS bucket
+         FROM gold_saving_installments i
+         JOIN gold_saving_accounts a ON a.id = i.account_id
+         JOIN customers c ON c.id = a.customer_id
+         JOIN gold_saving_schemes s ON s.id = a.scheme_id
+         WHERE a.status = 'active' AND i.status NOT IN ('paid', 'waived') AND i.due_date < ?
+           AND (? IS NULL OR a.scheme_id = ?)
+           AND (? IS NULL OR a.account_no LIKE ? OR c.name LIKE ? OR c.phone LIKE ?)
+         ORDER BY days DESC, a.account_no, i.installment_no`,
+      )
+      .all(
+        today,
+        today,
+        today,
+        today,
+        today,
+        query.schemeId ?? null,
+        query.schemeId ?? null,
+        query.q ? `%${query.q}%` : null,
+        query.q ? `%${query.q}%` : '',
+        query.q ? `%${query.q}%` : '',
+        query.q ? `%${query.q}%` : '',
+      ) as Array<{
+        account: string
+        customer: string
+        scheme: string
+        installment: number
+        due: string
+        amount: number
+        days: number
+        bucket: string
+      }>
+    const rows = raw.map((row) => ({
+      account: row.account,
+      customer: row.customer,
+      scheme: row.scheme,
+      installment: row.installment,
+      due: row.due,
+      'days overdue': row.days,
+      amount: row.amount,
+      bucket: row.bucket,
+    }))
+    return pack(
+      id,
+      ['Account', 'Customer', 'Scheme', 'Installment', 'Due', 'Days overdue', 'Amount', 'Bucket'],
+      rows,
+      generatedAt,
+    )
   }
 
   if (id === 'gold-accumulation') {

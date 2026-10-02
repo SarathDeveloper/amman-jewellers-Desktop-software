@@ -512,7 +512,7 @@ export function InvoicesPage() {
                     }}
                   >
                     <option value="all">Type All</option>
-                    <option value="cash_bill">Cash Bill</option>
+                    <option value="cash_bill">Quotation</option>
                     <option value="tax_invoice">Tax Invoice</option>
                     <option value="adagu">Adagu Bill</option>
                   </select>

@@ -35,7 +35,7 @@ export function EnrollmentPage() {
   const [transactionRef, setTransactionRef] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [printPaymentId, setPrintPaymentId] = useState<number | null>(null)
+  const [printAccountId, setPrintAccountId] = useState<number | null>(null)
 
   useEffect(() => {
     let active = true
@@ -86,9 +86,7 @@ export function EnrollmentPage() {
           : undefined,
       })
       showToast('Customer enrolled', 'success')
-      const firstPayment = detail.payments[0]
-      if (firstPayment) setPrintPaymentId(firstPayment.id)
-      else navigate(`/gold-savings/accounts/${detail.account.id}`)
+      setPrintAccountId(detail.account.id)
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Enrollment failed', 'error')
     } finally {
@@ -178,11 +176,11 @@ export function EnrollmentPage() {
               </label>
               <label>
                 <span className="field-label">Enrollment date</span>
-                <DateInput value={enrollmentDate} onChange={setEnrollmentDate} />
+                <DateInput className="input" value={enrollmentDate} onChange={setEnrollmentDate} showIcon />
               </label>
               <label>
                 <span className="field-label">First installment date</span>
-                <DateInput value={firstInstallmentDate} onChange={setFirstInstallmentDate} />
+                <DateInput className="input" value={firstInstallmentDate} onChange={setFirstInstallmentDate} showIcon />
               </label>
               <label>
                 <span className="field-label">Expected maturity</span>
@@ -261,14 +259,15 @@ export function EnrollmentPage() {
           onCancel={() => setConfirmOpen(false)}
         />
       ) : null}
-      {printPaymentId ? (
+      {printAccountId ? (
         <PrintPreviewModal
           title="Enrollment receipt"
-          path={`/print/gs-receipt/${printPaymentId}`}
+          path={`/print/gs-passbook/${printAccountId}`}
+          pdfFilename="gs-passbook.pdf"
           onClose={() => {
-            const id = printPaymentId
-            setPrintPaymentId(null)
-            void api.getGsPayment(id).then((payment) => navigate(`/gold-savings/accounts/${payment.accountId}`))
+            const id = printAccountId
+            setPrintAccountId(null)
+            navigate(`/gold-savings/accounts/${id}`)
           }}
         />
       ) : null}

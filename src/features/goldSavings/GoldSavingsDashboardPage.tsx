@@ -11,7 +11,11 @@ import {
   Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { GoldSavingDashboard } from '@shared/types'
+import type {
+  GoldSavingAgingBucket,
+  GoldSavingDashboard,
+  GoldSavingMaturityPipelineBucket,
+} from '@shared/types'
 import { PageHeader } from '../../components/PageHeader'
 import { LoadingState } from '../../components/LoadingState'
 import { formatCurrency, formatDisplayDate, formatWeight } from '../../lib/format'
@@ -20,16 +24,23 @@ import { GsStatusBadge } from './GsStatusBadge'
 
 type KpiTone = 'brand' | 'success' | 'danger' | 'info'
 
+function monthProgressPct(collected: number, target: number): number {
+  if (target <= 0) return collected > 0 ? 100 : 0
+  return Math.round((collected / target) * 100)
+}
+
 function KpiCard({
   to,
   label,
   value,
+  hint,
   icon: Icon,
   tone,
 }: {
   to?: string
   label: string
   value: string
+  hint?: string
   icon: LucideIcon
   tone: KpiTone
 }) {
@@ -41,6 +52,7 @@ function KpiCard({
       <div className="dashboard-kpi-body">
         <span className="kpi-label">{label}</span>
         <span className="kpi-value num">{value}</span>
+        {hint ? <span className="dashboard-kpi-hint">{hint}</span> : null}
       </div>
     </>
   )
@@ -95,6 +107,8 @@ export function GoldSavingsDashboardPage() {
 
   const maxChart = Math.max(...data.monthlyChart.map((point) => point.amount), 1)
   const maxEnroll = Math.max(...data.schemeEnrollments.map((row) => row.count), 1)
+  const monthPct = monthProgressPct(data.monthCollections, data.monthTarget)
+  const monthBarPct = Math.min(100, monthPct)
 
   return (
     <div className="app-page dashboard-page">
@@ -140,6 +154,11 @@ export function GoldSavingsDashboardPage() {
         <KpiCard
           label="This month"
           value={formatCurrency(data.monthCollections)}
+          hint={
+            data.monthTarget > 0
+              ? `${monthPct}% of ${formatCurrency(data.monthTarget)} due`
+              : 'No installments due this month'
+          }
           icon={PiggyBank}
           tone="brand"
         />
@@ -163,7 +182,7 @@ export function GoldSavingsDashboardPage() {
           tone="info"
         />
         <KpiCard
-          to="/gold-savings/accounts"
+          to="/gold-savings/overdue"
           label="Overdue installments"
           value={String(data.overdueInstallments)}
           icon={AlertTriangle}
@@ -192,6 +211,28 @@ export function GoldSavingsDashboardPage() {
           </Link>
         </div>
       </section>
+
+      <section className="card padded gs-month-target" aria-label="This month collection progress">
+        <div className="gs-month-target-head">
+          <h2>This month's collections</h2>
+          <span className="num">
+            {formatCurrency(data.monthCollections)} of {formatCurrency(data.monthTarget)}
+          </span>
+        </div>
+        <div className="gs-progress-track" role="progressbar" aria-valuenow={monthBarPct} aria-valuemin={0} aria-valuemax={100}>
+          <div className="gs-progress-fill" style={{ width: `${monthBarPct}%` }} />
+        </div>
+        <p className="muted">
+          {data.monthTarget > 0
+            ? `${monthPct}% of scheduled installments due this month`
+            : 'No installments are scheduled this month'}
+        </p>
+      </section>
+
+      <div className="dashboard-lifecycle-grid">
+        <OverdueAgingPanel buckets={data.overdueAging} />
+        <MaturityPipelinePanel buckets={data.maturityPipeline} />
+      </div>
 
       <div className="dashboard-mid-grid">
         <section className="card padded dashboard-panel">
@@ -312,6 +353,73 @@ function ListCard({
         <div className="card dashboard-due-list">{children}</div>
       ) : (
         <div className="card padded dashboard-empty-state">{empty}</div>
+      )}
+    </section>
+  )
+}
+
+const AGING_TONES = ['warn', 'orange', 'danger', 'critical'] as const
+
+function OverdueAgingPanel({ buckets }: { buckets: GoldSavingAgingBucket[] }) {
+  const max = Math.max(...buckets.map((row) => row.count), 1)
+  const total = buckets.reduce((sum, row) => sum + row.count, 0)
+  return (
+    <section className="card padded dashboard-panel">
+      <div className="dashboard-panel-head">
+        <h2>Overdue aging</h2>
+        <Link to="/gold-savings/overdue" className="dashboard-panel-link">
+          View all
+        </Link>
+      </div>
+      {total === 0 ? (
+        <p className="dashboard-empty-state">No overdue installments</p>
+      ) : (
+        <div className="gs-aging-bars">
+          {buckets.map((row, index) => (
+            <div key={row.bucket} className="gs-aging-row">
+              <span>{row.bucket}</span>
+              <div className="gs-enroll-track">
+                <div
+                  className={`gs-aging-fill gs-aging-fill-${AGING_TONES[index] ?? 'warn'}`}
+                  style={{ width: `${(row.count / max) * 100}%` }}
+                />
+              </div>
+              <strong className="num">{row.count}</strong>
+              <span className="muted num">{formatCurrency(row.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function MaturityPipelinePanel({ buckets }: { buckets: GoldSavingMaturityPipelineBucket[] }) {
+  const max = Math.max(...buckets.map((row) => row.count), 1)
+  const total = buckets.reduce((sum, row) => sum + row.count, 0)
+  return (
+    <section className="card padded dashboard-panel">
+      <div className="dashboard-panel-head">
+        <h2>Maturity pipeline</h2>
+        <Link to="/gold-savings/maturity" className="dashboard-panel-link">
+          View all
+        </Link>
+      </div>
+      {total === 0 ? (
+        <p className="dashboard-empty-state">No accounts maturing in the next 6 months</p>
+      ) : (
+        <div className="gs-aging-bars">
+          {buckets.map((row) => (
+            <div key={row.bucket} className="gs-aging-row">
+              <span>{row.bucket}</span>
+              <div className="gs-enroll-track">
+                <div className="gs-pipeline-fill" style={{ width: `${(row.count / max) * 100}%` }} />
+              </div>
+              <strong className="num">{row.count}</strong>
+              <span className="muted num">{formatWeight(row.gold, 3)}</span>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   )

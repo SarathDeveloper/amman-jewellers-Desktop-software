@@ -1,5 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, type NativeImage } from 'electron'
 import { existsSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import type { Server } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +19,18 @@ let ipcRegistered = false
 
 function isDevMode(): boolean {
   return !app.isPackaged && process.argv.includes('--dev')
+}
+
+function resolveAppIconPath(): string {
+  if (app.isPackaged) {
+    return join(app.getAppPath(), 'src', 'images', 'amman-jeweller-logo.png')
+  }
+  return join(here, '..', 'src', 'images', 'amman-jeweller-logo.png')
+}
+
+function loadAppIcon(): NativeImage | undefined {
+  const image = nativeImage.createFromPath(resolveAppIconPath())
+  return image.isEmpty() ? undefined : image
 }
 
 function configureDesktopPaths(): void {
@@ -149,6 +162,7 @@ function startApiServer(port: number): Promise<number> {
 }
 
 async function createMainWindow(loadUrl: string): Promise<void> {
+  const appIcon = loadAppIcon()
   const win = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -156,6 +170,7 @@ async function createMainWindow(loadUrl: string): Promise<void> {
     minHeight: 700,
     show: false,
     autoHideMenuBar: process.platform !== 'darwin',
+    ...(appIcon ? { icon: appIcon } : {}),
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -198,6 +213,92 @@ async function loadRenderer(win: BrowserWindow, url: string): Promise<void> {
   throw lastError instanceof Error ? lastError : new Error(`Failed to load ${url}`)
 }
 
+const PRINT_READY_SCRIPT = `new Promise((resolve, reject) => {
+  function settle(data) {
+    if (data && data.type === 'print-error') {
+      reject(new Error(typeof data.message === 'string' ? data.message : 'Failed to load preview'))
+      return
+    }
+    if (data && data.type === 'print-ready') {
+      resolve(true)
+      return
+    }
+  }
+  const existing = window.__PRINT_SIGNAL__
+  if (existing && (existing.type === 'print-error' || existing.type === 'print-ready')) {
+    settle(existing)
+    return
+  }
+  const timer = setTimeout(() => reject(new Error('Timed out waiting for print preview')), 15000)
+  function onMessage(event) {
+    if (event.origin !== window.location.origin) return
+    const data = event.data
+    if (!data || typeof data !== 'object') return
+    if (data.type !== 'print-error' && data.type !== 'print-ready') return
+    window.removeEventListener('message', onMessage)
+    clearTimeout(timer)
+    settle(data)
+  }
+  window.addEventListener('message', onMessage)
+  if (window.__PRINT_SIGNAL__) {
+    window.removeEventListener('message', onMessage)
+    clearTimeout(timer)
+    settle(window.__PRINT_SIGNAL__)
+  }
+})`
+
+function sanitizePdfFilename(name: string): string {
+  const cleaned = name
+    .trim()
+    .replace(/[/\\?%*:|"<>]/g, '-')
+    .replace(/^\.+/, '')
+  const base = cleaned || 'document.pdf'
+  return base.toLowerCase().endsWith('.pdf') ? base : `${base}.pdf`
+}
+
+function resolvePrintPdfUrl(path: string): string {
+  if (!rendererOrigin) {
+    throw new Error('The app is still starting. Try again in a moment.')
+  }
+  const url = new URL(path, rendererOrigin)
+  if (url.origin !== rendererOrigin || !url.pathname.startsWith('/print/')) {
+    throw new Error('Invalid print URL')
+  }
+  url.searchParams.set('embed', '1')
+  return url.toString()
+}
+
+async function generatePrintPdf(printUrl: string): Promise<Uint8Array> {
+  const session = (BrowserWindow.getFocusedWindow() ?? mainWindow)?.webContents.session
+  const win = new BrowserWindow({
+    show: false,
+    width: 900,
+    height: 1100,
+    skipTaskbar: true,
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      ...(session ? { session } : {}),
+    },
+  })
+  try {
+    await win.loadURL(printUrl)
+    await win.webContents.executeJavaScript(PRINT_READY_SCRIPT)
+    return await win.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+      pageSize: 'A4',
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+    })
+  } finally {
+    if (!win.isDestroyed()) {
+      win.destroy()
+    }
+  }
+}
+
 function registerIpc(): void {
   if (ipcRegistered) {
     return
@@ -220,10 +321,38 @@ function registerIpc(): void {
     await backupDatabaseTo(result.filePath)
     return { canceled: false, filePath: result.filePath }
   })
+  ipcMain.handle('save-as-pdf', async (_event, path: unknown, defaultFilename: unknown) => {
+    if (typeof path !== 'string' || typeof defaultFilename !== 'string') {
+      throw new Error('Invalid PDF export request')
+    }
+    const printUrl = resolvePrintPdfUrl(path)
+    const target = BrowserWindow.getFocusedWindow() ?? mainWindow
+    const options = {
+      title: 'Save PDF',
+      defaultPath: sanitizePdfFilename(defaultFilename),
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    }
+    const result = target
+      ? await dialog.showSaveDialog(target, options)
+      : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) {
+      return { canceled: true }
+    }
+    const filePath = result.filePath.toLowerCase().endsWith('.pdf')
+      ? result.filePath
+      : `${result.filePath}.pdf`
+    const pdf = await generatePrintPdf(printUrl)
+    await writeFile(filePath, pdf)
+    return { canceled: false, filePath }
+  })
 }
 
 async function boot(): Promise<void> {
   setupMenu()
+  const appIcon = loadAppIcon()
+  if (appIcon && process.platform === 'darwin') {
+    app.dock?.setIcon(appIcon)
+  }
   registerIpc()
 
   initDatabase()

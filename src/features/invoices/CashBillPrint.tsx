@@ -253,7 +253,18 @@ export function CashBillPrint({
             <div className="left">{vis.showSignatures ? labels.cashCustomerSign : null}</div>
             <div className="center">{vis.showThankYou ? labels.thanksLabel : null}</div>
             <div className="right">
-              {vis.showSignatures ? `${labels.cashForPrefix} ${shopInfo.name}` : null}
+              {vis.showSignatures ? (
+                <>
+                  {shopInfo.signatureImagePath ? (
+                    <img
+                      className="cash-bill-signature-img"
+                      src={localImageSrc(shopInfo.signatureImagePath, '')}
+                      alt=""
+                    />
+                  ) : null}
+                  {`${labels.cashForPrefix} ${shopInfo.name}`}
+                </>
+              ) : null}
             </div>
           </footer>
         ) : null}

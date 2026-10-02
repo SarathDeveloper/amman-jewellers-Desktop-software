@@ -195,7 +195,15 @@ export function PledgeReleasePrint({
             <span>WITNESS</span>
           </div>
           <div>
-            <div className="pledge-print-sign-line" />
+            <div className="pledge-print-sign-line">
+              {shopInfo.signatureImagePath ? (
+                <img
+                  className="pledge-print-sign-img"
+                  src={localImageSrc(shopInfo.signatureImagePath, '')}
+                  alt=""
+                />
+              ) : null}
+            </div>
             <span>{shopName ? `FOR ${shopName}` : 'FOR'}</span>
             <span className="pledge-print-sign-sub">(AUTHORIZED SIGNATORY)</span>
           </div>

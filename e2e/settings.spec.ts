@@ -84,7 +84,7 @@ test('invoice settings preview shows shop details on every template', async ({ w
 
   const preview = window.locator('.settings-bill-preview-frame')
   const invoiceTabs = window.locator('.billing-chrome-tabs')
-  await expect(preview).toContainText('CASH BILL')
+  await expect(preview).toContainText('QUOTATION')
   await expect(preview).toContainText('Invoice Shop')
   await expect(preview).toContainText('Thiru')
   await expect(window.locator('.settings-bill-preview-card .filter-chip')).toHaveCount(0)
@@ -100,7 +100,7 @@ test('invoice settings preview shows shop details on every template', async ({ w
   await expect(preview).toContainText('Invoice Shop')
 
   await invoiceTabs.getByRole('button', { name: 'Cash Bill' }).click()
-  await expect(preview).toContainText('CASH BILL')
+  await expect(preview).toContainText('QUOTATION')
   await expect(preview).toContainText('Invoice Shop')
 
   await window

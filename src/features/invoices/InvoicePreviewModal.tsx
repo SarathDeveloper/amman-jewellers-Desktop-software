@@ -16,6 +16,7 @@ export function InvoicePreviewModal({
     <PrintPreviewModal
       title="Print preview"
       path={billPrintPath(invoiceId, initialFormat)}
+      pdfFilename="invoice.pdf"
       onClose={onClose}
       onPrint={() => {
         void api.markInvoicePrinted(invoiceId).catch(() => undefined)

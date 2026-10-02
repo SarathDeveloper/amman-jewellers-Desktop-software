@@ -108,7 +108,7 @@ export function CollectPaymentModal({
           </label>
           <label>
             <span className="field-label">Payment date</span>
-            <DateInput value={paymentDate} onChange={setPaymentDate} />
+            <DateInput className="input" value={paymentDate} onChange={setPaymentDate} showIcon />
           </label>
           <label>
             <span className="field-label">Amount</span>

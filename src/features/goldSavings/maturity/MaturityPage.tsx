@@ -98,7 +98,7 @@ export function MaturityPage() {
         title="Maturity & redemption"
         subtitle="Redeem accumulated scheme gold. This does not change physical stock."
       />
-      <section className="card padded">
+      <section className="card padded card--search">
         <GsAccountSearch
           selected={account}
           onSelect={setAccount}
@@ -129,7 +129,7 @@ export function MaturityPage() {
             <div className="form-grid">
               <label>
                 <span className="field-label">Redemption date</span>
-                <DateInput value={date} onChange={setDate} />
+                <DateInput className="input" value={date} onChange={setDate} showIcon />
               </label>
               <label>
                 <span className="field-label">Option</span>

@@ -60,13 +60,13 @@ export async function openNewBill(page: Page, type: 'cash' | 'tax') {
     await expect(page.getByRole('heading', { name: 'New Tax Invoice' })).toBeVisible()
     return
   }
-  const newLink = page.getByRole('link', { name: 'New Cash Bill' })
+  const newLink = page.getByRole('link', { name: 'New Quotation' })
   if (await newLink.isVisible()) {
     await newLink.click()
   } else {
-    await page.getByRole('tab', { name: /Cash Bill/ }).click()
+    await page.getByRole('tab', { name: /Quotation/ }).click()
   }
-  await expect(page.getByRole('heading', { name: 'New Cash Bill' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'New Quotation' })).toBeVisible()
 }
 
 export async function addCustomerOnBill(page: Page, name: string, phone: string) {

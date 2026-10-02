@@ -2,6 +2,7 @@ import type { GoldSavingLedgerEntry, GoldSavingPassbook } from '@shared/types'
 import logoUrl from '../../../assets/jeweltrackerpro-logo.svg'
 import { formatDisplayDate } from '../../../lib/format'
 import { EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from '../../invoices/mapShopDisplay'
+import { currentBonusGold, progressPct, projectedBonusGold } from '../gsProjection'
 import './GsPassbookPrint.css'
 
 const COLUMNS = ['மாதம்', 'தேதி', 'ரசீது எண்', 'தொகை', 'தங்கம் விலை', 'தங்கம் எடை', 'கையொப்பம்'] as const
@@ -22,7 +23,7 @@ function monthLabel(index: number): string {
 function ruleLines(terms: string): string[] {
   const lines = terms
     .split(/\r?\n/)
-    .map((line) => line.replace(/^[•\-\*\u2022]\s*/, '').trim())
+    .map((line) => line.replace(/^[•\-*\u2022]\s*/, '').trim())
     .filter(Boolean)
   return lines.length > 0 ? lines : DEFAULT_RULES
 }
@@ -55,6 +56,37 @@ export function GsPassbookPrint({
     ? localImageSrc(shopInfo.passbookSideImagePath, '')
     : ''
   const rules = ruleLines(passbook.scheme.terms)
+  const paidCount = passbook.account.paidInstallments
+  const duration = passbook.account.durationMonths
+  const schemePct = progressPct(paidCount, duration)
+  const remaining = Math.max(0, duration - paidCount)
+  const bonusNow = currentBonusGold({
+    scheme: passbook.scheme,
+    accumulatedGrams: passbook.account.goldAccumulated,
+    paidInstallments: paidCount,
+    durationMonths: duration,
+    ratePerGram: 0,
+  })
+  const bonusProjected = projectedBonusGold({
+    scheme: passbook.scheme,
+    accumulatedGrams: passbook.account.goldAccumulated,
+    remainingInstallments: remaining,
+    monthlyAmount: passbook.account.monthlyAmount,
+    durationMonths: duration,
+    ratePerGram: 0,
+  })
+  const bonusLine =
+    passbook.scheme.bonusType === 'none' || passbook.scheme.bonusValue <= 0
+      ? 'None'
+      : bonusNow > 0
+        ? `${bonusNow.toFixed(3)} g eligible`
+        : bonusProjected > 0
+          ? `${bonusProjected.toFixed(3)} g if completed`
+          : passbook.scheme.bonusType === 'fixed_amount'
+            ? `₹${passbook.scheme.bonusValue.toFixed(2)} if completed`
+            : passbook.scheme.bonusType === 'additional_gold'
+              ? `${passbook.scheme.bonusValue.toFixed(3)} g if completed`
+              : `${passbook.scheme.bonusValue}% if completed`
 
   return (
     <div className="gs-passbook-root" data-print-root>
@@ -151,6 +183,27 @@ export function GsPassbookPrint({
             </dl>
           </section>
         </div>
+
+        <section className="gs-passbook-summary" aria-label="Scheme summary">
+          <div>
+            <span>Amount paid</span>
+            <strong>₹{passbook.account.totalPaid.toFixed(2)}</strong>
+          </div>
+          <div>
+            <span>Gold accumulated</span>
+            <strong>{passbook.account.goldAccumulated.toFixed(3)} g</strong>
+          </div>
+          <div>
+            <span>Installments</span>
+            <strong>
+              {paidCount} / {duration} ({schemePct}%)
+            </strong>
+          </div>
+          <div>
+            <span>Bonus</span>
+            <strong>{bonusLine}</strong>
+          </div>
+        </section>
 
         <table>
           <colgroup>

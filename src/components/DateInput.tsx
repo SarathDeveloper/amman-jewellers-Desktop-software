@@ -1,3 +1,4 @@
+import { Calendar } from 'lucide-react'
 import { formatDisplayDate, formatDisplayClock } from '../lib/format'
 
 export function DateInput({
@@ -8,6 +9,7 @@ export function DateInput({
   ariaLabel,
   min,
   max,
+  showIcon,
 }: {
   value: string
   onChange: (isoDate: string) => void
@@ -16,9 +18,11 @@ export function DateInput({
   ariaLabel?: string
   min?: string
   max?: string
+  showIcon?: boolean
 }) {
   return (
     <span className={`date-display-input${className ? ` ${className}` : ''}`}>
+      {showIcon ? <Calendar size={14} strokeWidth={1.75} className="date-display-input-icon" aria-hidden /> : null}
       <span className="date-display-input-value">{value ? formatDisplayDate(value) : '—'}</span>
       <input
         type="date"
