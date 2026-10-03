@@ -1,4 +1,4 @@
-import type { DueEntry, DuesLedger, Invoice, ItemStockRow } from '@shared/types'
+import type { DueEntry, DuesLedger, Invoice, InvoiceListStats, ItemStockRow } from '@shared/types'
 import { dateInRange, monthRange } from '../invoices/billingInsights'
 
 export const RECENT_BILLS_LIMIT = 3
@@ -344,10 +344,10 @@ function computeSalesOverview(
   const periodSales = inRange.reduce((sum, inv) => sum + inv.total, 0)
   const averageBillValue = billsGenerated > 0 ? periodSales / billsGenerated : 0
   const customersBilled = new Set(inRange.map((inv) => inv.customerId)).size
-  const totalItemsSold = inRange.reduce(
-    (sum, inv) => sum + inv.items.reduce((itemSum, item) => itemSum + item.qty, 0),
-    0,
-  )
+  const totalItemsSold = inRange.reduce((sum, inv) => {
+    const fromLines = inv.items.reduce((itemSum, item) => itemSum + item.qty, 0)
+    return sum + (inv.items.length > 0 ? fromLines : (inv.itemCount ?? 0))
+  }, 0)
 
   return {
     hourlyTotals: chartBuckets.map((bucket) => bucket.total),
@@ -437,6 +437,52 @@ export function computeDashboardStats(
     silverClosing: sumClosingWeight(silverStock),
     recentBills: invoiceList.slice(0, RECENT_BILLS_LIMIT),
     salesOverview: computeSalesOverview(invoiceList, range, period, today),
+    metalStock: {
+      gold: sumMetalStock(goldStock),
+      silver: sumMetalStock(silverStock),
+    },
+    dueCollections,
+    outstandingCustomerCount,
+  }
+}
+
+export function applyInvoiceStats(
+  invoiceStats: InvoiceListStats,
+  recentBills: Invoice[],
+  ledger: DuesLedger | null | undefined,
+  goldStock: ItemStockRow[] | null | undefined,
+  silverStock: ItemStockRow[] | null | undefined,
+  today: string,
+  options: DashboardStatsOptions = {},
+): DashboardStats {
+  const period = options.period ?? 'today'
+  const range = resolvePeriodRange(period, today, options.customFrom, options.customTo)
+  const granularity = periodGranularity(period, range)
+  const chartBuckets = buildChartBuckets(period, range, granularity, today)
+  const byKey = new Map(invoiceStats.chart.map((row) => [row.key, row.total]))
+  for (const bucket of chartBuckets) {
+    bucket.total = byKey.get(bucket.key) ?? 0
+  }
+  const { dueCollections, outstandingCustomerCount } = computeDueCollections(ledger, today)
+
+  return {
+    todaySales: invoiceStats.sales,
+    todayCollections: invoiceStats.collections,
+    totalOutstanding: ledger?.totalOutstanding ?? 0,
+    draftCount: invoiceStats.draftCount,
+    goldClosing: sumClosingWeight(goldStock),
+    silverClosing: sumClosingWeight(silverStock),
+    recentBills: recentBills.slice(0, RECENT_BILLS_LIMIT),
+    salesOverview: {
+      hourlyTotals: chartBuckets.map((bucket) => bucket.total),
+      chartBuckets,
+      chartGranularity: granularity,
+      billsGenerated: invoiceStats.billsGenerated,
+      averageBillValue:
+        invoiceStats.billsGenerated > 0 ? invoiceStats.sales / invoiceStats.billsGenerated : 0,
+      customersBilled: invoiceStats.customersBilled,
+      totalItemsSold: invoiceStats.totalItemsSold,
+    },
     metalStock: {
       gold: sumMetalStock(goldStock),
       silver: sumMetalStock(silverStock),

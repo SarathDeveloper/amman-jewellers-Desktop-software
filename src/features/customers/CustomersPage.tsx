@@ -19,7 +19,7 @@ import { monthRange } from '../invoices/billingInsights'
 export function CustomersPage() {
   const { showToast } = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [profileInvoices, setProfileInvoices] = useState<Invoice[]>([])
   const [ledger, setLedger] = useState<DuesLedger>({ columns: [], totalOutstanding: 0 })
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -38,14 +38,12 @@ export function CustomersPage() {
           setError(null)
           setLoading(true)
         }
-        const [customerList, invoiceList, dues] = await Promise.all([
+        const [customerList, dues] = await Promise.all([
           api.listCustomers(search),
-          api.listInvoices(),
           api.listDues(),
         ])
         if (active) {
           setCustomers(customerList)
-          setInvoices(invoiceList)
           setLedger(dues)
         }
       } catch (err) {
@@ -71,15 +69,13 @@ export function CustomersPage() {
 
   const lastBillByCustomer = useMemo(() => {
     const map = new Map<number, string>()
-    for (const invoice of invoices) {
-      if (invoice.status !== 'final' || invoice.isEstimate) continue
-      const current = map.get(invoice.customerId)
-      if (!current || invoice.invoiceDate > current) {
-        map.set(invoice.customerId, invoice.invoiceDate)
+    for (const customer of customers) {
+      if (customer.lastBillDate) {
+        map.set(customer.id, customer.lastBillDate)
       }
     }
     return map
-  }, [invoices])
+  }, [customers])
 
   const today = new Date().toISOString().slice(0, 10)
   const thisMonth = monthRange(today)
@@ -95,13 +91,8 @@ export function CustomersPage() {
   async function load() {
     try {
       setError(null)
-      const [customerList, invoiceList, dues] = await Promise.all([
-        api.listCustomers(search),
-        api.listInvoices(),
-        api.listDues(),
-      ])
+      const [customerList, dues] = await Promise.all([api.listCustomers(search), api.listDues()])
       setCustomers(customerList)
-      setInvoices(invoiceList)
       setLedger(dues)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load customers')
@@ -129,10 +120,29 @@ export function CustomersPage() {
     }
   }
 
+  useEffect(() => {
+    if (!profile) {
+      setProfileInvoices([])
+      return
+    }
+    let active = true
+    void api
+      .listInvoices({ customerId: profile.id, page: 1, pageSize: 50, status: 'final' })
+      .then((page) => {
+        if (active) setProfileInvoices(page.items)
+      })
+      .catch(() => {
+        if (active) setProfileInvoices([])
+      })
+    return () => {
+      active = false
+    }
+  }, [profile])
+
   const profileSummary = profile
     ? buildCustomerProfile(
         profile.id,
-        invoices,
+        profileInvoices,
         ledger.columns.find((column) => column.customerId === profile.id),
       )
     : null

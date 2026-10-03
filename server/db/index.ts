@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import Database from 'better-sqlite3'
 import { ensureDefaultAdmin, seedE2eAdmin } from '../auth/users'
 import { getDataDir } from '../lib/paths'
+import { sqliteNativeOptions } from '../lib/sqliteNative'
 import { getMigrations } from './migrations'
 import { ensureStockCategories } from './stockCategories'
 
@@ -65,7 +66,7 @@ export function initDatabase(): Database.Database {
 
   const dbPath = getDbPath()
   mkdirSync(dirname(dbPath), { recursive: true })
-  db = new Database(dbPath)
+  db = new Database(dbPath, sqliteNativeOptions())
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   runMigrations(db)

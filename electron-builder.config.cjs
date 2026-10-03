@@ -13,9 +13,9 @@ module.exports = {
     },
   ],
   asar: true,
-  asarUnpack: ['**/*.node', '**/better-sqlite3/**'],
-  // better-sqlite3 ships N-API prebuilds, including win32-x64. Rebuilding from
-  // macOS fails because node-gyp cannot cross-compile that addon.
+  asarUnpack: ['**/*.node'],
+  // better-sqlite3 ships N-API prebuilds. Rebuilding from macOS cannot
+  // cross-compile the Windows addon, so keep the published win32-x64.node.
   npmRebuild: false,
   electronLanguages: ['en'],
   win: {
@@ -28,6 +28,12 @@ module.exports = {
     ],
     artifactName: '${productName}-Setup-${version}.${ext}',
     requestedExecutionLevel: 'asInvoker',
+    extraResources: [
+      {
+        from: 'node_modules/better-sqlite3/prebuilds/win32-x64.node',
+        to: 'better-sqlite3/win32-x64.node',
+      },
+    ],
   },
   nsis: {
     oneClick: false,
@@ -44,6 +50,16 @@ module.exports = {
     category: 'public.app-category.business',
     artifactName: '${productName}-${version}-${arch}.${ext}',
     identity: null,
+    extraResources: [
+      {
+        from: 'node_modules/better-sqlite3/prebuilds/darwin-arm64.node',
+        to: 'better-sqlite3/darwin-arm64.node',
+      },
+      {
+        from: 'node_modules/better-sqlite3/prebuilds/darwin-x64.node',
+        to: 'better-sqlite3/darwin-x64.node',
+      },
+    ],
   },
   dmg: {
     artifactName: '${productName}-${version}.${ext}',
@@ -52,5 +68,11 @@ module.exports = {
     icon: 'build/icon.png',
     target: ['AppImage'],
     category: 'Office',
+    extraResources: [
+      {
+        from: 'node_modules/better-sqlite3/prebuilds/linux-x64.node',
+        to: 'better-sqlite3/linux-x64.node',
+      },
+    ],
   },
 }

@@ -63,12 +63,14 @@ test('shop logo uploads and persists after save', async ({ window }) => {
   ).toHaveAttribute('src', /\/uploads\/.+\.png/)
 })
 
-test('invoice settings preview shows shop details on every template', async ({ window }) => {
+test('invoice settings preview opens from Test Print', async ({ window }) => {
   await sidebarLink(window, 'Settings').click()
   await expect(window.getByRole('heading', { name: 'Shop Identity' })).toBeVisible()
   await expect(window.getByRole('heading', { name: 'Invoice Settings' })).toBeVisible()
-  await expect(window.getByRole('heading', { name: 'Live template' })).toBeVisible()
+  await expect(window.getByRole('heading', { name: 'Bill template' })).toBeVisible()
   await expect(window.getByRole('button', { name: 'Test Print' })).toBeVisible()
+  await expect(window.locator('.settings-bill-preview-placeholder')).toContainText('Cash bill')
+  await expect(window.locator('.settings-bill-preview-frame')).toHaveCount(0)
   await window.getByRole('button', { name: 'Test Print' }).click()
   const previewDialog = await expectPrintPreviewModal(window)
   await previewDialog.getByRole('button', { name: 'Close' }).click()
@@ -82,26 +84,16 @@ test('invoice settings preview shows shop details on every template', async ({ w
   await window.getByRole('textbox', { name: /Address Line 1/ }).fill('1 Market Street')
   await window.getByRole('textbox', { name: /City/ }).fill('Salem')
 
-  const preview = window.locator('.settings-bill-preview-frame')
   const invoiceTabs = window.locator('.billing-chrome-tabs')
-  await expect(preview).toContainText('QUOTATION')
-  await expect(preview).toContainText('Invoice Shop')
-  await expect(preview).toContainText('Thiru')
-  await expect(window.locator('.settings-bill-preview-card .filter-chip')).toHaveCount(0)
-
   await invoiceTabs.getByRole('button', { name: 'Tax Invoice' }).click()
-  await expect(preview).toContainText('TAX INVOICE')
-  await expect(preview).toContainText('BILL TO')
-  await expect(preview).toContainText('Invoice Shop')
+  await expect(window.locator('.settings-bill-preview-placeholder')).toContainText('Tax invoice')
 
   await invoiceTabs.getByRole('button', { name: 'Adagu Bill' }).click()
-  await expect(preview).toContainText('ADAGU / GOLD PLEDGE RECEIPT')
-  await expect(preview).toContainText('AD-2026-0001')
-  await expect(preview).toContainText('Invoice Shop')
+  await expect(window.locator('.settings-bill-preview-placeholder')).toContainText('Adagu bill')
+  await expect(window.getByText('Adagu POS Settings')).toBeVisible()
 
   await invoiceTabs.getByRole('button', { name: 'Cash Bill' }).click()
-  await expect(preview).toContainText('QUOTATION')
-  await expect(preview).toContainText('Invoice Shop')
+  await expect(window.locator('.settings-bill-preview-placeholder')).toContainText('Cash bill')
 
   await window
     .locator('.card')
@@ -137,4 +129,5 @@ test('printers backup and data settings are available', async ({ window }) => {
   await window.getByRole('tab', { name: 'Data', exact: true }).click()
   await expect(window.getByRole('heading', { name: 'Data' })).toBeVisible()
   await expect(window.getByText('App version')).toBeVisible()
+  await expect(window.getByText(/products, .*customers/)).toBeVisible()
 })

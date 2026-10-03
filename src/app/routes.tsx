@@ -1,34 +1,21 @@
+import { lazy } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppLayout } from './layout/AppLayout'
 import { RequireAuth } from '../features/auth/RequireAuth'
 import { LoginPage } from '../features/auth/LoginPage'
 import { ChangePasswordPage } from '../features/auth/ChangePasswordPage'
-import { UsersPage } from '../features/users/UsersPage'
 import { CustomersPage } from '../features/customers/CustomersPage'
 import { DuesPage } from '../features/dues/DuesPage'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
-import { CashBillPrintPage } from '../features/invoices/CashBillPrintPage'
-import { TaxInvoicePrintPage } from '../features/invoices/TaxInvoicePrintPage'
-import { SampleBillPrintPage } from '../features/invoices/SampleBillPrintPage'
-import { TestPrintPage } from '../features/invoices/TestPrintPage'
 import { BillingLayout } from '../features/invoices/BillingLayout'
-import { InvoiceEditorPage } from '../features/invoices/InvoiceEditorPage'
 import { InvoiceRouteRedirect } from '../features/invoices/InvoiceRouteRedirect'
 import { InvoicesPage } from '../features/invoices/InvoicesPage'
-import { OldBillPage } from '../features/invoices/OldBillPage'
-import { PledgeEditorPage } from '../features/pledges/PledgeEditorPage'
-import { PledgePrintPage } from '../features/pledges/PledgePrintPage'
-import { PledgeReleasePrintPage } from '../features/pledges/PledgeReleasePrintPage'
 import { InventoryIndexRedirect, InventoryLayout } from '../features/inventory/InventoryLayout'
 import { ProductsPage } from '../features/products/ProductsPage'
 import { StockPage } from '../features/stock/StockPage'
-import { MetalDayPrintPage } from '../features/stock/MetalDayPrintPage'
-import { ClosingSummaryPrintPage } from '../features/stock/ClosingSummaryPrintPage'
 import { InwardsPage } from '../features/inwards/InwardsPage'
-import { PurchaseInvoicePrintPage } from '../features/inwards/PurchaseInvoicePrintPage'
 import { OldGoldPurchasesPage } from '../features/oldGoldPurchases/OldGoldPurchasesPage'
 import { SuppliersPage } from '../features/suppliers/SuppliersPage'
-import { SettingsPage } from '../features/settings/SettingsPage'
 import { ReportsLayout } from '../features/reports/ReportsLayout'
 import { ReportViewPage } from '../features/reports/ReportViewPage'
 import { MetalRatesPage } from '../features/rates/MetalRatesPage'
@@ -46,10 +33,85 @@ import { SchemeLedgerPage } from '../features/goldSavings/ledger/SchemeLedgerPag
 import { MaturityPage } from '../features/goldSavings/maturity/MaturityPage'
 import { GoldSavingsReportsPage } from '../features/goldSavings/reports/GoldSavingsReportsPage'
 import { OverdueAgingPage } from '../features/goldSavings/overdue/OverdueAgingPage'
-import { GsReceiptPrintPage } from '../features/goldSavings/print/GsReceiptPrintPage'
-import { GsPassbookPrintPage } from '../features/goldSavings/print/GsPassbookPrintPage'
+import { RouteErrorPage } from '../components/RouteErrorPage'
+
+const UsersPage = lazy(() =>
+  import('../features/users/UsersPage').then((module) => ({ default: module.UsersPage })),
+)
+const SettingsPage = lazy(() =>
+  import('../features/settings/SettingsPage').then((module) => ({ default: module.SettingsPage })),
+)
+const CashBillPrintPage = lazy(() =>
+  import('../features/invoices/CashBillPrintPage').then((module) => ({
+    default: module.CashBillPrintPage,
+  })),
+)
+const TaxInvoicePrintPage = lazy(() =>
+  import('../features/invoices/TaxInvoicePrintPage').then((module) => ({
+    default: module.TaxInvoicePrintPage,
+  })),
+)
+const SampleBillPrintPage = lazy(() =>
+  import('../features/invoices/SampleBillPrintPage').then((module) => ({
+    default: module.SampleBillPrintPage,
+  })),
+)
+const TestPrintPage = lazy(() =>
+  import('../features/invoices/TestPrintPage').then((module) => ({ default: module.TestPrintPage })),
+)
+const InvoiceEditorPage = lazy(() =>
+  import('../features/invoices/InvoiceEditorPage').then((module) => ({
+    default: module.InvoiceEditorPage,
+  })),
+)
+const OldBillPage = lazy(() =>
+  import('../features/invoices/OldBillPage').then((module) => ({ default: module.OldBillPage })),
+)
+const PledgeEditorPage = lazy(() =>
+  import('../features/pledges/PledgeEditorPage').then((module) => ({
+    default: module.PledgeEditorPage,
+  })),
+)
+const PledgePrintPage = lazy(() =>
+  import('../features/pledges/PledgePrintPage').then((module) => ({
+    default: module.PledgePrintPage,
+  })),
+)
+const PledgeReleasePrintPage = lazy(() =>
+  import('../features/pledges/PledgeReleasePrintPage').then((module) => ({
+    default: module.PledgeReleasePrintPage,
+  })),
+)
+const MetalDayPrintPage = lazy(() =>
+  import('../features/stock/MetalDayPrintPage').then((module) => ({
+    default: module.MetalDayPrintPage,
+  })),
+)
+const ClosingSummaryPrintPage = lazy(() =>
+  import('../features/stock/ClosingSummaryPrintPage').then((module) => ({
+    default: module.ClosingSummaryPrintPage,
+  })),
+)
+const PurchaseInvoicePrintPage = lazy(() =>
+  import('../features/inwards/PurchaseInvoicePrintPage').then((module) => ({
+    default: module.PurchaseInvoicePrintPage,
+  })),
+)
+const GsReceiptPrintPage = lazy(() =>
+  import('../features/goldSavings/print/GsReceiptPrintPage').then((module) => ({
+    default: module.GsReceiptPrintPage,
+  })),
+)
+const GsPassbookPrintPage = lazy(() =>
+  import('../features/goldSavings/print/GsPassbookPrintPage').then((module) => ({
+    default: module.GsPassbookPrintPage,
+  })),
+)
 
 export const router = createBrowserRouter([
+  {
+    errorElement: <RouteErrorPage />,
+    children: [
   {
     path: '/print/cash-bill/:id',
     element: <CashBillPrintPage />,
@@ -186,6 +248,8 @@ export const router = createBrowserRouter([
       },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'users', element: <UsersPage /> },
+    ],
+  },
     ],
   },
 ])

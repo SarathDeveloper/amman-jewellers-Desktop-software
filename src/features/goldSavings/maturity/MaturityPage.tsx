@@ -40,13 +40,15 @@ export function MaturityPage() {
 
   useEffect(() => {
     if (!account) return
-    void Promise.all([api.getGsAccount(account.id), api.listInvoices(), api.getLatestMetalRates()]).then(
-      ([next, bills, latest]) => {
-        setDetail(next)
-        setInvoices(bills.filter((bill) => bill.customerId === next.account.customerId && bill.status === 'final'))
-        setRates(latest)
-      },
-    )
+    void Promise.all([
+      api.getGsAccount(account.id),
+      api.listInvoices({ customerId: account.customerId, page: 1, pageSize: 50, status: 'final' }),
+      api.getLatestMetalRates(),
+    ]).then(([next, bills, latest]) => {
+      setDetail(next)
+      setInvoices(bills.items.filter((bill) => bill.status === 'final'))
+      setRates(latest)
+    })
   }, [account])
 
   async function redeem() {

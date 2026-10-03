@@ -6,26 +6,39 @@
     <title>JewelTrackerPro</title>
     <style>
       html,
-      body,
-      #root {
+      body {
         height: 100%;
         margin: 0;
         background: #f3f4f6;
         color: #111827;
         font-family: "Segoe UI", system-ui, sans-serif;
       }
-      #boot-fallback {
+      .splash {
         min-height: 100%;
         display: grid;
         place-items: center;
+        gap: 0.85rem;
         font-size: 0.95rem;
+      }
+      .spinner {
+        width: 1.75rem;
+        height: 1.75rem;
+        border: 2px solid #d1d5db;
+        border-top-color: #7e3af2;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
     </style>
   </head>
   <body>
-    <div id="root">
-      <div id="boot-fallback">Loading JewelTrackerPro…</div>
+    <div class="splash">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>Loading JewelTrackerPro…</div>
     </div>
-    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

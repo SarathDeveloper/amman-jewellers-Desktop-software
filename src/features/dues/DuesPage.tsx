@@ -25,14 +25,17 @@ export function DuesPage() {
 
   async function loadLedger() {
     setError(null)
-    const [data, invoiceList] = await Promise.all([api.listDues(search), api.listInvoices()])
+    const [data, todayBills] = await Promise.all([
+      api.listDues(search),
+      api.listInvoices({ from: today, to: today, page: 1, pageSize: 50 }),
+    ])
     const ledger: DuesLedger = {
       ...data,
       adaguDues: data.adaguDues ?? [],
       adaguOutstanding: data.adaguOutstanding ?? 0,
     }
     setLedger(ledger)
-    setInvoices(invoiceList)
+    setInvoices(todayBills.items)
     return ledger
   }
 

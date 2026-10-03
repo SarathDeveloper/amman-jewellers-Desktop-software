@@ -8,14 +8,38 @@ import { createApp } from '../server/app'
 import { backupDatabaseTo, tickScheduledBackup } from '../server/db/backup'
 import { closeDatabase, initDatabase } from '../server/db'
 import { getAppRoot } from '../server/lib/appPaths'
+import { logError } from '../server/lib/logger'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const preloadPath = join(here, 'preload.cjs')
+const splashPath = join(here, 'splash.html')
 
 let mainWindow: BrowserWindow | null = null
 let apiServer: Server | null = null
 let rendererOrigin = ''
 let ipcRegistered = false
+
+const MAX_RENDERER_RECOVERIES = 3
+const rendererRecoveries = new WeakMap<BrowserWindow, number>()
+
+function scheduleRendererReload(win: BrowserWindow, reason: string): void {
+  if (win.isDestroyed()) {
+    return
+  }
+  const attempts = rendererRecoveries.get(win) ?? 0
+  if (attempts >= MAX_RENDERER_RECOVERIES) {
+    console.error(`Renderer recovery exhausted after ${attempts} attempts (${reason})`)
+    return
+  }
+  rendererRecoveries.set(win, attempts + 1)
+  console.error(`Reloading renderer (${reason}), attempt ${attempts + 1} of ${MAX_RENDERER_RECOVERIES}`)
+  setTimeout(() => {
+    if (win.isDestroyed()) {
+      return
+    }
+    win.webContents.reload()
+  }, 1500)
+}
 
 function isDevMode(): boolean {
   return !app.isPackaged && process.argv.includes('--dev')
@@ -96,6 +120,7 @@ function attachWindowHandlers(win: BrowserWindow): void {
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: true,
+            backgroundThrottling: false,
           },
         },
       }
@@ -107,7 +132,7 @@ function attachWindowHandlers(win: BrowserWindow): void {
   })
 
   win.webContents.on('will-navigate', (event, url) => {
-    if (url.startsWith('about:')) {
+    if (url.startsWith('about:') || url.startsWith('file:')) {
       return
     }
     if (!isRendererUrl(url)) {
@@ -116,6 +141,38 @@ function attachWindowHandlers(win: BrowserWindow): void {
         void shell.openExternal(url)
       }
     }
+  })
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit') {
+      return
+    }
+    logError(`Renderer process gone: ${details.reason} (exit ${details.exitCode})`)
+    scheduleRendererReload(win, `render-process-gone: ${details.reason}`)
+  })
+
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, _validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) {
+      return
+    }
+    logError(`Page failed to load: ${errorDescription} (${errorCode})`)
+    scheduleRendererReload(win, `did-fail-load: ${errorDescription}`)
+  })
+
+  win.webContents.on('unresponsive', () => {
+    logError('Renderer became unresponsive')
+  })
+
+  win.webContents.on('responsive', () => {
+    logError('Renderer became responsive again')
+  })
+
+  win.webContents.on('did-finish-load', () => {
+    rendererRecoveries.delete(win)
+  })
+
+  win.webContents.on('did-navigate-in-page', () => {
+    rendererRecoveries.delete(win)
   })
 
   if (!isDevMode()) {
@@ -161,14 +218,15 @@ function startApiServer(port: number): Promise<number> {
   })
 }
 
-async function createMainWindow(loadUrl: string): Promise<void> {
+async function createMainWindow(): Promise<BrowserWindow> {
   const appIcon = loadAppIcon()
   const win = new BrowserWindow({
     width: 1280,
     height: 840,
     minWidth: 1024,
     minHeight: 700,
-    show: false,
+    show: true,
+    backgroundColor: '#f3f4f6',
     autoHideMenuBar: process.platform !== 'darwin',
     ...(appIcon ? { icon: appIcon } : {}),
     webPreferences: {
@@ -176,13 +234,10 @@ async function createMainWindow(loadUrl: string): Promise<void> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   })
   mainWindow = win
-
-  win.once('ready-to-show', () => {
-    win.show()
-  })
 
   win.on('closed', () => {
     if (mainWindow === win) {
@@ -194,7 +249,8 @@ async function createMainWindow(loadUrl: string): Promise<void> {
     win.webContents.openDevTools({ mode: 'detach' })
   }
 
-  await loadRenderer(win, loadUrl)
+  await win.loadFile(splashPath)
+  return win
 }
 
 async function loadRenderer(win: BrowserWindow, url: string): Promise<void> {
@@ -206,7 +262,7 @@ async function loadRenderer(win: BrowserWindow, url: string): Promise<void> {
     } catch (error) {
       lastError = error
       await new Promise((resolve) => {
-        setTimeout(resolve, 250)
+        setTimeout(resolve, 500)
       })
     }
   }
@@ -280,6 +336,7 @@ async function generatePrintPdf(printUrl: string): Promise<Uint8Array> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
       ...(session ? { session } : {}),
     },
   })
@@ -355,6 +412,8 @@ async function boot(): Promise<void> {
   }
   registerIpc()
 
+  const win = await createMainWindow()
+
   initDatabase()
   const runScheduledBackup = () =>
     tickScheduledBackup().catch((error: unknown) => {
@@ -381,7 +440,10 @@ async function boot(): Promise<void> {
     }
   }
 
-  await createMainWindow(rendererUrl)
+  if (win.isDestroyed()) {
+    return
+  }
+  await loadRenderer(win, rendererUrl)
 }
 
 const gotLock = app.requestSingleInstanceLock()
@@ -391,6 +453,11 @@ if (!gotLock) {
   app.setName('JewelTrackerPro')
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.jeweltrackerpro.desktop')
+    app.disableHardwareAcceleration()
+    app.commandLine.appendSwitch('disable-renderer-backgrounding')
+    app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+    app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
+    app.commandLine.appendSwitch('js-flags', '--max-old-space-size=512')
   }
   configureDesktopPaths()
 
@@ -410,6 +477,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     void boot().catch((error: unknown) => {
+      logError('JewelTrackerPro failed to start', error)
       const message = error instanceof Error ? error.message : String(error)
       dialog.showErrorBox('JewelTrackerPro failed to start', message)
       app.quit()
@@ -419,7 +487,7 @@ if (!gotLock) {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && rendererOrigin) {
       const url = isDevMode() ? 'http://127.0.0.1:5173' : rendererOrigin
-      void createMainWindow(url)
+      void createMainWindow().then((win) => loadRenderer(win, url))
     }
   })
 

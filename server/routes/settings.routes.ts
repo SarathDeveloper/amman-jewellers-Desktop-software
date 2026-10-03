@@ -39,6 +39,17 @@ router.get(
   }),
 )
 
+router.get(
+  '/counts',
+  requireFeature('settings'),
+  asyncHandler((_req, res) => {
+    const db = getDatabase()
+    const products = (db.prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number }).n
+    const customers = (db.prepare('SELECT COUNT(*) AS n FROM customers').get() as { n: number }).n
+    res.json({ products, customers })
+  }),
+)
+
 router.put(
   '/',
   requireFeature('settings'),

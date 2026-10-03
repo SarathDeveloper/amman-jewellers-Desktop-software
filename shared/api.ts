@@ -16,6 +16,8 @@ import type {
   HistoricalInvoiceInput,
   Invoice,
   InvoiceInput,
+  InvoiceListQuery,
+  InvoiceListStats,
   InvoicePaymentInput,
   InvoiceUpdateInput,
   ItemStockListInput,
@@ -24,10 +26,12 @@ import type {
   LoginInput,
   MetalRates,
   MetalRatesInput,
+  PagedList,
   Pledge,
   PledgeCollectInput,
   PledgeForfeitInput,
   PledgeInput,
+  PledgeListQuery,
   PledgeRedeemInput,
   PledgeTopup,
   PledgeTopupInput,
@@ -35,6 +39,7 @@ import type {
   Product,
   ProductInput,
   ResetPasswordInput,
+  RecordCounts,
   ShopSettings,
   StockCategory,
   StockCategoryCreateInput,
@@ -149,7 +154,8 @@ export interface JewelTrackerProApi {
   recordDuePayment: (input: DuePaymentInput) => Promise<DueEntry>
   markDuePaid: (id: number) => Promise<DueEntry>
 
-  listInvoices: () => Promise<Invoice[]>
+  listInvoices: (input?: InvoiceListQuery) => Promise<PagedList<Invoice>>
+  getInvoiceStats: (input: { from: string; to: string; granularity?: string }) => Promise<InvoiceListStats>
   getInvoice: (id: number) => Promise<Invoice>
   getNextInvoiceNo: (format: BillFormat) => Promise<{ invoiceNo: string }>
   createInvoice: (input: InvoiceInput) => Promise<Invoice>
@@ -160,7 +166,7 @@ export interface JewelTrackerProApi {
   deleteInvoice: (id: number) => Promise<void>
   getTaxReport: () => Promise<TaxReportRow[]>
 
-  listPledges: () => Promise<Pledge[]>
+  listPledges: (input?: PledgeListQuery) => Promise<PagedList<Pledge>>
   getNextPledgeReceiptNo: () => Promise<{ receiptNo: string }>
   getPledge: (id: number) => Promise<Pledge>
   createPledge: (input: PledgeInput) => Promise<Pledge>
@@ -173,8 +179,9 @@ export interface JewelTrackerProApi {
   addPledgeTopup: (input: PledgeTopupInput) => Promise<Pledge>
 
   getShopSettings: () => Promise<ShopSettings>
+  getRecordCounts: () => Promise<RecordCounts>
   updateShopSettings: (input: ShopSettings) => Promise<ShopSettings>
-  uploadShopImage: (file: File) => Promise<{ path: string }>
+  uploadShopImage: (file: File) => Promise<{ path: string }>>
   getLatestMetalRates: () => Promise<MetalRates | null>
   listMetalRates: (days?: number) => Promise<MetalRates[]>
   upsertMetalRates: (input: MetalRatesInput) => Promise<MetalRates>

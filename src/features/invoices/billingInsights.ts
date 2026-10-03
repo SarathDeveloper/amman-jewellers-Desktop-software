@@ -52,7 +52,7 @@ function countsTowardSales(invoice: Invoice): boolean {
 }
 
 function addMetal(invoice: Invoice, insights: BillingInsights): void {
-  if (invoice.isHistorical && invoice.items.length === 0) {
+  if (invoice.items.length === 0) {
     insights.goldGrams += invoice.summaryGoldG
     insights.silverGrams += invoice.summarySilverG
     insights.makingCharges += invoice.summaryMaking

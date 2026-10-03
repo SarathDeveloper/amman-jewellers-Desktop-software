@@ -1,31 +1,20 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
-  BarChart3,
-  ChartNoAxesCombined,
   CircleUser,
   Eye,
   EyeOff,
-  FileText,
   Filter,
-  Gem,
-  LayoutDashboard,
   LayoutGrid,
   Lock,
-  Package,
-  PiggyBank,
   Plus,
   RefreshCw,
   Search,
-  Settings,
   Shield,
-  SquarePlus,
   UserRound,
   UserRoundMinus,
   UserRoundPlus,
   Users,
-  Wallet,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { FEATURE_KEYS, type FeatureKey, type User, type UserRole } from '@shared/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { TablePager } from '../../components/DataTable'
@@ -50,18 +39,9 @@ const FEATURE_LABELS: Record<FeatureKey, string> = {
   gold_savings: 'Gold Savings',
 }
 
-const FEATURE_ICONS: Record<FeatureKey, LucideIcon> = {
-  dashboard: LayoutDashboard,
-  billing: FileText,
-  products: Package,
-  stock: Gem,
-  inward: SquarePlus,
-  customers: Users,
-  dues: Wallet,
-  reports: BarChart3,
-  rates: ChartNoAxesCombined,
-  settings: Settings,
-  gold_savings: PiggyBank,
+function featureListLabel(features: FeatureKey[]): string {
+  const labels = features.map((key) => FEATURE_LABELS[key]).filter(Boolean)
+  return labels.length > 0 ? labels.join(', ') : 'None'
 }
 
 type UserFilter = 'all' | 'admin' | 'staff' | 'active' | 'inactive'
@@ -88,7 +68,6 @@ function FeatureChips({
   return (
     <div className="users-feature-chips">
       {FEATURE_KEYS.map((key) => {
-        const Icon = FEATURE_ICONS[key]
         const checked = selected.includes(key)
         return (
           <button
@@ -98,7 +77,6 @@ function FeatureChips({
             aria-pressed={checked}
             onClick={() => onToggle(key)}
           >
-            <Icon size={14} strokeWidth={1.75} aria-hidden />
             <span>{FEATURE_LABELS[key]}</span>
             {checked ? (
               <span className="users-feature-check" aria-hidden>
@@ -442,9 +420,7 @@ export function UsersPage() {
                       </span>
                     </td>
                     <td className="users-features-cell">
-                      {user.role === 'admin'
-                        ? 'All'
-                        : user.features.map((key) => FEATURE_LABELS[key]).join(', ') || 'None'}
+                      {user.role === 'admin' ? 'All' : featureListLabel(user.features)}
                     </td>
                     <td>
                       <span

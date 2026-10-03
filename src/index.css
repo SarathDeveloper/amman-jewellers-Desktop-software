@@ -5854,6 +5854,26 @@ html[data-print-embed='1'] .purchase-invoice-print-page {
 .settings-bill-preview-head .settings-card-subtitle {
   margin: 0.35rem 0 0;
 }
+.settings-bill-preview-placeholder {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.settings-bill-preview-placeholder p {
+  margin: 0;
+}
+.settings-bill-preview-placeholder svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: var(--brand);
+}
 .template-preset-selector {
   display: flex;
   flex-wrap: wrap;
@@ -6599,8 +6619,8 @@ html[data-print-embed='1'] .purchase-invoice-print-page {
   justify-items: center;
 }
 .auth-logo {
-  width: 3rem;
-  height: 3rem;
+  width: 6rem;
+  height: 6rem;
   object-fit: contain;
 }
 .auth-card h1 {

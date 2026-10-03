@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { IPC_CHANNELS, ipc, invokeIpcForTests, useIntegrationEnv, withHuids } from './helpers/testEnv'
+import { IPC_CHANNELS, getTestAgent, ipc, invokeIpcForTests, useIntegrationEnv, withHuids } from './helpers/testEnv'
 
 async function seedCustomerAndProduct() {
   const customer = await ipc(IPC_CHANNELS.CUSTOMERS_CREATE, {
@@ -304,5 +304,26 @@ describe('invoices IPC', () => {
     })
     expect(result.ok).toBe(false)
     expect(result.error).toMatch(/VA\/MC accepts either a wastage percent or a labour amount/)
+  })
+
+  it('returns at most 5 invoices per page by default', async () => {
+    const { customer, product } = await seedCustomerAndProduct()
+    for (let i = 0; i < 7; i += 1) {
+      await ipc(IPC_CHANNELS.INVOICES_CREATE, {
+        customerId: customer.id,
+        invoiceDate: '2026-09-24',
+        tax: 0,
+        autoTax: false,
+        items: [{ productId: product.id, qty: 1, rate: 100, metalRate: 100, netWeight: 2 }],
+      })
+    }
+    const first = await getTestAgent().get('/api/invoices')
+    expect(first.status).toBe(200)
+    expect(first.body.items.length).toBe(5)
+    expect(first.body.total).toBe(7)
+    expect(first.body.pageSize).toBe(5)
+    const second = await getTestAgent().get('/api/invoices').query({ page: 2, pageSize: 5 })
+    expect(second.body.items.length).toBe(2)
+    expect(second.body.total).toBe(7)
   })
 })

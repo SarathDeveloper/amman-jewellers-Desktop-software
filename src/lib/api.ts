@@ -16,6 +16,8 @@ import type {
   HistoricalInvoiceInput,
   Invoice,
   InvoiceInput,
+  InvoiceListQuery,
+  InvoiceListStats,
   InvoicePaymentInput,
   InvoiceUpdateInput,
   ItemStockListInput,
@@ -27,10 +29,12 @@ import type {
   OldGoldPurchase,
   OldGoldPurchaseInput,
   OldGoldPurchaseUpdateInput,
+  PagedList,
   Pledge,
   PledgeCollectInput,
   PledgeForfeitInput,
   PledgeInput,
+  PledgeListQuery,
   PledgeRedeemInput,
   PledgeTopup,
   PledgeTopupInput,
@@ -38,6 +42,7 @@ import type {
   Product,
   ProductInput,
   ResetPasswordInput,
+  RecordCounts,
   ShopSettings,
   StockCategory,
   StockCategoryCreateInput,
@@ -265,7 +270,30 @@ export const api = {
     }),
   markDuePaid: (id: number) => request<DueEntry>(`/api/dues/${id}/mark-paid`, { method: 'POST' }),
 
-  listInvoices: () => request<Invoice[]>('/api/invoices'),
+  listInvoices: (input?: InvoiceListQuery) =>
+    request<PagedList<Invoice>>(
+      `/api/invoices${qs({
+        page: input?.page != null ? String(input.page) : undefined,
+        pageSize: input?.pageSize != null ? String(input.pageSize) : undefined,
+        from: input?.from ?? undefined,
+        to: input?.to ?? undefined,
+        q: input?.q,
+        format: input?.format && input.format !== 'all' ? input.format : undefined,
+        status: input?.status && input.status !== 'all' ? input.status : undefined,
+        paymentMode: input?.paymentMode && input.paymentMode !== 'all' ? input.paymentMode : undefined,
+        duePaid: input?.duePaid && input.duePaid !== 'all' ? input.duePaid : undefined,
+        sort: input?.sort,
+        customerId: input?.customerId != null ? String(input.customerId) : undefined,
+      })}`,
+    ),
+  getInvoiceStats: (input: { from: string; to: string; granularity?: string }) =>
+    request<InvoiceListStats>(
+      `/api/invoices/stats${qs({
+        from: input.from,
+        to: input.to,
+        granularity: input.granularity,
+      })}`,
+    ),
   getInvoice: (id: number) => request<Invoice>(`/api/invoices/${id}`),
   getNextInvoiceNo: (format: BillFormat) =>
     request<{ invoiceNo: string }>(`/api/invoices/next-invoice-no?format=${encodeURIComponent(format)}`),
@@ -284,7 +312,18 @@ export const api = {
   deleteInvoice: (id: number) => request<void>(`/api/invoices/${id}`, { method: 'DELETE' }),
   getTaxReport: () => request<TaxReportRow[]>('/api/invoices/tax-report'),
 
-  listPledges: () => request<Pledge[]>('/api/pledges'),
+  listPledges: (input?: PledgeListQuery) =>
+    request<PagedList<Pledge>>(
+      `/api/pledges${qs({
+        page: input?.page != null ? String(input.page) : undefined,
+        pageSize: input?.pageSize != null ? String(input.pageSize) : undefined,
+        from: input?.from ?? undefined,
+        to: input?.to ?? undefined,
+        q: input?.q,
+        status: input?.status && input.status !== 'all' ? input.status : undefined,
+        sort: input?.sort,
+      })}`,
+    ),
   getNextPledgeReceiptNo: () => request<{ receiptNo: string }>('/api/pledges/next-receipt-no'),
   getPledge: (id: number) => request<Pledge>(`/api/pledges/${id}`),
   createPledge: (input: PledgeInput) =>
@@ -316,6 +355,7 @@ export const api = {
     }),
 
   getShopSettings: () => request<ShopSettings>('/api/settings'),
+  getRecordCounts: () => request<RecordCounts>('/api/settings/counts'),
   updateShopSettings: (input: ShopSettings) =>
     request<ShopSettings>('/api/settings', { method: 'PUT', body: JSON.stringify(input) }),
   uploadShopImage: async (file: File) => {

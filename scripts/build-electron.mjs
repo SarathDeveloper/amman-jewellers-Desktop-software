@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as esbuild from 'esbuild'
@@ -49,12 +49,20 @@ const preloadOptions = {
   logLevel: 'info',
 }
 
+function copySplash() {
+  const destDir = join(root, 'electron-dist')
+  mkdirSync(destDir, { recursive: true })
+  copyFileSync(join(root, 'electron', 'splash.html'), join(destDir, 'splash.html'))
+}
+
 if (watch) {
   const mainCtx = await esbuild.context(mainOptions)
   const preloadCtx = await esbuild.context(preloadOptions)
+  copySplash()
   await Promise.all([mainCtx.watch(), preloadCtx.watch()])
   console.log('Watching electron main and preload…')
 } else {
   await esbuild.build(mainOptions)
   await esbuild.build(preloadOptions)
+  copySplash()
 }

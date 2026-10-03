@@ -11,6 +11,13 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom', 'zod', 'lucide-react'],
+        },
+      },
+    },
   },
   server: {
     // Electron dev loads http://127.0.0.1:5173 — bind IPv4 explicitly (localhost may be IPv6-only).

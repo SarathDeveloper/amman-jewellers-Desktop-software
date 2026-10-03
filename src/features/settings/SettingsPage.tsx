@@ -17,7 +17,6 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import type {
   AppInfo,
-  PaperSize,
   ShopSettings,
   TaxReportRow,
 } from '@shared/types'
@@ -26,16 +25,8 @@ import { PageHeader } from '../../components/PageHeader'
 import { formatCurrency } from '../../lib/format'
 import { api } from '../../lib/api'
 import { useToast } from '../../components/toastContext'
-import { CashBillPrint } from '../invoices/CashBillPrint'
 import { localImageSrc, shopSettingsToDisplay } from '../invoices/mapShopDisplay'
-import { paperClassName } from '../invoices/paperSize'
-import { TaxInvoicePrint } from '../invoices/TaxInvoicePrint'
-import { PledgePrint } from '../pledges/PledgePrint'
-import '../invoices/CashBillPrint.css'
-import '../invoices/TaxInvoicePrint.css'
-import '../pledges/PledgePrint.css'
-import { SAMPLE_ADAGU_PLEDGE, SAMPLE_CASH_BILL, SAMPLE_TAX_INVOICE } from './sampleBillPreview'
-import { storeSampleBillPrint, type SampleBillKind } from '../invoices/SampleBillPrintPage'
+import { storeSampleBillPrint, type SampleBillKind } from '../invoices/sampleBillPrintStore'
 import { PrintPreviewModal } from '../print/PrintPreviewModal'
 import { printPreviewPaths } from '../print/printPreviewPaths'
 import { PrintersSettings } from './PrintersSettings'
@@ -170,12 +161,6 @@ export function SettingsPage() {
   const [taxReport, setTaxReport] = useState<TaxReportRow[]>([])
 
   const shopDisplay = shopSettingsToDisplay(shop)
-  const previewPaper: PaperSize =
-    invoiceTab === 'tax'
-      ? (shop?.paperSizeTax ?? 'a4')
-      : invoiceTab === 'adagu'
-        ? 'a4'
-        : (shop?.paperSizeCash ?? 'a5')
   const headerLogoSrc = localImageSrc(shop?.logoImagePath, logoUrl)
 
   function updateShop(
@@ -200,22 +185,46 @@ export function SettingsPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const [data, products, customers, shopSettings, report] = await Promise.all([
-          api.getVersion(),
-          api.listProducts(),
-          api.listCustomers(),
-          api.getShopSettings(),
-          api.getTaxReport(),
-        ])
+        const [data, shopSettings] = await Promise.all([api.getVersion(), api.getShopSettings()])
         setInfo(data)
-        setCounts({ products: products.length, customers: customers.length })
         updateShop(shopSettings)
-        setTaxReport(report)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load app info')
       }
     })()
   }, [])
+
+  useEffect(() => {
+    if (tab !== 'invoice') return
+    let active = true
+    void api
+      .getTaxReport()
+      .then((report) => {
+        if (active) setTaxReport(report)
+      })
+      .catch(() => {
+        if (active) setTaxReport([])
+      })
+    return () => {
+      active = false
+    }
+  }, [tab])
+
+  useEffect(() => {
+    if (tab !== 'data') return
+    let active = true
+    void api
+      .getRecordCounts()
+      .then((next) => {
+        if (active) setCounts(next)
+      })
+      .catch(() => {
+        if (active) setCounts(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [tab])
 
   async function saveShop(
     requireFields: 'name' | 'printHeader' | 'none' = 'none',
@@ -612,7 +621,8 @@ export function SettingsPage() {
                   <div>
                     <h2 className="settings-section-title">Invoice Settings</h2>
                     <p className="muted settings-card-subtitle">
-                      Shop details print on cash bills, tax invoices, and Adagu bills. Preview each template below.
+                      Shop details print on cash bills, tax invoices, and Adagu bills. Use Test Print
+                      to check a template.
                     </p>
                   </div>
                   <div className="toolbar settings-toolbar">
@@ -656,9 +666,9 @@ export function SettingsPage() {
                 <div className="settings-bill-preview-card">
                   <div className="settings-bill-preview-head">
                     <div>
-                      <h3 className="settings-subsection-title">Live template</h3>
+                      <h3 className="settings-subsection-title">Bill template</h3>
                       <p className="muted settings-card-subtitle">
-                        This is the AVR bill that prints. Shop details above apply to every template.
+                        Shop details above print on cash bills, tax invoices, and Adagu bills.
                       </p>
                     </div>
                     <button type="button" className="btn secondary" onClick={handleTestPrint}>
@@ -666,24 +676,16 @@ export function SettingsPage() {
                       Test Print
                     </button>
                   </div>
-                  <div className="settings-bill-preview-frame">
-                    <div className={`settings-bill-preview-scale ${paperClassName(previewPaper)}`}>
-                      {invoiceTab === 'cash' ? (
-                        <CashBillPrint
-                          data={SAMPLE_CASH_BILL}
-                          shop={shopDisplay}
-                          paperSize={shop.paperSizeCash}
-                        />
-                      ) : invoiceTab === 'tax' ? (
-                        <TaxInvoicePrint
-                          data={SAMPLE_TAX_INVOICE}
-                          shop={shopDisplay}
-                          paperSize={shop.paperSizeTax}
-                        />
-                      ) : (
-                        <PledgePrint pledge={SAMPLE_ADAGU_PLEDGE} shop={shopDisplay} />
-                      )}
-                    </div>
+                  <div className="settings-bill-preview-placeholder">
+                    <Printer size={22} strokeWidth={1.75} aria-hidden />
+                    <p>
+                      {invoiceTab === 'cash'
+                        ? 'Cash bill'
+                        : invoiceTab === 'tax'
+                          ? 'Tax invoice'
+                          : 'Adagu bill'}{' '}
+                      preview opens only when you tap Test Print, so this page stays light on shop PCs.
+                    </p>
                   </div>
                 </div>
 

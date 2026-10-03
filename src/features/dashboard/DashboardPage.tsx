@@ -20,14 +20,16 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { STOCK_METALS } from '@shared/itemTypes'
 import { localTodayIso } from '@shared/localDate'
-import type { DuesLedger, Invoice, ItemStockRow, MetalRates, PaymentMode } from '@shared/types'
+import type { DuesLedger, Invoice, InvoiceListStats, ItemStockRow, MetalRates, PaymentMode } from '@shared/types'
 import { FilterBar } from '../../components/FilterBar'
 import { DateInput } from '../../components/DateInput'
 import { MetalBarIcon } from '../../components/MetalBarIcon'
 import { formatCurrency, formatDisplayDate } from '../../lib/format'
 import { api } from '../../lib/api'
 import {
-  computeDashboardStats,
+  applyInvoiceStats,
+  periodGranularity,
+  resolvePeriodRange,
   type ChartGranularity,
   type DashboardPeriod,
   type DashboardStats,
@@ -356,7 +358,8 @@ export function DashboardPage() {
     throw new Error('Diagnostic crash test')
   }
 
-  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [invoiceStats, setInvoiceStats] = useState<InvoiceListStats | null>(null)
+  const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([])
   const [ledger, setLedger] = useState<DuesLedger | undefined>(undefined)
   const [goldStock, setGoldStock] = useState<ItemStockRow[]>([])
   const [silverStock, setSilverStock] = useState<ItemStockRow[]>([])
@@ -370,13 +373,25 @@ export function DashboardPage() {
 
   const today = localTodayIso()
   const greeting = greetingForHour(new Date().getHours())
-  const stats: DashboardStats = computeDashboardStats(
-    invoices,
+  const range = resolvePeriodRange(period, today, customFrom, customTo)
+  const granularity = periodGranularity(period, range)
+  const emptyStats: InvoiceListStats = {
+    sales: 0,
+    collections: 0,
+    draftCount: 0,
+    billsGenerated: 0,
+    customersBilled: 0,
+    totalItemsSold: 0,
+    chart: [],
+  }
+  const stats: DashboardStats = applyInvoiceStats(
+    invoiceStats ?? emptyStats,
+    recentInvoices,
     ledger,
     goldStock,
     silverStock,
     today,
-    { period, customFrom, customTo }
+    { period, customFrom, customTo },
   )
 
   useEffect(() => {
@@ -387,15 +402,22 @@ export function DashboardPage() {
           setError(null)
           setLoading(true)
         }
-        const [invoiceList, dues, goldRows, silverRows, latestRates] = await Promise.all([
-          api.listInvoices().catch(() => [] as Invoice[]),
+        const [statsPayload, recentPage, dues, goldRows, silverRows, latestRates] = await Promise.all([
+          api.getInvoiceStats({ from: range.from, to: range.to, granularity }).catch(() => emptyStats),
+          api.listInvoices({ page: 1, pageSize: 5, sort: 'desc' }).catch(() => ({
+            items: [] as Invoice[],
+            total: 0,
+            page: 1,
+            pageSize: 5,
+          })),
           api.listDues().catch(() => undefined),
           api.listItemStock({ stockDate: today, metal: STOCK_METALS[0] }).catch(() => [] as ItemStockRow[]),
           api.listItemStock({ stockDate: today, metal: STOCK_METALS[1] }).catch(() => [] as ItemStockRow[]),
           api.getLatestMetalRates().catch(() => null),
         ])
         if (active) {
-          setInvoices(invoiceList)
+          setInvoiceStats(statsPayload)
+          setRecentInvoices(recentPage.items)
           setLedger(dues)
           setGoldStock(goldRows)
           setSilverStock(silverRows)
@@ -412,7 +434,7 @@ export function DashboardPage() {
     return () => {
       active = false
     }
-  }, [today, refreshKey])
+  }, [today, refreshKey, range.from, range.to, granularity])
 
   const recentBills = stats.recentBills ?? []
   const sales = stats.salesOverview

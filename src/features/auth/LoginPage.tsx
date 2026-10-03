@@ -2,18 +2,16 @@ import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from './authContext'
 import { useShopBranding } from '../settings/shopBrandingContext'
-import { localImageSrc } from '../invoices/mapShopDisplay'
-import logoUrl from '../../assets/jeweltrackerpro-logo.svg'
+import logoUrl from '../../images/amman-jeweller-logo.png'
 
 export function LoginPage() {
   const { login, user, loading } = useAuth()
-  const { shopName, logoImagePath } = useShopBranding()
+  const { shopName } = useShopBranding()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const logoSrc = localImageSrc(logoImagePath, logoUrl)
 
   if (!loading && user) {
     return <Navigate to={user.mustChangePassword ? '/change-password' : '/dashboard'} replace />
@@ -37,7 +35,7 @@ export function LoginPage() {
     <div className="auth-screen">
       <form className="card padded auth-card" onSubmit={(event) => void onSubmit(event)}>
         <div className="auth-brand">
-          <img src={logoSrc} alt="" className="auth-logo" />
+          <img src={logoUrl} alt="Amman Jewellers" className="auth-logo" />
           {shopName ? <h1>{shopName}</h1> : null}
           <p className="muted">Sign in to continue</p>
         </div>

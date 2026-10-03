@@ -19,7 +19,7 @@ type CustomerRow = {
   created_at: string
 }
 
-function mapCustomer(row: CustomerRow): Customer {
+function mapCustomer(row: CustomerRow & { last_bill_date?: string | null }): Customer {
   return {
     id: row.id,
     name: row.name,
@@ -31,6 +31,7 @@ function mapCustomer(row: CustomerRow): Customer {
     aadhaar: row.aadhaar ?? '',
     pan: row.pan ?? '',
     createdAt: row.created_at,
+    lastBillDate: row.last_bill_date ?? null,
   }
 }
 
@@ -51,15 +52,19 @@ router.get(
   asyncHandler((req, res) => {
     const db = getDatabase()
     const term = typeof req.query.q === 'string' ? req.query.q.trim() : ''
+    const lastBill = `(SELECT MAX(invoice_date) FROM invoices
+       WHERE customer_id = customers.id AND status = 'final' AND is_estimate = 0) AS last_bill_date`
     const rows = term
       ? (db
           .prepare(
-            `SELECT * FROM customers
+            `SELECT *, ${lastBill} FROM customers
              WHERE name LIKE ? OR phone LIKE ?
              ORDER BY created_at DESC`,
           )
-          .all(`%${term}%`, `%${term}%`) as CustomerRow[])
-      : (db.prepare('SELECT * FROM customers ORDER BY created_at DESC').all() as CustomerRow[])
+          .all(`%${term}%`, `%${term}%`) as Array<CustomerRow & { last_bill_date: string | null }>)
+      : (db
+          .prepare(`SELECT *, ${lastBill} FROM customers ORDER BY created_at DESC`)
+          .all() as Array<CustomerRow & { last_bill_date: string | null }>)
     res.json(rows.map(mapCustomer))
   }),
 )

@@ -33,6 +33,23 @@ export function parseIdParam(value: string): number {
   return id
 }
 
+export function queryString(query: Request['query'], key: string): string {
+  const value = query[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+export function parsePaging(
+  query: Request['query'],
+  defaults: { pageSize?: number; maxPageSize?: number } = {},
+): { page: number; pageSize: number; offset: number } {
+  const defaultSize = defaults.pageSize ?? 5
+  const maxSize = defaults.maxPageSize ?? 50
+  const page = Math.max(1, Number.parseInt(queryString(query, 'page') || '1', 10) || 1)
+  const parsedSize = Number.parseInt(queryString(query, 'pageSize') || String(defaultSize), 10)
+  const pageSize = Math.min(maxSize, Math.max(1, Number.isFinite(parsedSize) ? parsedSize : defaultSize))
+  return { page, pageSize, offset: (page - 1) * pageSize }
+}
+
 export function errorMiddleware(error: unknown, req: Request, res: Response, _next: NextFunction): void {
   if (res.headersSent) {
     return

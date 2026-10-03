@@ -13,6 +13,7 @@ import {
 import { localDateIso, localNowStamp } from '@shared/localDate'
 import { getShopSetting, setShopSetting } from '../lib/settingsStore'
 import { getBackupsDir } from '../lib/paths'
+import { sqliteNativeOptions } from '../lib/sqliteNative'
 import { HttpError } from '../lib/http'
 import { closeDatabase, getDatabase, getDbPath, initDatabase } from './index'
 
@@ -63,7 +64,7 @@ export function assertSqliteIntegrity(filePath: string): void {
     throw new Error('Backup file was not found')
   }
 
-  const check = new Database(filePath, { readonly: true, fileMustExist: true })
+  const check = new Database(filePath, sqliteNativeOptions({ readonly: true, fileMustExist: true }))
   try {
     const result = check.pragma('integrity_check', { simple: true })
     if (result !== 'ok') {

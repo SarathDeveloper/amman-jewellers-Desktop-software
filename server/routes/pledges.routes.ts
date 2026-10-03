@@ -24,7 +24,7 @@ import type {
 } from '@shared/types'
 import { getDatabase } from '../db'
 import { syncDueEntryForPledge } from '../dues/pledgeSync'
-import { asyncHandler, HttpError, parseBody, parseIdParam } from '../lib/http'
+import { asyncHandler, HttpError, parseBody, parseIdParam, parsePaging, queryString } from '../lib/http'
 import { computePledgeDueWithLoadedTopups, loadPledgeTopups } from '../pledges/topups'
 
 const router = Router()
@@ -137,6 +137,33 @@ function mapPledge(db: ReturnType<typeof getDatabase>, row: PledgeRow): Pledge {
     createdAt: row.created_at,
     items: loadItems(db, row.id),
     topups: loadPledgeTopups(db, row.id),
+  }
+}
+
+function mapPledgeSummary(row: PledgeRow & { item_count?: number }): Pledge {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    customerName: row.customer_name,
+    customerPhone: row.customer_phone,
+    customerAddress: row.customer_address ?? '',
+    guardianName: row.guardian_name ?? '',
+    receiptNo: row.receipt_no,
+    pledgeDate: row.pledge_date,
+    pledgeType: row.pledge_type || DEFAULT_PLEDGE_TYPE,
+    assessedValue: row.assessed_value,
+    loanAmount: row.loan_amount,
+    charges: row.charges ?? 0,
+    interestPct: row.interest_pct,
+    repaymentDueDate: row.repayment_due_date,
+    status: row.status,
+    redeemedDate: row.redeemed_date,
+    amountCollected: row.amount_collected,
+    notes: row.notes,
+    createdAt: row.created_at,
+    items: [],
+    itemCount: Number(row.item_count ?? 0),
+    topups: [],
   }
 }
 
@@ -301,17 +328,51 @@ function savePledge(db: ReturnType<typeof getDatabase>, input: PledgeInput, pled
 
 router.get(
   '/',
-  asyncHandler((_req, res) => {
+  asyncHandler((req, res) => {
     const db = getDatabase()
+    const { page, pageSize, offset } = parsePaging(req.query)
+    const sort = queryString(req.query, 'sort') === 'asc' ? 'ASC' : 'DESC'
+    const clauses = ['1 = 1']
+    const params: unknown[] = []
+    const from = queryString(req.query, 'from')
+    const to = queryString(req.query, 'to')
+    const q = queryString(req.query, 'q')
+    const status = queryString(req.query, 'status')
+    if (from) {
+      clauses.push('p.pledge_date >= ?')
+      params.push(from)
+    }
+    if (to) {
+      clauses.push('p.pledge_date <= ?')
+      params.push(to)
+    }
+    if (q) {
+      const like = `%${q}%`
+      clauses.push('(p.receipt_no LIKE ? OR c.name LIKE ? OR c.phone LIKE ?)')
+      params.push(like, like, like)
+    }
+    if (status === 'draft' || status === 'active' || status === 'redeemed' || status === 'forfeited') {
+      clauses.push('p.status = ?')
+      params.push(status)
+    }
+    const where = clauses.join(' AND ')
+    const fromSql = `FROM pledges p JOIN customers c ON c.id = p.customer_id WHERE ${where}`
+    const total = (db.prepare(`SELECT COUNT(*) AS n ${fromSql}`).get(...params) as { n: number }).n
     const rows = db
       .prepare(
-        `SELECT p.*, c.name AS customer_name, c.phone AS customer_phone
-         FROM pledges p
-         JOIN customers c ON c.id = p.customer_id
-         ORDER BY p.pledge_date DESC, p.id DESC`,
+        `SELECT p.*, c.name AS customer_name, c.phone AS customer_phone,
+                (SELECT COUNT(*) FROM pledge_items WHERE pledge_id = p.id) AS item_count
+         ${fromSql}
+         ORDER BY p.pledge_date ${sort}, p.id ${sort}
+         LIMIT ? OFFSET ?`,
       )
-      .all() as PledgeRow[]
-    res.json(rows.map((row) => mapPledge(db, row)))
+      .all(...params, pageSize, offset) as Array<PledgeRow & { item_count: number }>
+    res.json({
+      items: rows.map((row) => mapPledgeSummary(row)),
+      total,
+      page,
+      pageSize,
+    })
   }),
 )
 

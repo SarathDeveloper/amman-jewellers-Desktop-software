@@ -23,7 +23,7 @@
     "electron:pack": "npm run build && npm run build:electron && electron-builder --config electron-builder.config.cjs --dir",
     "electron:build": "npm run build && npm run build:electron && electron-builder --config electron-builder.config.cjs",
     "electron:build:mac": "npm run build && npm run build:electron && electron-builder --config electron-builder.config.cjs --mac",
-    "electron:build:win": "npm run build && npm run build:electron && electron-builder --config electron-builder.config.cjs --win",
+    "electron:build:win": "npm run build && npm run build:electron && node scripts/verify-win-native.mjs --source && electron-builder --config electron-builder.config.cjs --win && node scripts/verify-win-native.mjs --packaged",
     "rebuild:native": "npm rebuild better-sqlite3"
   },
   "dependencies": {

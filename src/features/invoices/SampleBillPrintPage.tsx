@@ -9,17 +9,13 @@ import { CashBillPrint } from './CashBillPrint'
 import { shopSettingsToDisplay, type ShopDisplayInfo } from './mapShopDisplay'
 import { applyPaperDataset, paperPageCss } from './paperSize'
 import { signalPrintReady, waitForPrintLayout } from './printPageUtils'
+import { takeSampleBillPrint, type SampleBillKind } from './sampleBillPrintStore'
 import { TaxInvoicePrint } from './TaxInvoicePrint'
 import './CashBillPrint.css'
 import './TaxInvoicePrint.css'
 
-export type SampleBillKind = 'cash' | 'tax' | 'adagu'
-
-const SAMPLE_PRINT_STORAGE_KEY = 'jas-sample-bill-print'
-
-export function storeSampleBillPrint(kind: SampleBillKind, shop: ShopSettings): void {
-  localStorage.setItem(SAMPLE_PRINT_STORAGE_KEY, JSON.stringify({ kind, shop }))
-}
+export type { SampleBillKind } from './sampleBillPrintStore'
+export { storeSampleBillPrint } from './sampleBillPrintStore'
 
 function isSampleBillKind(value: string | undefined): value is SampleBillKind {
   return value === 'cash' || value === 'tax' || value === 'adagu'
@@ -46,19 +42,7 @@ export function SampleBillPrintPage() {
         if (!isSampleBillKind(kindParam)) {
           throw new Error('Invalid sample bill type')
         }
-        let settings: ShopSettings | null = null
-        try {
-          const raw = localStorage.getItem(SAMPLE_PRINT_STORAGE_KEY)
-          if (raw) {
-            const parsed = JSON.parse(raw) as { kind?: string; shop?: ShopSettings }
-            if (parsed.kind === kindParam && parsed.shop) {
-              settings = parsed.shop
-            }
-            localStorage.removeItem(SAMPLE_PRINT_STORAGE_KEY)
-          }
-        } catch {
-          localStorage.removeItem(SAMPLE_PRINT_STORAGE_KEY)
-        }
+        let settings: ShopSettings | null = takeSampleBillPrint(kindParam)
         if (!settings) {
           settings = await api.getShopSettings()
         }

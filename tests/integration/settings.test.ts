@@ -207,6 +207,15 @@ describe('settings IPC', () => {
     expect(reloaded.passbookSideImagePath).toBe('/uploads/passbook-side.png')
   })
 
+  it('returns product and customer counts from SQLite', async () => {
+    const counts = await ipc<{ products: number; customers: number }>(IPC_CHANNELS.SETTINGS_COUNTS)
+    const db = getDatabase()
+    const products = db.prepare('SELECT COUNT(*) AS n FROM products').get() as { n: number }
+    const customers = db.prepare('SELECT COUNT(*) AS n FROM customers').get() as { n: number }
+    expect(counts.products).toBe(products.n)
+    expect(counts.customers).toBe(customers.n)
+  })
+
   it('rejects shop settings updates without billTemplate', async () => {
     const current = await ipc<ShopSettings>(IPC_CHANNELS.SETTINGS_GET)
     const { billTemplate: _removed, ...withoutTemplate } = current

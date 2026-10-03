@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, type Request } from 'express'
 import {
   historicalInvoiceInputSchema,
   invoiceInputSchema,
@@ -30,7 +30,7 @@ import { computeInvoiceAmounts, computeInvoiceLines } from '../billing/invoiceCo
 import { getDatabase } from '../db'
 import { assertMetalsOpenForDate } from '../db/metalDayClosing'
 import { syncDueEntryForFinalInvoice } from '../dues/invoiceSync'
-import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
+import { asyncHandler, parseBody, parseIdParam, parsePaging, queryString } from '../lib/http'
 import { saveLastPrintedBill } from '../lib/settingsStore'
 import { recordPieceMovement } from '../stock/movements'
 import { EMPTY_PRODUCT_VARIANT_FIELDS } from '@shared/types'
@@ -466,6 +466,42 @@ function mapInvoice(
   }
 }
 
+function mapInvoiceSummary(row: InvoiceRow & { item_count?: number }): Invoice {
+  return {
+    id: row.id,
+    customerId: row.customer_id,
+    customerName: row.customer_name,
+    customerPhone: row.customer_phone ?? '',
+    invoiceNo: row.invoice_no,
+    invoiceDate: row.invoice_date,
+    subtotal: row.subtotal,
+    tax: row.tax,
+    total: row.total,
+    status: row.status,
+    items: [],
+    itemCount: Number(row.item_count ?? 0),
+    createdAt: row.created_at,
+    billFormat: row.bill_format,
+    paymentMode: row.payment_mode,
+    amountPaid: row.amount_paid,
+    balanceDue: row.balance_due,
+    discount: row.discount,
+    cgst: row.cgst,
+    sgst: row.sgst,
+    igst: row.igst,
+    isEstimate: row.is_estimate === 1,
+    isHistorical: row.is_historical === 1,
+    summaryGoldG: row.summary_gold_g ?? 0,
+    summarySilverG: row.summary_silver_g ?? 0,
+    summaryMaking: row.summary_making ?? 0,
+    oldGold: [],
+    oldGoldLinks: [],
+    roundOff: row.round_off ?? 0,
+    amountPayable: resolveAmountPayable(row.amount_payable, row.total),
+    payments: [],
+  }
+}
+
 function getInvoiceRow(db: ReturnType<typeof getDatabase>, id: number): InvoiceRow {
   const row = db
     .prepare(
@@ -747,6 +783,62 @@ function saveDraftInvoice(db: ReturnType<typeof getDatabase>, input: InvoiceInpu
   return mapInvoice(db, getInvoiceRow(db, id))
 }
 
+function invoiceListFilter(query: Request['query']): { where: string; params: unknown[] } {
+  const clauses = ['1 = 1']
+  const params: unknown[] = []
+  const from = queryString(query, 'from')
+  const to = queryString(query, 'to')
+  const q = queryString(query, 'q')
+  const format = queryString(query, 'format')
+  const status = queryString(query, 'status')
+  const paymentMode = queryString(query, 'paymentMode')
+  const duePaid = queryString(query, 'duePaid')
+  const customerId = queryString(query, 'customerId')
+
+  if (from) {
+    clauses.push('i.invoice_date >= ?')
+    params.push(from)
+  }
+  if (to) {
+    clauses.push('i.invoice_date <= ?')
+    params.push(to)
+  }
+  if (format === 'cash_bill' || format === 'tax_invoice') {
+    clauses.push('i.bill_format = ?')
+    params.push(format)
+  }
+  if (q) {
+    const like = `%${q}%`
+    clauses.push('(i.invoice_no LIKE ? OR c.name LIKE ? OR c.phone LIKE ?)')
+    params.push(like, like, like)
+  }
+  if (customerId) {
+    const id = Number.parseInt(customerId, 10)
+    if (Number.isInteger(id) && id > 0) {
+      clauses.push('i.customer_id = ?')
+      params.push(id)
+    }
+  }
+  if (status === 'draft') {
+    clauses.push("i.status = 'draft' AND i.is_estimate = 0")
+  } else if (status === 'estimate') {
+    clauses.push('i.is_estimate = 1')
+  } else if (status === 'final') {
+    clauses.push("i.status = 'final' AND i.is_estimate = 0")
+  }
+  if (paymentMode === 'cash' || paymentMode === 'upi' || paymentMode === 'card' || paymentMode === 'mixed') {
+    clauses.push('i.payment_mode = ?')
+    params.push(paymentMode)
+  }
+  if (duePaid === 'due') {
+    clauses.push("i.status = 'final' AND i.balance_due > 0")
+  } else if (duePaid === 'paid') {
+    clauses.push("i.status = 'final' AND i.is_estimate = 0 AND i.balance_due <= 0")
+  }
+
+  return { where: clauses.join(' AND '), params }
+}
+
 router.get(
   '/tax-report',
   asyncHandler((_req, res) => {
@@ -801,18 +893,106 @@ router.get(
 )
 
 router.get(
-  '/',
-  asyncHandler((_req, res) => {
+  '/stats',
+  asyncHandler((req, res) => {
     const db = getDatabase()
+    const from = queryString(req.query, 'from')
+    const to = queryString(req.query, 'to')
+    const granularity = queryString(req.query, 'granularity')
+    const rangeParams = from && to ? [from, to] : []
+    const saleWhere =
+      from && to
+        ? `status = 'final' AND is_estimate = 0 AND is_historical = 0 AND invoice_date >= ? AND invoice_date <= ?`
+        : `status = 'final' AND is_estimate = 0 AND is_historical = 0`
+
+    const totals = db
+      .prepare(
+        `SELECT
+            COALESCE(SUM(total), 0) AS sales,
+            COALESCE(SUM(amount_paid), 0) AS paid,
+            COUNT(*) AS bills,
+            COUNT(DISTINCT customer_id) AS customers,
+            COALESCE(SUM((SELECT COUNT(*) FROM invoice_items ii WHERE ii.invoice_id = invoices.id)), 0) AS items
+         FROM invoices
+         WHERE ${saleWhere}`,
+      )
+      .get(...rangeParams) as {
+      sales: number
+      paid: number
+      bills: number
+      customers: number
+      items: number
+    }
+
+    const extraPayments = db
+      .prepare(
+        from && to
+          ? `SELECT COALESCE(SUM(d.amount), 0) AS extra
+             FROM customer_dues d
+             LEFT JOIN invoices i ON i.id = d.invoice_id
+             WHERE d.kind = 'payment' AND d.entry_date >= ? AND d.entry_date <= ?
+               AND (d.invoice_id IS NULL OR i.invoice_date < d.entry_date)`
+          : `SELECT COALESCE(SUM(d.amount), 0) AS extra
+             FROM customer_dues d
+             LEFT JOIN invoices i ON i.id = d.invoice_id
+             WHERE d.kind = 'payment'
+               AND (d.invoice_id IS NULL OR i.invoice_date < d.entry_date)`,
+      )
+      .get(...rangeParams) as { extra: number }
+
+    const draftCount = (
+      db.prepare(`SELECT COUNT(*) AS n FROM invoices WHERE status = 'draft'`).get() as { n: number }
+    ).n
+
+    let chartSql = `SELECT invoice_date AS key, COALESCE(SUM(total), 0) AS total FROM invoices WHERE ${saleWhere} GROUP BY invoice_date`
+    if (granularity === 'hour') {
+      chartSql = `SELECT CAST(strftime('%H', created_at) AS INTEGER) AS key, COALESCE(SUM(total), 0) AS total
+                  FROM invoices WHERE ${saleWhere} GROUP BY key`
+    } else if (granularity === 'month') {
+      chartSql = `SELECT strftime('%Y-%m', invoice_date) AS key, COALESCE(SUM(total), 0) AS total
+                  FROM invoices WHERE ${saleWhere} GROUP BY key`
+    }
+
+    const chart = db.prepare(chartSql).all(...rangeParams) as Array<{ key: string | number; total: number }>
+
+    res.json({
+      sales: totals.sales,
+      collections: totals.paid + extraPayments.extra,
+      draftCount,
+      billsGenerated: totals.bills,
+      customersBilled: totals.customers,
+      totalItemsSold: totals.items,
+      chart: chart.map((row) => ({ key: String(row.key), total: row.total })),
+    })
+  }),
+)
+
+router.get(
+  '/',
+  asyncHandler((req, res) => {
+    const db = getDatabase()
+    const { page, pageSize, offset } = parsePaging(req.query)
+    const sort = queryString(req.query, 'sort') === 'asc' ? 'ASC' : 'DESC'
+    const { where, params } = invoiceListFilter(req.query)
+    const fromSql = `FROM invoices i JOIN customers c ON c.id = i.customer_id WHERE ${where}`
+    const total = (
+      db.prepare(`SELECT COUNT(*) AS n ${fromSql}`).get(...params) as { n: number }
+    ).n
     const rows = db
       .prepare(
-        `SELECT i.*, c.name AS customer_name, c.phone AS customer_phone, c.gstin AS customer_gstin
-         FROM invoices i
-         JOIN customers c ON c.id = i.customer_id
-         ORDER BY i.invoice_date DESC, i.id DESC`,
+        `SELECT i.*, c.name AS customer_name, c.phone AS customer_phone, c.gstin AS customer_gstin,
+                (SELECT COUNT(*) FROM invoice_items WHERE invoice_id = i.id) AS item_count
+         ${fromSql}
+         ORDER BY i.invoice_date ${sort}, i.id ${sort}
+         LIMIT ? OFFSET ?`,
       )
-      .all() as InvoiceRow[]
-    res.json(rows.map((row) => mapInvoice(db, row, { includeExtras: false })))
+      .all(...params, pageSize, offset) as Array<InvoiceRow & { item_count: number }>
+    res.json({
+      items: rows.map((row) => mapInvoiceSummary(row)),
+      total,
+      page,
+      pageSize,
+    })
   }),
 )
 

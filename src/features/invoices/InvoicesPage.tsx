@@ -17,10 +17,9 @@ import { FilterBar } from '../../components/FilterBar'
 import { LoadingState } from '../../components/LoadingState'
 import { StatusBadge, type StatusKind } from '../../components/StatusBadge'
 import { useToast } from '../../components/toastContext'
-import { formatCurrency, formatDisplayDate, formatPaymentMode, paginate } from '../../lib/format'
+import { formatCurrency, formatDisplayDate, formatPaymentMode } from '../../lib/format'
 import { api } from '../../lib/api'
 import {
-  invoiceMatchesFilters,
   monthRange,
   type BillingPeriod,
   type DuePaidFilter,
@@ -34,8 +33,8 @@ import {
 import { InvoicePreviewModal } from './InvoicePreviewModal'
 import { PledgePreviewModal } from '../pledges/PledgePreviewModal'
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50]
-const DEFAULT_PAGE_SIZE = 10
+const PAGE_SIZE_OPTIONS = [5, 10, 25]
+const DEFAULT_PAGE_SIZE = 5
 
 type SaleStatusChip = 'all' | 'draft' | 'estimate' | 'final'
 type PledgeStatusChip = 'all' | 'draft' | 'active' | 'redeemed' | 'forfeited'
@@ -110,7 +109,7 @@ function invoiceToRow(invoice: Invoice): BillRow {
     billType,
     customerName: invoice.customerName,
     customerPhone: invoice.customerPhone,
-    itemsLabel: itemCountLabel(invoice.items.length),
+    itemsLabel: itemCountLabel(invoice.itemCount ?? invoice.items.length),
     total: invoice.amountPayable ?? invoice.total,
     paid: invoice.amountPaid,
     balance: invoice.balanceDue,
@@ -148,7 +147,7 @@ function pledgeToRow(pledge: Pledge): BillRow {
     billType: 'adagu',
     customerName: pledge.customerName,
     customerPhone: pledge.customerPhone,
-    itemsLabel: itemCountLabel(pledge.items.length),
+    itemsLabel: itemCountLabel(pledge.itemCount ?? pledge.items.length),
     total: pledge.loanAmount,
     paid: 0,
     balance: pledge.status === 'active' ? pledge.loanAmount : 0,
@@ -166,12 +165,15 @@ export function InvoicesPage() {
 
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [pledges, setPledges] = useState<Pledge[]>([])
+  const [totalRows, setTotalRows] = useState(0)
+  const [reloadKey, setReloadKey] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [reprinting, setReprinting] = useState(false)
   const [period, setPeriod] = useState<BillingPeriod>('all')
   const [selectedDate, setSelectedDate] = useState(today)
   const [search, setSearch] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [billTypeFilter, setBillTypeFilter] = useState<BillTypeFilter>('all')
   const [statusFilter, setStatusFilter] = useState<SaleStatusChip>('all')
   const [pledgeStatus, setPledgeStatus] = useState<PledgeStatusChip>('all')
@@ -197,6 +199,11 @@ export function InvoicesPage() {
   }, [period, selectedDate])
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setSearchQuery(search.trim()), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
+
+  useEffect(() => {
     let active = true
     void (async () => {
       try {
@@ -204,10 +211,46 @@ export function InvoicesPage() {
           setError(null)
           setLoading(true)
         }
-        const [invoiceList, pledgeList] = await Promise.all([api.listInvoices(), api.listPledges()])
+        const includeInvoices =
+          billTypeFilter === 'all' || billTypeFilter === 'cash_bill' || billTypeFilter === 'tax_invoice'
+        const includePledges =
+          (billTypeFilter === 'all' || billTypeFilter === 'adagu') &&
+          statusFilter === 'all' &&
+          paymentFilter === 'all' &&
+          duePaid === 'all'
+        const format =
+          billTypeFilter === 'cash_bill' || billTypeFilter === 'tax_invoice' ? billTypeFilter : 'all'
+        const [invoicePage, pledgePage] = await Promise.all([
+          includeInvoices
+            ? api.listInvoices({
+                page,
+                pageSize,
+                from: range.from,
+                to: range.to,
+                q: searchQuery || undefined,
+                format,
+                status: statusFilter,
+                paymentMode: paymentFilter,
+                duePaid,
+                sort: dateSort,
+              })
+            : Promise.resolve({ items: [] as Invoice[], total: 0, page, pageSize }),
+          includePledges
+            ? api.listPledges({
+                page,
+                pageSize,
+                from: range.from,
+                to: range.to,
+                q: searchQuery || undefined,
+                status: adaguOnly ? pledgeStatus : 'all',
+                sort: dateSort,
+              })
+            : Promise.resolve({ items: [] as Pledge[], total: 0, page, pageSize }),
+        ])
         if (active) {
-          setInvoices(invoiceList)
-          setPledges(pledgeList)
+          setInvoices(invoicePage.items)
+          setPledges(pledgePage.items)
+          setTotalRows(invoicePage.total + pledgePage.total)
         }
       } catch (err) {
         if (active) {
@@ -220,7 +263,21 @@ export function InvoicesPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [
+    page,
+    pageSize,
+    range.from,
+    range.to,
+    searchQuery,
+    billTypeFilter,
+    statusFilter,
+    pledgeStatus,
+    paymentFilter,
+    duePaid,
+    dateSort,
+    adaguOnly,
+    reloadKey,
+  ])
 
   useEffect(() => {
     if (menuKey === null) return
@@ -234,68 +291,17 @@ export function InvoicesPage() {
   }, [menuKey])
 
   const visibleRows = useMemo(() => {
-    const includeInvoices = billTypeFilter === 'all' || billTypeFilter === 'cash_bill' || billTypeFilter === 'tax_invoice'
-    const includePledges = billTypeFilter === 'all' || billTypeFilter === 'adagu'
-    const formatFilter =
-      billTypeFilter === 'cash_bill' || billTypeFilter === 'tax_invoice' ? billTypeFilter : 'all'
-
-    const invoiceRows: BillRow[] = includeInvoices
-      ? invoices
-          .filter((invoice) =>
-            invoiceMatchesFilters(invoice, {
-              from: range.from,
-              to: range.to,
-              search,
-              status: statusFilter,
-              paymentMode: paymentFilter,
-              format: formatFilter,
-              duePaid,
-            }),
-          )
-          .map(invoiceToRow)
-      : []
-
-    const q = search.trim().toLowerCase()
-    const pledgeRows: BillRow[] = includePledges
-      ? pledges
-          .filter((pledge) => {
-            if (range.from && pledge.pledgeDate < range.from) return false
-            if (range.to && pledge.pledgeDate > range.to) return false
-            if (billTypeFilter === 'all' && statusFilter !== 'all') return false
-            if (adaguOnly && pledgeStatus !== 'all' && pledge.status !== pledgeStatus) return false
-            if (paymentFilter !== 'all') return false
-            if (duePaid !== 'all') return false
-            if (!q) return true
-            return (
-              pledge.receiptNo.toLowerCase().includes(q) ||
-              pledge.customerName.toLowerCase().includes(q) ||
-              pledge.customerPhone.toLowerCase().includes(q)
-            )
-          })
-          .map(pledgeToRow)
-      : []
-
+    const invoiceRows = invoices.map(invoiceToRow)
+    const pledgeRows = pledges.map(pledgeToRow)
     const merged = [...invoiceRows, ...pledgeRows]
-    return merged.sort((a, b) => {
+    const sorted = merged.sort((a, b) => {
       const cmp = a.date.localeCompare(b.date) || a.id - b.id
       return dateSort === 'asc' ? cmp : -cmp
     })
-  }, [
-    invoices,
-    pledges,
-    billTypeFilter,
-    range.from,
-    range.to,
-    search,
-    statusFilter,
-    pledgeStatus,
-    paymentFilter,
-    duePaid,
-    adaguOnly,
-    dateSort,
-  ])
+    return billTypeFilter === 'all' ? sorted.slice(0, pageSize) : sorted
+  }, [invoices, pledges, billTypeFilter, dateSort, pageSize])
 
-  const lastPage = Math.max(1, Math.ceil(visibleRows.length / pageSize))
+  const lastPage = Math.max(1, Math.ceil(totalRows / pageSize))
   const currentPage = Math.min(page, lastPage)
 
   useEffect(() => {
@@ -304,10 +310,7 @@ export function InvoicesPage() {
     }
   }, [page, currentPage])
 
-  const pagedRows = useMemo(
-    () => paginate(visibleRows, currentPage, pageSize),
-    [visibleRows, currentPage, pageSize],
-  )
+  const pagedRows = visibleRows
 
   const allPageSelected =
     pagedRows.length > 0 && pagedRows.every((row) => selectedKeys.includes(row.key))
@@ -324,19 +327,13 @@ export function InvoicesPage() {
     setDuePaid('all')
     setPeriod('all')
     setSearch('')
+    setSearchQuery('')
     setPage(1)
     setSelectedKeys([])
   }
 
   async function load() {
-    try {
-      setError(null)
-      const [invoiceList, pledgeList] = await Promise.all([api.listInvoices(), api.listPledges()])
-      setInvoices(invoiceList)
-      setPledges(pledgeList)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load bills')
-    }
+    setReloadKey((key) => key + 1)
   }
 
   async function remove(id: number) {
@@ -576,11 +573,11 @@ export function InvoicesPage() {
             </div>
           }
           footer={
-            visibleRows.length === 0 ? undefined : (
+            totalRows === 0 ? undefined : (
               <TablePager
                 page={currentPage}
                 pageSize={pageSize}
-                total={visibleRows.length}
+                total={totalRows}
                 onPageChange={setPage}
                 onPageSizeChange={setPageSize}
                 pageSizeOptions={PAGE_SIZE_OPTIONS}
@@ -623,7 +620,7 @@ export function InvoicesPage() {
               </tr>
             </thead>
             <tbody>
-              {visibleRows.length === 0 ? (
+              {totalRows === 0 ? (
                 <tr>
                   <td colSpan={12} className="empty-cell">
                     No bills found. Create your first bill to get started.

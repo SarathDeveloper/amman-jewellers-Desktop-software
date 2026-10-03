@@ -186,7 +186,7 @@ describe('pledges API', () => {
 
     const list = await getTestAgent().get('/api/pledges')
     expect(list.status).toBe(200)
-    expect(list.body.some((row: { id: number }) => row.id === created.body.id)).toBe(true)
+    expect(list.body.items.some((row: { id: number }) => row.id === created.body.id)).toBe(true)
   })
 
   it('assigns separate CB and TI invoice number prefixes', async () => {

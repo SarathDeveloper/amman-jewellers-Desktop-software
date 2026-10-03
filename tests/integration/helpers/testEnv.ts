@@ -77,6 +77,7 @@ export const IPC_CHANNELS = {
   REPORTS_CATALOG: 'reports:catalog',
   REPORTS_RUN: 'reports:run',
   SETTINGS_GET: 'settings:get',
+  SETTINGS_COUNTS: 'settings:counts',
   SETTINGS_UPDATE: 'settings:update',
   METAL_RATES_LATEST: 'metalRates:latest',
   METAL_RATES_LIST: 'metalRates:list',
@@ -310,9 +311,13 @@ export async function invokeIpcForTests<T>(channel: string, rawInput?: unknown):
     case IPC_CHANNELS.DUES_MARK_PAID:
       response = await agent().post(`/api/dues/${input}/mark-paid`)
       break
-    case IPC_CHANNELS.INVOICES_LIST:
-      response = await agent().get('/api/invoices')
+    case IPC_CHANNELS.INVOICES_LIST: {
+      response = await agent().get('/api/invoices').query({ page: 1, pageSize: 50 })
+      if (response.status >= 200 && response.status < 300 && Array.isArray(response.body?.items)) {
+        return { ok: true, data: response.body.items } as IpcResult<T>
+      }
       break
+    }
     case IPC_CHANNELS.INVOICES_GET:
       response = await agent().get(`/api/invoices/${input}`)
       break
@@ -355,6 +360,9 @@ export async function invokeIpcForTests<T>(channel: string, rawInput?: unknown):
     }
     case IPC_CHANNELS.SETTINGS_GET:
       response = await agent().get('/api/settings')
+      break
+    case IPC_CHANNELS.SETTINGS_COUNTS:
+      response = await agent().get('/api/settings/counts')
       break
     case IPC_CHANNELS.SETTINGS_UPDATE:
       response = await agent().put('/api/settings').send(input)

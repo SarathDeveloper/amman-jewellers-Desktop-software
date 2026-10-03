@@ -6,6 +6,13 @@ export type IpcResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; referenceId?: string }
 
+export interface PagedList<T> {
+  items: T[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export type LogCategory = 'application' | 'database' | 'printer' | 'crash' | 'backup'
 
 export type DiagnosticSource = 'boundary' | 'window' | 'rejection'
@@ -114,6 +121,7 @@ export interface Customer {
   aadhaar: string
   pan: string
   createdAt: string
+  lastBillDate?: string | null
 }
 
 export interface CustomerInput {
@@ -295,6 +303,7 @@ export interface Invoice {
   total: number
   status: InvoiceStatus
   items: InvoiceItem[]
+  itemCount?: number
   createdAt: string
   billFormat: BillFormat
   paymentMode: PaymentMode
@@ -315,6 +324,40 @@ export interface Invoice {
   roundOff: number
   amountPayable: number
   payments: InvoicePayment[]
+}
+
+export interface InvoiceListQuery {
+  page?: number
+  pageSize?: number
+  from?: string | null
+  to?: string | null
+  q?: string
+  format?: BillFormat | 'all'
+  status?: string
+  paymentMode?: PaymentMode | 'all'
+  duePaid?: 'all' | 'due' | 'paid'
+  sort?: 'asc' | 'desc'
+  customerId?: number
+}
+
+export interface InvoiceListStats {
+  sales: number
+  collections: number
+  draftCount: number
+  billsGenerated: number
+  customersBilled: number
+  totalItemsSold: number
+  chart: Array<{ key: string; total: number }>
+}
+
+export interface PledgeListQuery {
+  page?: number
+  pageSize?: number
+  from?: string | null
+  to?: string | null
+  q?: string
+  status?: string
+  sort?: 'asc' | 'desc'
 }
 
 export interface HistoricalInvoiceInput {
@@ -539,6 +582,11 @@ export interface AppInfo {
   version: string
   dbPath: string
   logsPath: string
+}
+
+export interface RecordCounts {
+  products: number
+  customers: number
 }
 
 export interface BackupStatus {
@@ -1060,6 +1108,7 @@ export interface Pledge {
   notes: string
   createdAt: string
   items: PledgeItem[]
+  itemCount?: number
   topups: PledgeTopup[]
 }
 
