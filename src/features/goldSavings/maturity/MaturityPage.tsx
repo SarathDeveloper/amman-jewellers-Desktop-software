@@ -33,9 +33,9 @@ export function MaturityPage() {
   useEffect(() => {
     if (!presetId) return
     void api.listGsAccounts().then((rows) => {
-      const found = rows.find((row) => row.id === presetId)
+      const found = (rows ?? []).find((row) => row.id === presetId)
       if (found) setAccount(found)
-    })
+    }).catch(() => undefined)
   }, [presetId])
 
   useEffect(() => {
@@ -46,9 +46,9 @@ export function MaturityPage() {
       api.getLatestMetalRates(),
     ]).then(([next, bills, latest]) => {
       setDetail(next)
-      setInvoices(bills.items.filter((bill) => bill.status === 'final'))
+      setInvoices((bills.items ?? []).filter((bill) => bill.status === 'final'))
       setRates(latest)
-    })
+    }).catch(() => undefined)
   }, [account])
 
   async function redeem() {

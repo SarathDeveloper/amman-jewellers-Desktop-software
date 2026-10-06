@@ -37,19 +37,24 @@ export function EnrollmentPage() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [printAccountId, setPrintAccountId] = useState<number | null>(null)
 
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
     let active = true
-    void Promise.all([api.listCustomers(), api.listGsSchemes(), api.getLatestMetalRates()]).then(
-      ([customerList, schemeList, latest]) => {
+    void Promise.all([api.listCustomers(), api.listGsSchemes(), api.getLatestMetalRates()])
+      .then(([customerList, schemeList, latest]) => {
         if (!active) return
-        setCustomers(customerList)
-        const activeSchemes = schemeList.filter((scheme) => scheme.status === 'active')
+        setCustomers(customerList ?? [])
+        const activeSchemes = (schemeList ?? []).filter((scheme) => scheme.status === 'active')
         setSchemes(activeSchemes)
         setRates(latest)
         setSchemeId((current) => current || activeSchemes[0]?.id || 0)
         setMonthlyAmount((current) => current || activeSchemes[0]?.monthlyAmount || 0)
-      },
-    )
+        setError(null)
+      })
+      .catch((err: unknown) => {
+        if (active) setError(err instanceof Error ? err.message : 'Failed to load enrollment')
+      })
     return () => {
       active = false
     }
@@ -107,6 +112,7 @@ export function EnrollmentPage() {
         title="Enroll customer"
         subtitle="Creates the scheme account, installment schedule and optional first receipt"
       />
+      {error ? <div className="error-banner">{error}</div> : null}
       <div className="settings-shop-workspace">
         <div className="settings-stack">
           <section className="card padded">

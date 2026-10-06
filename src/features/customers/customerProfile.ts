@@ -101,7 +101,7 @@ export function buildCustomerProfile(
   invoices: Invoice[],
   column?: CustomerDuesColumn,
 ): CustomerProfileSummary {
-  const customerInvoices = invoices.filter((invoice) => invoice.customerId === customerId)
+  const customerInvoices = (invoices ?? []).filter((invoice) => invoice.customerId === customerId)
   const purchases = purchaseRows(customerInvoices)
   const entries = column?.entries ?? []
   const payments = paymentRows(customerInvoices, entries)

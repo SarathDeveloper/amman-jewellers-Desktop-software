@@ -132,7 +132,7 @@ export function GoldSavingsReportsPage() {
   const summaries = result ? reportSummaries(result) : []
 
   useEffect(() => {
-    void api.listGsSchemes().then(setSchemes)
+    void api.listGsSchemes().then(setSchemes).catch(() => setSchemes([]))
   }, [])
 
   useEffect(() => {

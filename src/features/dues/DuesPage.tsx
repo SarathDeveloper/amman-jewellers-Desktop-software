@@ -35,7 +35,7 @@ export function DuesPage() {
       adaguOutstanding: data.adaguOutstanding ?? 0,
     }
     setLedger(ledger)
-    setInvoices(todayBills.items)
+    setInvoices(todayBills.items ?? [])
     return ledger
   }
 
@@ -69,8 +69,10 @@ export function DuesPage() {
   const overdueInterest = adaguDues.filter((row) => row.isInterestOverdue).length
 
   const todayCollections = useMemo(() => {
-    const entries = ledger.columns.flatMap((column) =>
-      tab === 'bills' ? column.entries.filter(isBillEntry) : column.entries.filter((entry) => entry.pledgeId !== null),
+    const entries = (ledger.columns ?? []).flatMap((column) =>
+      tab === 'bills'
+        ? (column.entries ?? []).filter(isBillEntry)
+        : (column.entries ?? []).filter((entry) => entry.pledgeId !== null),
     )
     return computeTodayCollections(tab === 'bills' ? invoices : [], entries, today)
   }, [ledger, invoices, today, tab])

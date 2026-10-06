@@ -1,6 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { DiagnosticReport } from '@shared/types'
-import { isPrintRoute, isTransientFatal, loadPendingFatal, reportFatal } from '../lib/diagnostics'
+import {
+  isExpectedApiFailure,
+  isPrintRoute,
+  isTransientFatal,
+  loadPendingFatal,
+  reportFatal,
+} from '../lib/diagnostics'
 import { FatalErrorScreen } from './FatalErrorScreen'
 
 export function FatalErrorGate({ children }: { children: ReactNode }) {
@@ -33,6 +39,10 @@ export function FatalErrorGate({ children }: { children: ReactNode }) {
     function onRejection(event: PromiseRejectionEvent): void {
       const reason = event.reason
       const message = reason instanceof Error ? reason.message : String(reason)
+      if (isExpectedApiFailure(message)) {
+        event.preventDefault()
+        return
+      }
       const stack = reason instanceof Error ? reason.stack : undefined
       void reportFatal({ message, stack, source: 'rejection' }).then((report) => {
         if (!cancelled) {

@@ -20,12 +20,11 @@ import type {
   ShopSettings,
   TaxReportRow,
 } from '@shared/types'
-import logoUrl from '../../assets/jeweltrackerpro-logo.svg'
 import { PageHeader } from '../../components/PageHeader'
 import { formatCurrency } from '../../lib/format'
 import { api } from '../../lib/api'
 import { useToast } from '../../components/toastContext'
-import { localImageSrc, shopSettingsToDisplay } from '../invoices/mapShopDisplay'
+import { defaultShopLogoUrl, localImageSrc, shopSettingsToDisplay } from '../invoices/mapShopDisplay'
 import { storeSampleBillPrint, type SampleBillKind } from '../invoices/sampleBillPrintStore'
 import { PrintPreviewModal } from '../print/PrintPreviewModal'
 import { printPreviewPaths } from '../print/printPreviewPaths'
@@ -161,7 +160,7 @@ export function SettingsPage() {
   const [taxReport, setTaxReport] = useState<TaxReportRow[]>([])
 
   const shopDisplay = shopSettingsToDisplay(shop)
-  const headerLogoSrc = localImageSrc(shop?.logoImagePath, logoUrl)
+  const headerLogoSrc = localImageSrc(shop?.logoImagePath, defaultShopLogoUrl)
 
   function updateShop(
     next: ShopSettings | null | ((current: ShopSettings | null) => ShopSettings | null),
@@ -495,7 +494,7 @@ export function SettingsPage() {
                       hint="PNG, JPG (Max 2MB)"
                       preview={
                         <span className="settings-image-preview">
-                          <img src={localImageSrc(shop.logoImagePath, logoUrl)} alt="" />
+                          <img src={localImageSrc(shop.logoImagePath, defaultShopLogoUrl)} alt="" />
                         </span>
                       }
                       onPick={(file) => void pickImage('logoImagePath', file)}

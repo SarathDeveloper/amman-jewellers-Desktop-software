@@ -109,7 +109,7 @@ function invoiceToRow(invoice: Invoice): BillRow {
     billType,
     customerName: invoice.customerName,
     customerPhone: invoice.customerPhone,
-    itemsLabel: itemCountLabel(invoice.itemCount ?? invoice.items.length),
+    itemsLabel: itemCountLabel(invoice.itemCount ?? invoice.items?.length ?? 0),
     total: invoice.amountPayable ?? invoice.total,
     paid: invoice.amountPaid,
     balance: invoice.balanceDue,
@@ -147,7 +147,7 @@ function pledgeToRow(pledge: Pledge): BillRow {
     billType: 'adagu',
     customerName: pledge.customerName,
     customerPhone: pledge.customerPhone,
-    itemsLabel: itemCountLabel(pledge.itemCount ?? pledge.items.length),
+    itemsLabel: itemCountLabel(pledge.itemCount ?? pledge.items?.length ?? 0),
     total: pledge.loanAmount,
     paid: 0,
     balance: pledge.status === 'active' ? pledge.loanAmount : 0,
@@ -248,9 +248,9 @@ export function InvoicesPage() {
             : Promise.resolve({ items: [] as Pledge[], total: 0, page, pageSize }),
         ])
         if (active) {
-          setInvoices(invoicePage.items)
-          setPledges(pledgePage.items)
-          setTotalRows(invoicePage.total + pledgePage.total)
+          setInvoices(invoicePage.items ?? [])
+          setPledges(pledgePage.items ?? [])
+          setTotalRows((invoicePage.total ?? 0) + (pledgePage.total ?? 0))
         }
       } catch (err) {
         if (active) {
@@ -291,8 +291,8 @@ export function InvoicesPage() {
   }, [menuKey])
 
   const visibleRows = useMemo(() => {
-    const invoiceRows = invoices.map(invoiceToRow)
-    const pledgeRows = pledges.map(pledgeToRow)
+    const invoiceRows = (invoices ?? []).map(invoiceToRow)
+    const pledgeRows = (pledges ?? []).map(pledgeToRow)
     const merged = [...invoiceRows, ...pledgeRows]
     const sorted = merged.sort((a, b) => {
       const cmp = a.date.localeCompare(b.date) || a.id - b.id

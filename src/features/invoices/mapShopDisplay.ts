@@ -8,6 +8,9 @@ import {
 } from '@shared/billTemplate'
 import { shopMediaSrc } from '@shared/shopMedia'
 import type { ShopSettings } from '@shared/types'
+import defaultShopLogoUrl from '../../images/amman-jeweller-logo.png'
+
+export { defaultShopLogoUrl }
 
 export interface ShopDisplayInfo {
   name: string

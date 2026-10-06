@@ -1,12 +1,12 @@
 /**
- * Live Electron E2E: Adagu (pledge/loan) billing flow with hard-coded totals.
- * Requires the Electron dev app: npm run electron:dev
+ * Live Tauri E2E: Adagu (pledge/loan) billing flow with hard-coded totals.
+ * Requires the Tauri dev app: npm run tauri:dev
  * Login: admin / admin456
  *
  * Sets shop Adagu monthly interest to 2% (persists in this live database).
  * Interest = principal × 2/100 × days/30  (shared/billing/pledgeMath.ts)
  */
-import { expect, test } from './fixtures/electron-live'
+import { expect, test } from './fixtures/tauri-live'
 import {
   adaguDueRow,
   adaguField,
@@ -25,7 +25,7 @@ import {
   setBillDate,
 } from './helpers/inventoryBilling'
 
-test.describe('Adagu billing — live Electron scenarios', () => {
+test.describe('Adagu billing — live Tauri scenarios', () => {
   test.describe.configure({ mode: 'serial' })
 
   test('setup — set Adagu monthly interest to 2%', async ({ window }) => {

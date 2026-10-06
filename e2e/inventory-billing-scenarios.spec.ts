@@ -1,6 +1,6 @@
 /**
- * Live Electron E2E: inventory stock → billing, with real jewellery shop scenarios.
- * Requires the Electron dev app: npm run electron:dev
+ * Live Tauri E2E: inventory stock → billing, with real jewellery shop scenarios.
+ * Requires the Tauri dev app: npm run tauri:dev
  * Login: admin / admin456
  *
  * Pricing (shared/billing/pricing.ts):
@@ -8,7 +8,7 @@
  *   GST 3% applies on tax invoices only
  *   cash bills auto-round the payable to the nearest rupee
  */
-import { expect, test } from './fixtures/electron-live'
+import { expect, test } from './fixtures/tauri-live'
 import { openInventoryTab } from './helpers/nav'
 import {
   addCustomerOnBill,
@@ -30,7 +30,7 @@ const GOLD_RATE = '6200'
 const SILVER_RATE = '88'
 const OLD_GOLD_RATE = '6000'
 
-test.describe('Inventory to billing — live Electron scenarios', () => {
+test.describe('Inventory to billing — live Tauri scenarios', () => {
   test.describe.configure({ mode: 'serial' })
 
   test('S1 — Ravi gold ring, cash bill, stock 5 → 4', async ({ window }) => {

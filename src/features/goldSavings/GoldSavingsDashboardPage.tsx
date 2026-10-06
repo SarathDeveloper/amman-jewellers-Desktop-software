@@ -105,8 +105,14 @@ export function GoldSavingsDashboardPage() {
   }
   if (!data) return null
 
-  const maxChart = Math.max(...data.monthlyChart.map((point) => point.amount), 1)
-  const maxEnroll = Math.max(...data.schemeEnrollments.map((row) => row.count), 1)
+  const monthlyChart = data.monthlyChart ?? []
+  const schemeEnrollments = data.schemeEnrollments ?? []
+  const upcomingDues = data.upcomingDues ?? []
+  const recentCollections = data.recentCollections ?? []
+  const recentEnrollments = data.recentEnrollments ?? []
+  const maturingAccounts = data.maturingAccounts ?? []
+  const maxChart = Math.max(...monthlyChart.map((point) => point.amount), 1)
+  const maxEnroll = Math.max(...schemeEnrollments.map((row) => row.count), 1)
   const monthPct = monthProgressPct(data.monthCollections, data.monthTarget)
   const monthBarPct = Math.min(100, monthPct)
 
@@ -230,8 +236,8 @@ export function GoldSavingsDashboardPage() {
       </section>
 
       <div className="dashboard-lifecycle-grid">
-        <OverdueAgingPanel buckets={data.overdueAging} />
-        <MaturityPipelinePanel buckets={data.maturityPipeline} />
+        <OverdueAgingPanel buckets={data.overdueAging ?? []} />
+        <MaturityPipelinePanel buckets={data.maturityPipeline ?? []} />
       </div>
 
       <div className="dashboard-mid-grid">
@@ -241,10 +247,10 @@ export function GoldSavingsDashboardPage() {
           </div>
           <div className="dashboard-sales-chart" role="img" aria-label="Monthly collections">
             <div className="dashboard-sales-bars">
-              {data.monthlyChart.length === 0 ? (
+              {monthlyChart.length === 0 ? (
                 <p className="dashboard-empty-state">No collections yet</p>
               ) : (
-                data.monthlyChart.map((point) => (
+                monthlyChart.map((point) => (
                   <div key={point.key} className="dashboard-sales-bar-col">
                     <div className="dashboard-sales-bar-track">
                       <div
@@ -264,11 +270,11 @@ export function GoldSavingsDashboardPage() {
           <div className="dashboard-panel-head">
             <h2>Scheme-wise enrollment</h2>
           </div>
-          {data.schemeEnrollments.length === 0 ? (
+          {schemeEnrollments.length === 0 ? (
             <p className="dashboard-empty-state">No schemes yet</p>
           ) : (
             <div className="gs-enroll-bars">
-              {data.schemeEnrollments.map((row) => (
+              {schemeEnrollments.map((row) => (
                 <div key={row.schemeName} className="gs-enroll-row">
                   <span>{row.schemeName}</span>
                   <div className="gs-enroll-track">
@@ -284,7 +290,7 @@ export function GoldSavingsDashboardPage() {
 
       <div className="dashboard-lower-grid">
         <ListCard title="Upcoming dues" empty="No dues in the next 7 days" to="/gold-savings/collections">
-          {data.upcomingDues.map((account) => (
+          {upcomingDues.map((account) => (
             <Link key={account.id} to={`/gold-savings/accounts/${account.id}`} className="dashboard-due-row">
               <span className="dashboard-due-name">{account.customerName}</span>
               <span className="muted">
@@ -294,7 +300,7 @@ export function GoldSavingsDashboardPage() {
           ))}
         </ListCard>
         <ListCard title="Recent collections" empty="No collections yet" to="/gold-savings/collections">
-          {data.recentCollections.map((payment) => (
+          {recentCollections.map((payment) => (
             <div key={payment.id} className="dashboard-due-row">
               <span className="dashboard-due-name">{payment.customerName}</span>
               <span className="muted">
@@ -304,7 +310,7 @@ export function GoldSavingsDashboardPage() {
           ))}
         </ListCard>
         <ListCard title="Recently enrolled" empty="No enrollments yet" to="/gold-savings/accounts">
-          {data.recentEnrollments.map((account) => (
+          {recentEnrollments.map((account) => (
             <Link key={account.id} to={`/gold-savings/accounts/${account.id}`} className="dashboard-due-row">
               <span className="dashboard-due-name">{account.customerName}</span>
               <span className="muted">
@@ -314,7 +320,7 @@ export function GoldSavingsDashboardPage() {
           ))}
         </ListCard>
         <ListCard title="Maturing accounts" empty="No accounts maturing soon" to="/gold-savings/maturity">
-          {data.maturingAccounts.map((account) => (
+          {maturingAccounts.map((account) => (
             <Link key={account.id} to={`/gold-savings/accounts/${account.id}`} className="dashboard-due-row">
               <span className="dashboard-due-name">{account.customerName}</span>
               <span className="muted">

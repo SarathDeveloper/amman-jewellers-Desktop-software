@@ -1,6 +1,5 @@
-import logoUrl from '../../assets/jeweltrackerpro-logo.svg'
 import { formatPaymentMode } from '../../lib/format'
-import { EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from '../invoices/mapShopDisplay'
+import { defaultShopLogoUrl, EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from '../invoices/mapShopDisplay'
 import type { PurchaseInvoiceData } from './purchaseInvoiceTypes'
 import './PurchaseInvoicePrint.css'
 
@@ -35,7 +34,7 @@ export function PurchaseInvoicePrint({
           {shopInfo.taxVisibility.showLogo ? (
             <img
               className="purchase-invoice-logo"
-              src={localImageSrc(shopInfo.logoImagePath, logoUrl)}
+              src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)}
               alt=""
             />
           ) : null}

@@ -9,6 +9,18 @@ function processResourcesPath(): string | undefined {
   return undefined
 }
 
+function currentModuleDir(): string {
+  try {
+    const metaUrl = import.meta.url
+    if (typeof metaUrl === 'string' && metaUrl.length > 0) {
+      return dirname(fileURLToPath(metaUrl))
+    }
+  } catch {
+    // Bundled CJS sidecar has no import.meta.url.
+  }
+  return process.cwd()
+}
+
 function looksLikeAppRoot(dir: string): boolean {
   return existsSync(join(dir, 'package.json'))
 }
@@ -16,10 +28,17 @@ function looksLikeAppRoot(dir: string): boolean {
 export function getAppRoot(): string {
   const override = process.env.JEWELTRACKERPRO_APP_ROOT
   if (override) {
+    if (looksLikeAppRoot(override)) {
+      return override
+    }
+    const nested = join(override, 'resources')
+    if (looksLikeAppRoot(nested)) {
+      return nested
+    }
     return override
   }
 
-  const here = dirname(fileURLToPath(import.meta.url))
+  const here = currentModuleDir()
   const candidates = [
     join(here, '..'),
     join(here, '..', '..'),
@@ -37,26 +56,27 @@ export function getAppRoot(): string {
 
 export function getMigrationsDir(): string {
   const override = process.env.JEWELTRACKERPRO_MIGRATIONS_DIR
-  if (override) {
-    return override
-  }
-
+  const appRoot = getAppRoot()
+  const here = currentModuleDir()
   const candidates = [
-    join(getAppRoot(), 'server', 'db', 'migrations'),
-    join(dirname(fileURLToPath(import.meta.url)), 'migrations'),
-    join(dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations'),
+    override,
+    join(appRoot, 'migrations'),
+    join(appRoot, 'resources', 'migrations'),
+    join(appRoot, 'server', 'db', 'migrations'),
+    join(here, 'migrations'),
+    join(here, '..', 'db', 'migrations'),
   ]
 
   const resourcesPath = processResourcesPath()
   if (resourcesPath) {
-    candidates.unshift(join(resourcesPath, 'migrations'))
+    candidates.unshift(join(resourcesPath, 'migrations'), join(resourcesPath, 'resources', 'migrations'))
   }
 
   for (const dir of candidates) {
-    if (existsSync(join(dir, '001_initial.sql'))) {
+    if (dir && existsSync(join(dir, '001_initial.sql'))) {
       return dir
     }
   }
 
-  return join(getAppRoot(), 'server', 'db', 'migrations')
+  return join(appRoot, 'server', 'db', 'migrations')
 }

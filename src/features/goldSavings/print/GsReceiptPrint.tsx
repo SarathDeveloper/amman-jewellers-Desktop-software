@@ -1,8 +1,7 @@
 import { amountInWords } from '@shared/billing/amountInWords'
 import type { GoldSavingPayment } from '@shared/types'
-import logoUrl from '../../../assets/jeweltrackerpro-logo.svg'
 import { formatDisplayDate } from '../../../lib/format'
-import { EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from '../../invoices/mapShopDisplay'
+import { defaultShopLogoUrl, EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from '../../invoices/mapShopDisplay'
 import { paperClassName } from '../../invoices/paperSize'
 import { formatGsPaymentMode } from '../gsLabels'
 import './GsReceiptPrint.css'
@@ -27,7 +26,7 @@ export function GsReceiptPrint({
         <header className="gs-receipt-header">
           <div className="gs-receipt-brand">
             {vis.showLogo ? (
-              <img className="gs-receipt-logo" src={localImageSrc(shopInfo.logoImagePath, logoUrl)} alt="" />
+              <img className="gs-receipt-logo" src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)} alt="" />
             ) : null}
             <div>
               <h1>{shopInfo.name || 'Amman Jewellers'}</h1>

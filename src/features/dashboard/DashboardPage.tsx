@@ -416,8 +416,8 @@ export function DashboardPage() {
           api.getLatestMetalRates().catch(() => null),
         ])
         if (active) {
-          setInvoiceStats(statsPayload)
-          setRecentInvoices(recentPage.items)
+          setInvoiceStats(statsPayload ?? emptyStats)
+          setRecentInvoices(recentPage.items ?? [])
           setLedger(dues)
           setGoldStock(goldRows)
           setSilverStock(silverRows)

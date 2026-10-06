@@ -1,10 +1,16 @@
 node_modules
 dist
 dist-server
-electron-dist
+sidecar-dist
 out
 release
 data
+src-tauri/target
+src-tauri/gen
+src-tauri/resources/migrations/*.sql
+src-tauri/binaries/*.exe
+src-tauri/binaries/*.node
+src-tauri/binaries/jeweltrackerpro-api-*
 server/uploads
 test-results
 playwright-report

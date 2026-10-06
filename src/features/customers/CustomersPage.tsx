@@ -129,7 +129,7 @@ export function CustomersPage() {
     void api
       .listInvoices({ customerId: profile.id, page: 1, pageSize: 50, status: 'final' })
       .then((page) => {
-        if (active) setProfileInvoices(page.items)
+        if (active) setProfileInvoices(page.items ?? [])
       })
       .catch(() => {
         if (active) setProfileInvoices([])

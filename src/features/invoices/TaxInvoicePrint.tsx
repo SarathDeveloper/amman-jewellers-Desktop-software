@@ -1,7 +1,7 @@
 import type { PaperSize } from "@shared/types";
 import type { TaxInvoiceData } from "./taxInvoiceTypes";
-import logoUrl from "../../assets/jeweltrackerpro-logo.svg";
 import {
+  defaultShopLogoUrl,
   EMPTY_SHOP_DISPLAY,
   localImageSrc,
   type ShopDisplayInfo,
@@ -75,7 +75,7 @@ export function TaxInvoicePrint({
               {vis.showLogo ? (
                 <img
                   className="tax-invoice-logo"
-                  src={localImageSrc(shopInfo.logoImagePath, logoUrl)}
+                  src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)}
                   alt=""
                 />
               ) : null}

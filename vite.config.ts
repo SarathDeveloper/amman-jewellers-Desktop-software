@@ -20,7 +20,7 @@ export default defineConfig({
     },
   },
   server: {
-    // Electron dev loads http://127.0.0.1:5173 — bind IPv4 explicitly (localhost may be IPv6-only).
+    // Desktop and web dev load http://127.0.0.1:5173 — bind IPv4 explicitly (localhost may be IPv6-only).
     host: '127.0.0.1',
     port: 5173,
     proxy: {

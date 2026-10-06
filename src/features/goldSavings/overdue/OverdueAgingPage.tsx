@@ -41,10 +41,15 @@ export function OverdueAgingPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    void Promise.all([api.listGsSchemes(), api.listGsAccounts()]).then(([schemeList, accountList]) => {
-      setSchemes(schemeList)
-      setAccounts(accountList)
-    })
+    void Promise.all([api.listGsSchemes(), api.listGsAccounts()])
+      .then(([schemeList, accountList]) => {
+        setSchemes(schemeList ?? [])
+        setAccounts(accountList ?? [])
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Failed to load overdue aging')
+        setLoading(false)
+      })
   }, [])
 
   useEffect(() => {

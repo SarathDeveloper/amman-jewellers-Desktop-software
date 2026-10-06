@@ -67,8 +67,8 @@ export interface DashboardStats {
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-function toDateKey(value: string): string {
-  return value.slice(0, 10)
+function toDateKey(value: string | null | undefined): string {
+  return (value ?? '').slice(0, 10)
 }
 
 function parseLocalDate(iso: string): Date {
@@ -254,9 +254,9 @@ export function sumMetalStock(rows: ItemStockRow[] | null | undefined): MetalSto
   )
 }
 
-function computePeriodSales(invoices: Invoice[], from: string, to: string): number {
+function computePeriodSales(invoices: Invoice[] | null | undefined, from: string, to: string): number {
   let total = 0
-  for (const invoice of invoices) {
+  for (const invoice of invoices ?? []) {
     if (isFinalSale(invoice) && dateInRange(invoice.invoiceDate, from, to)) {
       total += invoice.total
     }
@@ -265,21 +265,23 @@ function computePeriodSales(invoices: Invoice[], from: string, to: string): numb
 }
 
 export function computePeriodCollections(
-  invoices: Invoice[],
-  entries: DueEntry[],
+  invoices: Invoice[] | null | undefined,
+  entries: DueEntry[] | null | undefined,
   from: string,
   to: string,
 ): number {
-  const invoiceById = new Map(invoices.map((inv) => [inv.id, inv]))
+  const invoiceList = invoices ?? []
+  const entryList = entries ?? []
+  const invoiceById = new Map(invoiceList.map((inv) => [inv.id, inv]))
   let total = 0
 
-  for (const invoice of invoices) {
+  for (const invoice of invoiceList) {
     if (isFinalSale(invoice) && dateInRange(invoice.invoiceDate, from, to)) {
       total += invoice.amountPaid
     }
   }
 
-  for (const entry of entries) {
+  for (const entry of entryList) {
     if (entry.kind !== 'payment' || !dateInRange(entry.entryDate, from, to)) {
       continue
     }
@@ -297,8 +299,8 @@ export function computePeriodCollections(
 }
 
 export function computeTodayCollections(
-  invoices: Invoice[],
-  entries: DueEntry[],
+  invoices: Invoice[] | null | undefined,
+  entries: DueEntry[] | null | undefined,
   today: string,
 ): number {
   return computePeriodCollections(invoices, entries, today, today)
@@ -315,7 +317,7 @@ function computeSalesOverview(
   const indexByKey = new Map(chartBuckets.map((bucket, index) => [bucket.key, index]))
 
   const inRange: Invoice[] = []
-  for (const invoice of invoices) {
+  for (const invoice of invoices ?? []) {
     if (!isFinalSale(invoice) || !dateInRange(invoice.invoiceDate, range.from, range.to)) {
       continue
     }
@@ -330,7 +332,7 @@ function computeSalesOverview(
     } else if (granularity === 'day') {
       key = toDateKey(invoice.invoiceDate)
     } else {
-      key = toDateKey(invoice.invoiceDate).slice(0, 7)
+      key = toDateKey(invoice.invoiceDate).slice(0, 7) || null
     }
 
     if (key === null) continue
@@ -435,7 +437,7 @@ export function computeDashboardStats(
     draftCount,
     goldClosing: sumClosingWeight(goldStock),
     silverClosing: sumClosingWeight(silverStock),
-    recentBills: invoiceList.slice(0, RECENT_BILLS_LIMIT),
+    recentBills: (invoiceList ?? []).slice(0, RECENT_BILLS_LIMIT),
     salesOverview: computeSalesOverview(invoiceList, range, period, today),
     metalStock: {
       gold: sumMetalStock(goldStock),
@@ -459,29 +461,31 @@ export function applyInvoiceStats(
   const range = resolvePeriodRange(period, today, options.customFrom, options.customTo)
   const granularity = periodGranularity(period, range)
   const chartBuckets = buildChartBuckets(period, range, granularity, today)
-  const byKey = new Map(invoiceStats.chart.map((row) => [row.key, row.total]))
+  const byKey = new Map((invoiceStats.chart ?? []).map((row) => [row.key, row.total]))
   for (const bucket of chartBuckets) {
     bucket.total = byKey.get(bucket.key) ?? 0
   }
   const { dueCollections, outstandingCustomerCount } = computeDueCollections(ledger, today)
 
   return {
-    todaySales: invoiceStats.sales,
-    todayCollections: invoiceStats.collections,
+    todaySales: invoiceStats.sales ?? 0,
+    todayCollections: invoiceStats.collections ?? 0,
     totalOutstanding: ledger?.totalOutstanding ?? 0,
-    draftCount: invoiceStats.draftCount,
+    draftCount: invoiceStats.draftCount ?? 0,
     goldClosing: sumClosingWeight(goldStock),
     silverClosing: sumClosingWeight(silverStock),
-    recentBills: recentBills.slice(0, RECENT_BILLS_LIMIT),
+    recentBills: (recentBills ?? []).slice(0, RECENT_BILLS_LIMIT),
     salesOverview: {
       hourlyTotals: chartBuckets.map((bucket) => bucket.total),
       chartBuckets,
       chartGranularity: granularity,
-      billsGenerated: invoiceStats.billsGenerated,
+      billsGenerated: invoiceStats.billsGenerated ?? 0,
       averageBillValue:
-        invoiceStats.billsGenerated > 0 ? invoiceStats.sales / invoiceStats.billsGenerated : 0,
-      customersBilled: invoiceStats.customersBilled,
-      totalItemsSold: invoiceStats.totalItemsSold,
+        (invoiceStats.billsGenerated ?? 0) > 0
+          ? (invoiceStats.sales ?? 0) / invoiceStats.billsGenerated
+          : 0,
+      customersBilled: invoiceStats.customersBilled ?? 0,
+      totalItemsSold: invoiceStats.totalItemsSold ?? 0,
     },
     metalStock: {
       gold: sumMetalStock(goldStock),

@@ -18,7 +18,7 @@ async function waitForLiveApp(page: Page): Promise<void> {
   }
   const detail = lastError instanceof Error ? lastError.message : String(lastError ?? '')
   throw new Error(
-    `Electron app is not reachable at ${ORIGIN}. Start it with: npm run electron:dev\n${detail}`,
+    `Tauri app is not reachable at ${ORIGIN}. Start it with: npm run tauri:dev\n${detail}`,
   )
 }
 
@@ -29,7 +29,7 @@ async function signIn(page: Page): Promise<void> {
   await username.or(sidebar).waitFor({ state: 'visible', timeout: 20_000 })
 
   if (page.url().includes('change-password')) {
-    throw new Error('Admin must finish the password change before live Electron E2E tests can run')
+    throw new Error('Admin must finish the password change before live Tauri E2E tests can run')
   }
 
   if (await username.isVisible()) {
@@ -40,7 +40,7 @@ async function signIn(page: Page): Promise<void> {
 
   await sidebar.waitFor({ state: 'visible', timeout: 20_000 })
   if (page.url().includes('change-password')) {
-    throw new Error('Admin must finish the password change before live Electron E2E tests can run')
+    throw new Error('Admin must finish the password change before live Tauri E2E tests can run')
   }
 }
 

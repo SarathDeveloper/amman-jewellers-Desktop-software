@@ -38,11 +38,13 @@ export function CollectPaymentModal({
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    void Promise.all([api.getGsAccount(accountId), api.getLatestMetalRates()]).then(([next, latest]) => {
-      setDetail(next)
-      setRates(latest)
-      setAmount(next.account.monthlyAmount)
-    })
+    void Promise.all([api.getGsAccount(accountId), api.getLatestMetalRates()])
+      .then(([next, latest]) => {
+        setDetail(next)
+        setRates(latest)
+        setAmount(next.account.monthlyAmount)
+      })
+      .catch(() => undefined)
   }, [accountId])
 
   if (!detail) return null

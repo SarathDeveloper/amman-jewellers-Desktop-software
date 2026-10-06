@@ -1,11 +1,11 @@
 /**
- * Live Electron E2E: standalone Old Gold Purchase flow with hard-coded totals.
- * Requires the Electron dev app: npm run electron:dev
+ * Live Tauri E2E: standalone Old Gold Purchase flow with hard-coded totals.
+ * Requires the Tauri dev app: npm run tauri:dev
  * Login: admin / admin456
  *
  * computeOldGoldValue: gross = net × rate; deduction = gross × ded%/100; final = gross − deduction
  */
-import { expect, test } from './fixtures/electron-live'
+import { expect, test } from './fixtures/tauri-live'
 import { openInventoryTab } from './helpers/nav'
 import {
   addCustomerOnBill,
@@ -30,7 +30,7 @@ let sharedStamp = 0
 let sharedPurchaseNo = ''
 let sharedCustomerName = ''
 
-test.describe('Old gold purchase — live Electron scenarios', () => {
+test.describe('Old gold purchase — live Tauri scenarios', () => {
   test.describe.configure({ mode: 'serial' })
 
   test('S9 — draft math, draft-link guard, finalize, no stock', async ({ window }) => {

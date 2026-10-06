@@ -1,7 +1,6 @@
 import type { GoldSavingLedgerEntry, GoldSavingPassbook } from '@shared/types'
-import logoUrl from '../../../assets/jeweltrackerpro-logo.svg'
 import { formatDisplayDate } from '../../../lib/format'
-import { EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from '../../invoices/mapShopDisplay'
+import { defaultShopLogoUrl, EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from '../../invoices/mapShopDisplay'
 import { currentBonusGold, progressPct, projectedBonusGold } from '../gsProjection'
 import './GsPassbookPrint.css'
 
@@ -113,7 +112,7 @@ export function GsPassbookPrint({
                   {vis.showLogo ? (
                     <img
                       className="gs-passbook-logo"
-                      src={localImageSrc(shopInfo.logoImagePath, logoUrl)}
+                      src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)}
                       alt=""
                     />
                   ) : null}

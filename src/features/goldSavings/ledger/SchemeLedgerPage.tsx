@@ -33,7 +33,10 @@ export function SchemeLedgerPage() {
 
   useEffect(() => {
     if (!account) return
-    void api.getGsLedger(account.id, { from: from || undefined, to: to || undefined }).then(setRows)
+    void api
+      .getGsLedger(account.id, { from: from || undefined, to: to || undefined })
+      .then(setRows)
+      .catch(() => setRows([]))
   }, [account, from, to])
 
   const filtered = useMemo(() => {

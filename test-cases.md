@@ -1,6 +1,6 @@
 # JewelTrackerPro — Manual QA Test Cases
 
-Offline-first Electron desktop app for jewellery shop inventory, billing, gold/silver weight tracking, customer dues, and staff PIN security. This catalog covers **all implemented user-facing features** as of the current codebase (v1.0.0).
+Offline-first Tauri desktop app for jewellery shop inventory, billing, gold/silver weight tracking, customer dues, and staff PIN security. This catalog covers **all implemented user-facing features** as of the current codebase (v1.0.0).
 
 **How to use:** Run cases against a built or `npm run dev` desktop window (not a browser). Prefer an isolated/test database for destructive cases (backup/restore, delete). PIN is disabled automatically in E2E (`JEWELTRACKERPRO_E2E=1`); for AUTH cases, use a normal launch.
 
@@ -656,7 +656,7 @@ Offline-first Electron desktop app for jewellery shop inventory, billing, gold/s
 
 ### PLAT-02 — Single-instance lock
 - **Steps:** Launch second instance while first is open.
-- **Expected Result:** Second instance focuses first / does not open a conflicting second shop window (per Electron single-instance design).
+- **Expected Result:** Second instance focuses first / does not open a conflicting second shop window (per Tauri single-instance design).
 
 ### PLAT-03 — Window min size
 - **Steps:** Resize window toward minimum.

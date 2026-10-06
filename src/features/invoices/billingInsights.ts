@@ -42,7 +42,10 @@ export function monthRange(today: string): { from: string; to: string } {
   }
 }
 
-export function dateInRange(value: string, from: string, to: string): boolean {
+export function dateInRange(value: string | null | undefined, from: string, to: string): boolean {
+  if (!value) {
+    return false
+  }
   const key = value.slice(0, 10)
   return key >= from && key <= to
 }
@@ -59,7 +62,7 @@ function addMetal(invoice: Invoice, insights: BillingInsights): void {
     return
   }
 
-  for (const item of invoice.items) {
+  for (const item of invoice.items ?? []) {
     const weight = item.netWeight * item.qty
     const metal = (item.metal ?? '').toLowerCase()
     if (metal.includes('silver')) {
@@ -80,11 +83,13 @@ function isFinalSale(invoice: Invoice): boolean {
 }
 
 export function computeBillingDaySummary(
-  invoices: Invoice[],
-  entries: DueEntry[],
+  invoices: Invoice[] | null | undefined,
+  entries: DueEntry[] | null | undefined,
   day: string,
 ): BillingDaySummary {
-  const invoiceById = new Map(invoices.map((invoice) => [invoice.id, invoice]))
+  const invoiceList = invoices ?? []
+  const entryList = entries ?? []
+  const invoiceById = new Map(invoiceList.map((invoice) => [invoice.id, invoice]))
   const summary: BillingDaySummary = {
     sales: 0,
     collections: 0,
@@ -96,7 +101,7 @@ export function computeBillingDaySummary(
     estimateCount: 0,
   }
 
-  for (const invoice of invoices) {
+  for (const invoice of invoiceList) {
     if (toDateKey(invoice.invoiceDate) !== day) {
       continue
     }
@@ -118,7 +123,7 @@ export function computeBillingDaySummary(
     }
   }
 
-  for (const entry of entries) {
+  for (const entry of entryList) {
     if (entry.kind !== 'payment' || toDateKey(entry.entryDate) !== day) {
       continue
     }
@@ -137,7 +142,7 @@ export function computeBillingDaySummary(
   return summary
 }
 
-export function computeBillingInsights(invoices: Invoice[], from: string, to: string): BillingInsights {
+export function computeBillingInsights(invoices: Invoice[] | null | undefined, from: string, to: string): BillingInsights {
   const insights: BillingInsights = {
     sales: 0,
     collected: 0,
@@ -155,7 +160,7 @@ export function computeBillingInsights(invoices: Invoice[], from: string, to: st
     makingCharges: 0,
   }
 
-  for (const invoice of invoices) {
+  for (const invoice of invoices ?? []) {
     if (!countsTowardSales(invoice) || !dateInRange(invoice.invoiceDate, from, to)) {
       continue
     }

@@ -13,5 +13,5 @@ type DesktopAPI = {
 }
 
 interface Window {
-  electronAPI?: DesktopAPI
+  desktopAPI?: DesktopAPI
 }

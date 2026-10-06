@@ -1,7 +1,6 @@
 import { Upload } from 'lucide-react'
 import type { ShopSettings } from '@shared/types'
-import logoUrl from '../../assets/jeweltrackerpro-logo.svg'
-import { localImageSrc } from '../invoices/mapShopDisplay'
+import { defaultShopLogoUrl, localImageSrc } from '../invoices/mapShopDisplay'
 
 export function RequiredMark() {
   return (
@@ -154,7 +153,7 @@ export function ShopHeaderFields({
         <span>Shop Logo</span>
         <div className="settings-image-picker">
           <div className="settings-image-preview">
-            <img src={localImageSrc(shop.logoImagePath, logoUrl)} alt="" />
+            <img src={localImageSrc(shop.logoImagePath, defaultShopLogoUrl)} alt="" />
           </div>
           <div className="settings-image-meta">
             <label className="btn secondary">

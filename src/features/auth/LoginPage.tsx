@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from './authContext'
+import { defaultShopLogoUrl } from '../invoices/mapShopDisplay'
 import { useShopBranding } from '../settings/shopBrandingContext'
-import logoUrl from '../../images/amman-jeweller-logo.png'
 
 export function LoginPage() {
   const { login, user, loading } = useAuth()
@@ -35,7 +35,7 @@ export function LoginPage() {
     <div className="auth-screen">
       <form className="card padded auth-card" onSubmit={(event) => void onSubmit(event)}>
         <div className="auth-brand">
-          <img src={logoUrl} alt="Amman Jewellers" className="auth-logo" />
+          <img src={defaultShopLogoUrl} alt="Amman Jewellers" className="auth-logo" />
           {shopName ? <h1>{shopName}</h1> : null}
           <p className="muted">Sign in to continue</p>
         </div>

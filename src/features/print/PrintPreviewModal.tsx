@@ -91,12 +91,8 @@ export function PrintPreviewModal({
   }
 
   async function downloadPdf() {
-    const savePdf = window.electronAPI?.savePdf
-    if (window.electronAPI && typeof savePdf !== 'function') {
-      setError('Restart JewelTrackerPro to enable PDF download')
-      return
-    }
-    if (!savePdf) {
+    const savePdf = window.desktopAPI?.savePdf
+    if (typeof savePdf !== 'function') {
       printFrame()
       return
     }

@@ -9,7 +9,9 @@ export default defineConfig([
   globalIgnores([
     'dist',
     'dist-server',
-    'electron-dist',
+    'sidecar-dist',
+    'src-tauri/target',
+    'src-tauri/gen',
     'out',
     'release',
     'data',
@@ -31,7 +33,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['server/**/*.ts', 'electron/**/*.ts'],
+    files: ['server/**/*.ts'],
     extends: [js.configs.recommended, tseslint.configs.recommended],
     languageOptions: {
       globals: globals.node,

@@ -67,8 +67,8 @@ export function billColumn(column: CustomerDuesColumn): CustomerDuesColumn {
   return { ...column, entries, balance: balanceForEntries(entries) }
 }
 
-export function billColumns(columns: CustomerDuesColumn[]): CustomerDuesColumn[] {
-  return columns.map(billColumn).filter((column) => column.entries.length > 0)
+export function billColumns(columns: CustomerDuesColumn[] | null | undefined): CustomerDuesColumn[] {
+  return (columns ?? []).map(billColumn).filter((column) => column.entries.length > 0)
 }
 
 export function billOutstanding(columns: CustomerDuesColumn[]): number {

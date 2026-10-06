@@ -1,8 +1,7 @@
 import type { PaperSize } from '@shared/types'
-import logoUrl from '../../assets/jeweltrackerpro-logo.svg'
 import { formatDisplayDate } from '../../lib/format'
 import type { CashBillData } from './cashBillTypes'
-import { EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from './mapShopDisplay'
+import { defaultShopLogoUrl, EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from './mapShopDisplay'
 import { paperClassName } from './paperSize'
 import './CashBillPrint.css'
 
@@ -59,7 +58,7 @@ export function CashBillPrint({
             <div className="cash-bill-gstin" />
             <div className="cash-bill-identity">
               {vis.showLogo ? (
-                <img className="cash-bill-logo" src={localImageSrc(shopInfo.logoImagePath, logoUrl)} alt="" />
+                <img className="cash-bill-logo" src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)} alt="" />
               ) : null}
               {shopInfo.name ? <h1 className="cash-bill-shop-name">{shopInfo.name}</h1> : null}
               {vis.showTagline && shopInfo.tagline ? <p className="cash-bill-tagline">{shopInfo.tagline}</p> : null}

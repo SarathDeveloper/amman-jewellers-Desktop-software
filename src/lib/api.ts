@@ -117,6 +117,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T
 }
 
+function asPaged<T>(payload: unknown): PagedList<T> {
+  if (Array.isArray(payload)) {
+    return { items: payload, total: payload.length, page: 1, pageSize: payload.length }
+  }
+  const page = payload && typeof payload === 'object' ? (payload as Partial<PagedList<T>>) : {}
+  const items = Array.isArray(page.items) ? page.items : []
+  return {
+    items,
+    total: typeof page.total === 'number' ? page.total : items.length,
+    page: typeof page.page === 'number' ? page.page : 1,
+    pageSize: typeof page.pageSize === 'number' ? page.pageSize : items.length,
+  }
+}
+
 function qs(params: Record<string, string | undefined>): string {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
@@ -270,21 +284,23 @@ export const api = {
     }),
   markDuePaid: (id: number) => request<DueEntry>(`/api/dues/${id}/mark-paid`, { method: 'POST' }),
 
-  listInvoices: (input?: InvoiceListQuery) =>
-    request<PagedList<Invoice>>(
-      `/api/invoices${qs({
-        page: input?.page != null ? String(input.page) : undefined,
-        pageSize: input?.pageSize != null ? String(input.pageSize) : undefined,
-        from: input?.from ?? undefined,
-        to: input?.to ?? undefined,
-        q: input?.q,
-        format: input?.format && input.format !== 'all' ? input.format : undefined,
-        status: input?.status && input.status !== 'all' ? input.status : undefined,
-        paymentMode: input?.paymentMode && input.paymentMode !== 'all' ? input.paymentMode : undefined,
-        duePaid: input?.duePaid && input.duePaid !== 'all' ? input.duePaid : undefined,
-        sort: input?.sort,
-        customerId: input?.customerId != null ? String(input.customerId) : undefined,
-      })}`,
+  listInvoices: async (input?: InvoiceListQuery) =>
+    asPaged<Invoice>(
+      await request<unknown>(
+        `/api/invoices${qs({
+          page: input?.page != null ? String(input.page) : undefined,
+          pageSize: input?.pageSize != null ? String(input.pageSize) : undefined,
+          from: input?.from ?? undefined,
+          to: input?.to ?? undefined,
+          q: input?.q,
+          format: input?.format && input.format !== 'all' ? input.format : undefined,
+          status: input?.status && input.status !== 'all' ? input.status : undefined,
+          paymentMode: input?.paymentMode && input.paymentMode !== 'all' ? input.paymentMode : undefined,
+          duePaid: input?.duePaid && input.duePaid !== 'all' ? input.duePaid : undefined,
+          sort: input?.sort,
+          customerId: input?.customerId != null ? String(input.customerId) : undefined,
+        })}`,
+      ),
     ),
   getInvoiceStats: (input: { from: string; to: string; granularity?: string }) =>
     request<InvoiceListStats>(
@@ -312,17 +328,19 @@ export const api = {
   deleteInvoice: (id: number) => request<void>(`/api/invoices/${id}`, { method: 'DELETE' }),
   getTaxReport: () => request<TaxReportRow[]>('/api/invoices/tax-report'),
 
-  listPledges: (input?: PledgeListQuery) =>
-    request<PagedList<Pledge>>(
-      `/api/pledges${qs({
-        page: input?.page != null ? String(input.page) : undefined,
-        pageSize: input?.pageSize != null ? String(input.pageSize) : undefined,
-        from: input?.from ?? undefined,
-        to: input?.to ?? undefined,
-        q: input?.q,
-        status: input?.status && input.status !== 'all' ? input.status : undefined,
-        sort: input?.sort,
-      })}`,
+  listPledges: async (input?: PledgeListQuery) =>
+    asPaged<Pledge>(
+      await request<unknown>(
+        `/api/pledges${qs({
+          page: input?.page != null ? String(input.page) : undefined,
+          pageSize: input?.pageSize != null ? String(input.pageSize) : undefined,
+          from: input?.from ?? undefined,
+          to: input?.to ?? undefined,
+          q: input?.q,
+          status: input?.status && input.status !== 'all' ? input.status : undefined,
+          sort: input?.sort,
+        })}`,
+      ),
     ),
   getNextPledgeReceiptNo: () => request<{ receiptNo: string }>('/api/pledges/next-receipt-no'),
   getPledge: (id: number) => request<Pledge>(`/api/pledges/${id}`),
@@ -474,8 +492,8 @@ export const api = {
   deleteBackup: (name: string) =>
     request<void>(`/api/backup/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   exportDatabase: async () => {
-    if (window.electronAPI) {
-      const result = await window.electronAPI.exportDatabase()
+    if (window.desktopAPI) {
+      const result = await window.desktopAPI.exportDatabase()
       if (result.canceled) {
         throw new Error('Export cancelled')
       }

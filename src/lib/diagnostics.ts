@@ -37,6 +37,10 @@ export function isTransientFatal(report: { message: string }): boolean {
   return /Renderer process gone \((killed|clean-exit)\)/.test(report.message)
 }
 
+export function isExpectedApiFailure(message: string): boolean {
+  return /^(Not found|Authentication required|Permission denied|Request failed)/i.test(message.trim())
+}
+
 export function loadPendingFatal(): Promise<DiagnosticReport | null> {
   return Promise.resolve(null)
 }

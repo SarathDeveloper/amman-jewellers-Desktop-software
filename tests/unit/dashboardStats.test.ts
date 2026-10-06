@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyInvoiceStats,
   clampCustomRange,
   computeDashboardStats,
   periodGranularity,
@@ -452,5 +453,39 @@ describe('computeDashboardStats', () => {
     expect(monthly.todaySales).toBe(2000)
     expect(monthly.salesOverview.chartBuckets[0].total).toBe(1200)
     expect(monthly.salesOverview.chartBuckets[1].total).toBe(800)
+  })
+})
+
+describe('applyInvoiceStats', () => {
+  it('does not crash when recent bills or chart rows are missing', () => {
+    const stats = applyInvoiceStats(
+      {
+        sales: 0,
+        collections: 0,
+        draftCount: 0,
+        billsGenerated: 0,
+        customersBilled: 0,
+        totalItemsSold: 0,
+        chart: undefined as unknown as [],
+      },
+      undefined as unknown as Invoice[],
+      null,
+      [],
+      [],
+      today,
+    )
+    expect(stats.recentBills).toEqual([])
+    expect(stats.salesOverview.chartBuckets.length).toBeGreaterThan(0)
+  })
+
+  it('skips invoices with a missing date when computing overview', () => {
+    const stats = computeDashboardStats(
+      [baseInvoice({ invoiceDate: undefined as unknown as string, createdAt: `${today}T10:00:00` })],
+      { columns: [], totalOutstanding: 0 },
+      [],
+      [],
+      today,
+    )
+    expect(stats.todaySales).toBe(0)
   })
 })
