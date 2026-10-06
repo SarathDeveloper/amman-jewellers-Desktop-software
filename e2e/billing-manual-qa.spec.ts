@@ -64,10 +64,8 @@ test.describe('Manual QA: New bill generation', () => {
 
     // --- Payment + discount ---
     await window.locator('.sale-bill-summary-adjust').filter({ hasText: 'Discount' }).locator('input').fill('5')
-    await window.locator('.payment-mode-select-trigger').click()
-    await window.getByRole('option', { name: 'UPI', exact: true }).evaluate((el) => {
-      ;(el as HTMLButtonElement).click()
-    })
+    await window.getByRole('button', { name: 'Payment Mode' }).click()
+    await window.getByRole('option', { name: 'UPI', exact: true }).click()
 
     // --- Save draft ---
     await window.getByRole('button', { name: 'Save draft' }).first().click()
@@ -114,6 +112,7 @@ test.describe('Manual QA: New bill generation', () => {
 
     await expect(window.getByPlaceholder('Search customer by name, phone or ID…')).toHaveValue('')
     await expect(window.getByText('Reset Test')).toHaveCount(0)
-    await expect(window.locator('.sale-bill-items-table tbody tr')).toHaveCount(0)
+    await expect(window.locator('.sale-bill-items-table tbody tr')).toHaveCount(1)
+    await expect(window.locator('.sale-bill-product-name').first()).toHaveValue('')
   })
 })

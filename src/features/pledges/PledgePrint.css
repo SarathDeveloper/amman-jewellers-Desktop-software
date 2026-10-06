@@ -19,6 +19,7 @@
 }
 
 .pledge-print {
+  position: relative;
   width: 210mm;
   min-height: 297mm;
   padding: 10mm 12mm;
@@ -29,6 +30,24 @@
   line-height: 1.35;
   box-sizing: border-box;
   border: 1px solid #333;
+}
+
+.pledge-print > *:not(.print-watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+.print-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60mm;
+  height: 60mm;
+  object-fit: contain;
+  opacity: 0.06;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .pledge-print-top {
@@ -325,6 +344,12 @@
   @page {
     size: A4;
     margin: 8mm;
+  }
+
+  html,
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   .pledge-print-page {

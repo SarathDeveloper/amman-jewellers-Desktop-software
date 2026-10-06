@@ -45,6 +45,8 @@ import type {
 } from '@shared/types'
 import { api } from '../../lib/api'
 import { InvoicePreviewModal } from './InvoicePreviewModal'
+import { billPrintPath } from './billingPrint'
+import { downloadPrintPdf } from '../print/downloadPrintPdf'
 import { InvoiceSuccessModal } from './InvoiceSuccessModal'
 import { BillSummaryCard } from './BillSummaryCard'
 import { MixedPaymentEditor } from './MixedPaymentEditor'
@@ -153,6 +155,7 @@ export function InvoiceEditorPage() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [previewing, setPreviewing] = useState(false)
+  const [savingPdf, setSavingPdf] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -161,7 +164,7 @@ export function InvoiceEditorPage() {
   const isDetailView = location.pathname.endsWith('/detail')
   const isDraft = invoice?.status !== 'final'
   const canEdit = isDraft && !isDetailView
-  const busy = saving || previewing
+  const busy = saving || previewing || savingPdf
   const selectedCustomer = customers.find((c) => c.id === customerId)
   const displayBillNo = invoice?.invoiceNo || previewInvoiceNo || '…'
 
@@ -498,7 +501,7 @@ export function InvoiceEditorPage() {
   async function validatePayload() {
     const payload = await buildPayload()
     if (!payload.customerId || payload.items.length === 0) {
-      throw new Error('Select a customer and at least one product line')
+      throw new Error('Select a customer and add at least one item')
     }
     if (totals.amountPayable < -0.009) {
       throw new Error('Amount payable cannot be negative')
@@ -614,7 +617,17 @@ export function InvoiceEditorPage() {
   }
 
   async function handleExportPdf() {
-    await openInAppPreview()
+    try {
+      setSavingPdf(true)
+      setError(null)
+      const saved = await ensureInvoiceSavedForBill()
+      setInvoice(saved)
+      await downloadPrintPdf(billPrintPath(saved.id, billFormat), `${saved.invoiceNo}.pdf`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download PDF')
+    } finally {
+      setSavingPdf(false)
+    }
   }
 
   async function openInAppPreview() {
@@ -713,7 +726,7 @@ export function InvoiceEditorPage() {
                 <Printer size={16} strokeWidth={1.75} aria-hidden /> Print
               </button>
               <button type="button" className="btn ghost" disabled={busy} onClick={() => void handleExportPdf()}>
-                <FileDown size={16} strokeWidth={1.75} aria-hidden /> PDF
+                <FileDown size={16} strokeWidth={1.75} aria-hidden /> {savingPdf ? 'Saving…' : 'PDF'}
               </button>
             </>
           )}
@@ -858,7 +871,6 @@ export function InvoiceEditorPage() {
                 <tbody>
                   {lines.map((line, index) => {
                     const empty = isEmptyEditorLine(line)
-                    if (empty) return null
                     const purity = line.purity || inferSalePurity(line.metal)
                     return (
                       <tr key={line.key} className={empty ? 'sale-bill-empty-row' : undefined}>
@@ -883,166 +895,150 @@ export function InvoiceEditorPage() {
                             </div>
                         </td>
                         <td className="adagu-col-purity">
-                          {empty ? null : (
-                            <select
-                              className="sale-bill-purity"
-                              disabled={!canEdit || busy}
-                              value={purity}
-                              onChange={(event) => {
-                                const nextPurity = event.target.value
-                                const nextRate = rateForSalePurity(nextPurity, metalRates, line.metal)
-                                updateLine(line.key, {
-                                  purity: nextPurity,
-                                  metalRate: nextRate,
-                                  rate: nextRate,
-                                  metalRateAuto: true,
-                                })
-                              }}
-                            >
-                              {puritiesForMetal(line.metal, purity).map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                          )}
+                          <select
+                            className="sale-bill-purity"
+                            disabled={!canEdit || busy}
+                            value={purity}
+                            onChange={(event) => {
+                              const nextPurity = event.target.value
+                              const nextRate = rateForSalePurity(nextPurity, metalRates, line.metal)
+                              updateLine(line.key, {
+                                purity: nextPurity,
+                                metalRate: nextRate,
+                                rate: nextRate,
+                                metalRateAuto: true,
+                              })
+                            }}
+                          >
+                            {puritiesForMetal(line.metal, purity).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="adagu-col-net-weight">
-                          {empty ? null : (
-                            <div className="adagu-input-with-icon">
-                              <input
-                                type="number"
-                                step="0.001"
-                                disabled={!canEdit || busy}
-                                value={weightInputValue(line.netWeight ?? 0)}
-                                onChange={(event) =>
-                                  updateLine(line.key, { netWeight: parseNumericField(event.target.value) })
-                                }
-                              />
-                            </div>
-                          )}
+                          <div className="adagu-input-with-icon">
+                            <input
+                              type="number"
+                              step="0.001"
+                              disabled={!canEdit || busy}
+                              value={weightInputValue(line.netWeight ?? 0)}
+                              onChange={(event) =>
+                                updateLine(line.key, { netWeight: parseNumericField(event.target.value) })
+                              }
+                            />
+                          </div>
                         </td>
                         <td className="adagu-col-weight">
-                          {empty ? null : (
-                            <div className="adagu-input-with-icon">
-                              <input
-                                type="number"
-                                step="0.001"
-                                disabled={!canEdit || busy}
-                                value={weightInputValue(line.grossWeight ?? 0)}
-                                onChange={(event) => {
-                                  const nextGross = numericFieldToNumber(parseNumericField(event.target.value))
-                                  updateLine(line.key, weightPatch(line, { grossWeight: nextGross }))
-                                }}
-                              />
-                            </div>
-                          )}
+                          <div className="adagu-input-with-icon">
+                            <input
+                              type="number"
+                              step="0.001"
+                              disabled={!canEdit || busy}
+                              value={weightInputValue(line.grossWeight ?? 0)}
+                              onChange={(event) => {
+                                const nextGross = numericFieldToNumber(parseNumericField(event.target.value))
+                                updateLine(line.key, weightPatch(line, { grossWeight: nextGross }))
+                              }}
+                            />
+                          </div>
                         </td>
                         <td className="adagu-col-stone-weight">
-                          {empty ? null : (
-                            <div className="adagu-input-with-icon">
-                              <input
-                                type="number"
-                                step="0.001"
-                                disabled={!canEdit || busy}
-                                value={weightInputValue(line.stoneWeight ?? 0)}
-                                onChange={(event) => {
-                                  const nextStone = numericFieldToNumber(parseNumericField(event.target.value))
-                                  updateLine(line.key, weightPatch(line, { stoneWeight: nextStone }))
-                                }}
-                              />
-                            </div>
-                          )}
+                          <div className="adagu-input-with-icon">
+                            <input
+                              type="number"
+                              step="0.001"
+                              disabled={!canEdit || busy}
+                              value={weightInputValue(line.stoneWeight ?? 0)}
+                              onChange={(event) => {
+                                const nextStone = numericFieldToNumber(parseNumericField(event.target.value))
+                                updateLine(line.key, weightPatch(line, { stoneWeight: nextStone }))
+                              }}
+                            />
+                          </div>
                         </td>
                         <td className="adagu-col-wastage">
-                          {empty ? null : (
-                            <div className="adagu-input-with-icon sale-bill-vamc">
-                              <input
-                                type="number"
-                                step="0.01"
+                          <div className="adagu-input-with-icon sale-bill-vamc">
+                            <input
+                              type="number"
+                              step="0.01"
+                              disabled={!canEdit || busy}
+                              value={weightInputValue(vamcValue(line))}
+                              onChange={(event) =>
+                                updateLine(
+                                  line.key,
+                                  vamcPatch(line, {
+                                    value: numericFieldToNumber(parseNumericField(event.target.value)),
+                                  }),
+                                )
+                              }
+                            />
+                            <div className="sale-bill-vamc-toggle" role="group" aria-label="VA/MC unit">
+                              <button
+                                type="button"
+                                className={line.vamcMode === 'pct' ? 'active' : undefined}
                                 disabled={!canEdit || busy}
-                                value={weightInputValue(vamcValue(line))}
-                                onChange={(event) =>
-                                  updateLine(
-                                    line.key,
-                                    vamcPatch(line, {
-                                      value: numericFieldToNumber(parseNumericField(event.target.value)),
-                                    }),
-                                  )
-                                }
-                              />
-                              <div className="sale-bill-vamc-toggle" role="group" aria-label="VA/MC unit">
-                                <button
-                                  type="button"
-                                  className={line.vamcMode === 'pct' ? 'active' : undefined}
-                                  disabled={!canEdit || busy}
-                                  onClick={() => updateLine(line.key, vamcPatch(line, { mode: 'pct' }))}
-                                >
-                                  %
-                                </button>
-                                <button
-                                  type="button"
-                                  className={line.vamcMode === 'amount' ? 'active' : undefined}
-                                  disabled={!canEdit || busy}
-                                  onClick={() => updateLine(line.key, vamcPatch(line, { mode: 'amount' }))}
-                                >
-                                  ₹
-                                </button>
-                              </div>
+                                onClick={() => updateLine(line.key, vamcPatch(line, { mode: 'pct' }))}
+                              >
+                                %
+                              </button>
+                              <button
+                                type="button"
+                                className={line.vamcMode === 'amount' ? 'active' : undefined}
+                                disabled={!canEdit || busy}
+                                onClick={() => updateLine(line.key, vamcPatch(line, { mode: 'amount' }))}
+                              >
+                                ₹
+                              </button>
                             </div>
-                          )}
+                          </div>
                         </td>
                         <td className="adagu-col-stone-rate">
-                          {empty ? null : (
-                            <div className="adagu-input-with-icon">
-                              <input
-                                type="number"
-                                step="0.01"
-                                disabled={!canEdit || busy}
-                                value={weightInputValue(line.stoneRate ?? 0)}
-                                onChange={(event) =>
-                                  updateLine(line.key, {
-                                    stoneRate: numericFieldToNumber(parseNumericField(event.target.value)),
-                                  })
-                                }
-                              />
-                            </div>
-                          )}
+                          <div className="adagu-input-with-icon">
+                            <input
+                              type="number"
+                              step="0.01"
+                              disabled={!canEdit || busy}
+                              value={weightInputValue(line.stoneRate ?? 0)}
+                              onChange={(event) =>
+                                updateLine(line.key, {
+                                  stoneRate: numericFieldToNumber(parseNumericField(event.target.value)),
+                                })
+                              }
+                            />
+                          </div>
                         </td>
                         <td className="adagu-col-rate">
-                          {empty ? null : (
-                            <div className="adagu-input-with-icon">
-                              <input
-                                type="number"
-                                step="0.01"
-                                disabled={!canEdit || busy}
-                                aria-label={
-                                  line.metal?.toLowerCase().includes('silver') ? 'Silver rate' : 'Gold rate'
-                                }
-                                value={weightInputValue(line.metalRate ?? line.rate)}
-                                onChange={(event) => {
-                                  const value = parseNumericField(event.target.value)
-                                  updateLine(line.key, { metalRate: value, rate: value, metalRateAuto: false })
-                                }}
-                              />
-                            </div>
-                          )}
+                          <div className="adagu-input-with-icon">
+                            <input
+                              type="number"
+                              step="0.01"
+                              disabled={!canEdit || busy}
+                              aria-label={
+                                line.metal?.toLowerCase().includes('silver') ? 'Silver rate' : 'Gold rate'
+                              }
+                              value={weightInputValue(line.metalRate ?? line.rate)}
+                              onChange={(event) => {
+                                const value = parseNumericField(event.target.value)
+                                updateLine(line.key, { metalRate: value, rate: value, metalRateAuto: false })
+                              }}
+                            />
+                          </div>
                         </td>
                         <td className="adagu-col-amount">
-                          {empty ? null : formatInr(computeEditorLineTotal(line))}
+                          {formatInr(computeEditorLineTotal(line))}
                         </td>
                         <td className="adagu-col-action">
-                          {empty ? null : (
-                            <button
-                              type="button"
-                              className="adagu-action-btn-red"
-                              aria-label="Remove item"
-                              disabled={!canEdit || busy}
-                              onClick={() => removeLine(line.key)}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            className="adagu-action-btn-red"
+                            aria-label="Remove item"
+                            disabled={!canEdit || busy}
+                            onClick={() => removeLine(line.key)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </td>
                       </tr>
                     )
@@ -1294,8 +1290,12 @@ export function InvoiceEditorPage() {
             setPreviewOpen(true)
           }}
           onPdf={() => {
-            setInvoice(successInvoice)
-            setPreviewOpen(true)
+            void downloadPrintPdf(
+              billPrintPath(successInvoice.id, billFormat),
+              `${successInvoice.invoiceNo}.pdf`,
+            ).catch((err) => {
+              setError(err instanceof Error ? err.message : 'Failed to download PDF')
+            })
           }}
           onView={() => {
             setSuccessInvoice(null)
@@ -1313,6 +1313,7 @@ export function InvoiceEditorPage() {
         <InvoicePreviewModal
           invoiceId={invoice.id}
           initialFormat={billFormat}
+          pdfFilename={`${invoice.invoiceNo}.pdf`}
           onClose={() => setPreviewOpen(false)}
         />
       )}

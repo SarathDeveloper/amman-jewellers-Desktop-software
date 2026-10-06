@@ -19,10 +19,29 @@
 }
 
 .purchase-invoice {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 297mm;
   padding: 10mm 12mm;
+}
+
+.purchase-invoice > *:not(.print-watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+.print-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60mm;
+  height: 60mm;
+  object-fit: contain;
+  opacity: 0.06;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .purchase-invoice-header {
@@ -255,6 +274,8 @@
     background: #fff !important;
     padding: 0 !important;
     margin: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   .purchase-invoice-print-status {

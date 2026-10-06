@@ -1,13 +1,11 @@
 import { computeBillSummary, type BillSummaryInput } from '@shared/billing/billSummary'
 import {
   computeLinePricing,
-  linePricingFromProduct,
   resolveMetalRate,
   resolveMetalRateForProduct,
   roundMoney,
 } from '@shared/billing/pricing'
 import { GOLD_PURITIES, SILVER_PURITIES } from '@shared/itemTypes'
-import { EMPTY_PRODUCT_VARIANT_FIELDS } from '@shared/types'
 import type {
   InvoiceItem,
   InvoiceItemInput,
@@ -112,6 +110,10 @@ export function rateForSalePurity(purity: string, rates: MetalRates | null, meta
 
 export function isEmptyEditorLine(line: EditorLine): boolean {
   return !(line.productId ?? 0) && !line.description.trim()
+}
+
+export function isActiveEditorLine(line: EditorLine): boolean {
+  return (line.productId ?? 0) > 0 || Boolean(line.description.trim())
 }
 
 export function ensureTrailingEmptyLine(lines: EditorLine[]): EditorLine[] {
@@ -249,39 +251,20 @@ export function computeEditorLineTotal(line: EditorLine): number {
     return -roundMoney(netWeight * qty * metalRate)
   }
 
-  if (!line.productId) return 0
   const { makingCharges, wastagePct } = exclusiveVamc(line)
   const otherCharges = numericFieldToNumber(line.otherCharges)
-  const priced = computeLinePricing(
-    linePricingFromProduct(
-      {
-        id: line.productId,
-        name: '',
-        category: line.category ?? '',
-        metal: line.metal ?? '',
-        purity: '',
-        grossWeight: line.grossWeight ?? 0,
-        netWeight,
-        makingCharges,
-        stockQty: 0,
-        imagePath: '',
-        updatedAt: '',
-        ...EMPTY_PRODUCT_VARIANT_FIELDS,
-      },
-      qty,
-      metalRate,
-      {
-        grossWeight: line.grossWeight,
-        netWeight,
-        stoneWeight: line.stoneWeight,
-        makingCharges,
-        wastagePct,
-        stoneRate: line.stoneRate,
-        otherCharges,
-        hsnCode: line.hsnCode,
-      },
-    ),
-  )
+  const priced = computeLinePricing({
+    qty,
+    metalRate,
+    grossWeight: line.grossWeight ?? 0,
+    netWeight,
+    stoneWeight: line.stoneWeight ?? 0,
+    makingCharges,
+    wastagePct,
+    stoneRate: line.stoneRate ?? 0,
+    otherCharges,
+    hsnCode: line.hsnCode,
+  })
   return priced.lineTotal
 }
 
@@ -298,7 +281,7 @@ export function computeEditorTotals(
   const active = lines.filter(
     (line) =>
       (line.lineKind === 'exchange' && numericFieldToNumber(line.netWeight) > 0) ||
-      (line.lineKind !== 'exchange' && (line.productId ?? 0) > 0),
+      (line.lineKind !== 'exchange' && isActiveEditorLine(line)),
   )
   const saleLines = active.filter((line) => line.lineKind !== 'exchange')
   const exchangeLines = active.filter((line) => line.lineKind === 'exchange')
@@ -330,7 +313,7 @@ export function computeSaleBreakdown(lines: EditorLine[]) {
   let itemCount = 0
   let totalGrossWeight = 0
   for (const line of lines) {
-    if (line.lineKind === 'exchange' || !(line.productId ?? 0)) continue
+    if (line.lineKind === 'exchange' || !isActiveEditorLine(line)) continue
     itemCount += 1
     const qty = numericFieldToNumber(line.qty, 1)
     const net = numericFieldToNumber(line.netWeight)
@@ -359,7 +342,7 @@ export function toInvoiceItems(lines: EditorLine[]): InvoiceItemInput[] {
       if (line.lineKind === 'exchange') {
         return numericFieldToNumber(line.netWeight) > 0
       }
-      return (line.productId ?? 0) > 0
+      return isActiveEditorLine(line)
     })
     .map((line) => {
       if (line.lineKind === 'exchange') {
@@ -384,7 +367,7 @@ export function toInvoiceItems(lines: EditorLine[]): InvoiceItemInput[] {
       }
       const vamc = exclusiveVamc(line)
       return {
-        productId: line.productId,
+        productId: (line.productId ?? 0) > 0 ? line.productId : null,
         qty: numericFieldToNumber(line.qty, 1),
         rate: numericFieldToNumber(line.metalRate ?? line.rate),
         grossWeight: line.grossWeight,

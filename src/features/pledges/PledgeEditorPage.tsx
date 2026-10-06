@@ -45,6 +45,8 @@ import {
 import { BillCustomerSearch } from "../invoices/BillCustomerSearch";
 import { setBillingType } from "../invoices/billingType";
 import { PledgePreviewModal } from "./PledgePreviewModal";
+import { printPreviewPaths } from "../print/printPreviewPaths";
+import { downloadPrintPdf } from "../print/downloadPrintPdf";
 
 type EditorItem = PledgeItemInput & { key: string };
 
@@ -114,6 +116,7 @@ export function PledgeEditorPage() {
   );
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTargetId, setPreviewTargetId] = useState(0);
+  const [savingPdf, setSavingPdf] = useState(false);
   const [redeemDate, setRedeemDate] = useState(todayIso());
   const [amountCollected, setAmountCollected] = useState<NumericField>(0);
   const [redeeming, setRedeeming] = useState(false);
@@ -123,7 +126,7 @@ export function PledgeEditorPage() {
   const isDraft = !pledge || pledge.status === "draft";
   const isActiveLoan = pledge?.status === "active";
   const canEdit = isDraft || isActiveLoan;
-  const busy = saving || redeeming || forfeiting;
+  const busy = saving || redeeming || forfeiting || savingPdf;
   const jewelleryItems = items.length > 0 ? items : [newItem()];
   const selectedCustomer = customers.find((c) => c.id === customerId);
   const totalGrossWeight = jewelleryItems.reduce(
@@ -483,7 +486,20 @@ export function PledgeEditorPage() {
       setPreviewTargetId(result.id);
       setPreviewOpen(true);
     }
-    if (pending === "pdf") openPrintPreview(result.id);
+    if (pending === "pdf") {
+      try {
+        setSavingPdf(true);
+        await downloadPrintPdf(
+          printPreviewPaths.pledge(result.id),
+          `${result.receiptNo}.pdf`,
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to download PDF");
+      } finally {
+        setSavingPdf(false);
+      }
+      return;
+    }
   }
 
   async function openPreview() {
@@ -501,11 +517,17 @@ export function PledgeEditorPage() {
   async function downloadPdf() {
     try {
       setError(null);
+      setSavingPdf(true);
       const saved = await persistDraft();
       if (!saved) return;
-      openPrintPreview(saved.id);
+      await downloadPrintPdf(
+        printPreviewPaths.pledge(saved.id),
+        `${saved.receiptNo}.pdf`,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to open PDF");
+      setError(err instanceof Error ? err.message : "Failed to download PDF");
+    } finally {
+      setSavingPdf(false);
     }
   }
 
@@ -649,7 +671,7 @@ export function PledgeEditorPage() {
             disabled={busy}
             onClick={() => void downloadPdf()}
           >
-            <FileDown size={16} strokeWidth={1.75} aria-hidden /> PDF
+            <FileDown size={16} strokeWidth={1.75} aria-hidden /> {savingPdf ? "Saving…" : "PDF"}
           </button>
           {isDraft ? (
             <>
@@ -1295,6 +1317,7 @@ export function PledgeEditorPage() {
       {previewOpen && previewTargetId > 0 ? (
         <PledgePreviewModal
           pledgeId={previewTargetId}
+          pdfFilename={pledge?.receiptNo ? `${pledge.receiptNo}.pdf` : "pledge.pdf"}
           onClose={() => {
             setPreviewOpen(false);
             setPreviewTargetId(0);

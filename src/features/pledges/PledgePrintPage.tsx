@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import type { Pledge } from '@shared/types'
 import { api } from '../../lib/api'
 import { shopSettingsToDisplay, type ShopDisplayInfo } from '../invoices/mapShopDisplay'
+import { applyPaperDataset } from '../invoices/paperSize'
 import { signalPrintReady, waitForPrintLayout } from '../invoices/printPageUtils'
 import { PledgePrint } from './PledgePrint'
 import './PledgePrint.css'
@@ -27,6 +28,7 @@ export function PledgePrintPage() {
         ])
         if (!active) return
         setShop(shopSettingsToDisplay(settings))
+        applyPaperDataset('a4')
         setPledge(data)
       } catch (err) {
         if (active) {

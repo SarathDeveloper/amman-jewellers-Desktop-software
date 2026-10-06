@@ -30,6 +30,12 @@ export function PurchaseInvoicePrint({
   return (
     <div className="purchase-invoice-root" data-print-root>
       <article className="purchase-invoice">
+        <img
+          className="print-watermark"
+          src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)}
+          alt=""
+          aria-hidden
+        />
         <header className="purchase-invoice-header">
           {shopInfo.taxVisibility.showLogo ? (
             <img

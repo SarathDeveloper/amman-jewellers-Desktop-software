@@ -164,10 +164,10 @@ export const invoiceItemInputSchema = z
   })
   .superRefine((data, ctx) => {
     const kind = data.lineKind ?? 'sale'
-    if (kind === 'sale' && (data.productId == null || data.productId <= 0)) {
+    if (kind === 'sale' && (data.productId == null || data.productId <= 0) && !data.description?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Sale lines require a product',
+        message: 'Sale lines require a product or a description',
         path: ['productId'],
       })
     }

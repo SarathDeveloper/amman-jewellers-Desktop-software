@@ -4,6 +4,7 @@ import type { MetalDayClosingSheet } from '@shared/types'
 import { api } from '../../lib/api'
 import { formatDisplayDate } from '../../lib/format'
 import { shopSettingsToDisplay, type ShopDisplayInfo } from '../invoices/mapShopDisplay'
+import { applyPaperDataset } from '../invoices/paperSize'
 import { signalPrintReady, waitForPrintLayout } from '../invoices/printPageUtils'
 import {
   ClosingMetalBlock,
@@ -35,6 +36,7 @@ export function ClosingSummaryPrintPage() {
         setGoldSheet(goldDay)
         setSilverSheet(silverDay)
         setShop(shopSettingsToDisplay(settings))
+        applyPaperDataset('a4')
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : 'Failed to load closing stock summary')
@@ -70,7 +72,7 @@ export function ClosingSummaryPrintPage() {
   }
 
   return (
-    <div className="print-page metal-day-print">
+    <div className="print-page metal-day-print" data-print-root>
       <header>
         <h1>{shop.name}</h1>
         <p>Closing stock summary — {formatDisplayDate(date)}</p>

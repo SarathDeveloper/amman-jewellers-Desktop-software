@@ -20,9 +20,29 @@
 }
 
 .tax-invoice {
+  position: relative;
   display: flex;
   flex-direction: column;
+  min-height: 210mm;
   padding: 3mm 4mm;
+}
+
+.tax-invoice > *:not(.print-watermark) {
+  position: relative;
+  z-index: 1;
+}
+
+.print-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60mm;
+  height: 60mm;
+  object-fit: contain;
+  opacity: 0.06;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .tax-invoice-header {
@@ -262,7 +282,7 @@
   align-items: flex-end;
   gap: 4mm;
   margin-top: auto;
-  padding-top: 8mm;
+  padding-top: 4mm;
   font-size: 8pt;
 }
 
@@ -312,15 +332,47 @@
   #root {
     margin: 0 !important;
     padding: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
     background: #fff !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
+  html[data-paper='a5'],
+  html[data-paper='a5'] body,
+  html[data-paper='a5'] #root {
+    overflow: hidden !important;
+    height: 210mm !important;
+    max-height: 210mm !important;
+  }
+
+  html[data-paper='a4'],
+  html[data-paper='a4'] body,
+  html[data-paper='a4'] #root {
+    overflow: hidden !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+  }
+
   .tax-invoice-print-page {
     min-height: auto;
-    padding: 0;
-    background: #fff;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  .tax-invoice-print-page:has(.paper-a5) {
+    height: 210mm !important;
+    max-height: 210mm !important;
+    overflow: hidden !important;
+  }
+
+  .tax-invoice-print-page:has(.paper-a4) {
+    height: 297mm !important;
+    max-height: 297mm !important;
+    overflow: hidden !important;
   }
 
   .tax-invoice-print-status {
@@ -328,9 +380,43 @@
   }
 
   .tax-invoice-root {
-    width: 100%;
-    margin: 0;
-    box-shadow: none;
+    width: 100% !important;
+    height: 210mm !important;
+    max-height: 210mm !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+    page-break-after: avoid;
+    break-after: avoid-page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .tax-invoice {
+    height: 100%;
+    max-height: 210mm;
+    min-height: 0 !important;
+    overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .tax-invoice-table tbody tr.empty td {
+    height: 5mm;
+  }
+
+  .tax-invoice-table th,
+  .tax-invoice-table td {
+    padding: 0.6mm 0.5mm;
+  }
+
+  .tax-invoice-logo {
+    margin-bottom: 0.5mm;
+  }
+
+  .tax-invoice-signatures {
+    padding-top: 4mm;
   }
 }
 
@@ -406,13 +492,42 @@
 }
 
 @media print {
-  .tax-invoice-root.paper-a4 {
-    width: 100% !important;
-    min-height: auto !important;
+  .tax-invoice-root.paper-a4,
+  .tax-invoice-root.paper-a4 .tax-invoice {
+    height: 297mm !important;
+    max-height: 297mm !important;
+    min-height: 0 !important;
   }
 
-  .tax-invoice-root.paper-a4 .tax-invoice {
-    min-height: calc(297mm - 16mm);
+  .tax-invoice-root.paper-a4 .tax-invoice-table tbody tr.empty td {
+    height: 6mm;
+  }
+
+  .tax-invoice-root.paper-a4 .tax-invoice-table th,
+  .tax-invoice-root.paper-a4 .tax-invoice-table td {
+    padding: 1mm 0.8mm;
+  }
+
+  .tax-invoice-root.paper-thermal,
+  .tax-invoice-root.paper-thermal .tax-invoice {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  .tax-invoice-root--dense .tax-invoice-table {
+    font-size: 7pt;
+  }
+
+  .tax-invoice-root--dense .tax-invoice-table th,
+  .tax-invoice-root--dense .tax-invoice-table td {
+    padding: 0.35mm 0.4mm;
+  }
+
+  .tax-invoice-root--dense .tax-invoice-table tbody tr.empty td {
+    height: 4mm;
   }
 }
 
@@ -422,7 +537,12 @@
   font-size: 7.5pt;
 }
 
+.tax-invoice-root.paper-thermal .print-watermark {
+  display: none;
+}
+
 .tax-invoice-root.paper-thermal .tax-invoice {
+  min-height: 0;
   padding: 2mm;
 }
 

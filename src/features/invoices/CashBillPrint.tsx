@@ -5,7 +5,7 @@ import { defaultShopLogoUrl, EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplay
 import { paperClassName } from './paperSize'
 import './CashBillPrint.css'
 
-const MIN_BODY_ROWS = 8
+const MIN_BODY_ROWS = 4
 
 function formatWeight(value: number): string {
   if (!value) return ''
@@ -51,8 +51,17 @@ export function CashBillPrint({
   const discountTotal = data.discountBreakdown.reduce((sum, line) => sum + line.amount, 0)
 
   return (
-    <div className={`cash-bill-root ${paperClassName(paperSize)}`} data-print-root>
+    <div
+      className={`cash-bill-root ${paperClassName(paperSize)}${filled.length > 6 ? ' cash-bill-root--dense' : ''}`}
+      data-print-root
+    >
       <article className="cash-bill">
+        <img
+          className="print-watermark"
+          src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)}
+          alt=""
+          aria-hidden
+        />
         <header className="cash-bill-header">
           <div className="cash-bill-brand-row">
             <div className="cash-bill-gstin" />

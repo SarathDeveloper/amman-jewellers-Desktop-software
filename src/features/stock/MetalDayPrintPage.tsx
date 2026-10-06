@@ -5,6 +5,7 @@ import { STOCK_METALS, type StockMetal } from '@shared/itemTypes'
 import { api } from '../../lib/api'
 import { formatDisplayDate, formatWeight } from '../../lib/format'
 import { shopSettingsToDisplay, type ShopDisplayInfo } from '../invoices/mapShopDisplay'
+import { applyPaperDataset } from '../invoices/paperSize'
 import { signalPrintReady, waitForPrintLayout } from '../invoices/printPageUtils'
 
 export function MetalDayPrintPage() {
@@ -30,6 +31,7 @@ export function MetalDayPrintPage() {
         if (!active) return
         setSheet(daySheet)
         setShop(shopSettingsToDisplay(settings))
+        applyPaperDataset('a4')
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : 'Failed to load metal day report')
@@ -71,7 +73,7 @@ export function MetalDayPrintPage() {
   )
 
   return (
-    <div className="print-page metal-day-print">
+    <div className="print-page metal-day-print" data-print-root>
       <header>
         <h1>{shop.name}</h1>
         <p>

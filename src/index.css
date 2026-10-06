@@ -5421,20 +5421,22 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   background: #fff;
   display: block;
 }
-html[data-print-embed='1'],
-html[data-print-embed='1'] body,
-html[data-print-embed='1'] #root {
-  height: auto;
-  min-height: 0;
-  overflow: visible;
-}
-html[data-print-embed='1'] .print-page,
-html[data-print-embed='1'] .cash-bill-print-page,
-html[data-print-embed='1'] .tax-invoice-print-page,
-html[data-print-embed='1'] .pledge-print-page,
-html[data-print-embed='1'] .purchase-invoice-print-page {
-  min-height: 0;
-  overflow: visible;
+@media screen {
+  html[data-print-embed='1'],
+  html[data-print-embed='1'] body,
+  html[data-print-embed='1'] #root {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  html[data-print-embed='1'] .print-page,
+  html[data-print-embed='1'] .cash-bill-print-page,
+  html[data-print-embed='1'] .tax-invoice-print-page,
+  html[data-print-embed='1'] .pledge-print-page,
+  html[data-print-embed='1'] .purchase-invoice-print-page {
+    min-height: 0;
+    overflow: visible;
+  }
 }
 .settings-layout {
   display: flex;

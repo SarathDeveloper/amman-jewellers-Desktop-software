@@ -61,17 +61,11 @@ export function PaymentModeSelect<T extends PaymentMode>({
       }
     }
 
-    function onScroll() {
-      setOpen(false)
-    }
-
     document.addEventListener('mousedown', onDocClick)
     document.addEventListener('keydown', onKeyDown)
-    window.addEventListener('scroll', onScroll, true)
     return () => {
       document.removeEventListener('mousedown', onDocClick)
       document.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('scroll', onScroll, true)
     }
   }, [open])
 

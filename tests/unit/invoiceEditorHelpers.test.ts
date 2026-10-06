@@ -132,6 +132,22 @@ describe('toInvoiceItems', () => {
     const items = toInvoiceItems([saleLine({ vamcMode: 'pct', wastagePct: 4, otherCharges: 150 })])
     expect(items[0].otherCharges).toBe(150)
   })
+
+  it('includes a manual line with a description and no product', () => {
+    const items = toInvoiceItems([
+      saleLine({
+        productId: 0,
+        description: 'Gold chain',
+        metalRate: 14000,
+        rate: 14000,
+        netWeight: 2,
+        grossWeight: 2,
+      }),
+    ])
+    expect(items).toHaveLength(1)
+    expect(items[0].productId).toBeNull()
+    expect(items[0].description).toBe('Gold chain')
+  })
 })
 
 describe('exclusiveVamc and line total', () => {
@@ -139,6 +155,21 @@ describe('exclusiveVamc and line total', () => {
     const line = saleLine({ vamcMode: 'pct', wastagePct: 4, makingCharges: 500 })
     expect(exclusiveVamc(line)).toEqual({ mode: 'pct', wastagePct: 4, makingCharges: 0 })
     expect(computeEditorLineTotal(line)).toBe(29172)
+  })
+
+  it('totals a manual sale line without a product id', () => {
+    const line = saleLine({
+      productId: 0,
+      description: 'Gold chain',
+      vamcMode: 'pct',
+      wastagePct: 0,
+      makingCharges: 0,
+      metalRate: 10000,
+      rate: 10000,
+      netWeight: 2,
+      grossWeight: 2,
+    })
+    expect(computeEditorLineTotal(line)).toBe(20000)
   })
 })
 

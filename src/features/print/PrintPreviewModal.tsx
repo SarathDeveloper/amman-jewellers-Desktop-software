@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileDown, Printer } from 'lucide-react'
 import { Modal } from '../../components/Modal'
+import { downloadPrintDocument } from './downloadPrintPdf'
 import { withEmbedFlag } from './printPreviewPaths'
 
 export function PrintPreviewModal({
@@ -91,20 +92,17 @@ export function PrintPreviewModal({
   }
 
   async function downloadPdf() {
-    const savePdf = window.desktopAPI?.savePdf
-    if (typeof savePdf !== 'function') {
-      printFrame()
+    const doc = frameRef.current?.contentDocument
+    if (!doc) {
+      setError('Print template is not ready')
       return
     }
     try {
       setSavingPdf(true)
       setError(null)
-      const result = await savePdf(path, pdfFilename)
-      if (result.canceled) return
-      onPrint?.()
+      await downloadPrintDocument(doc, pdfFilename)
     } catch (err) {
-      const raw = err instanceof Error ? err.message : 'Failed to save PDF'
-      setError(raw.replace(/^Error invoking remote method '[^']+': (?:Error: )?/u, ''))
+      setError(err instanceof Error ? err.message : 'Failed to save PDF')
     } finally {
       setSavingPdf(false)
     }

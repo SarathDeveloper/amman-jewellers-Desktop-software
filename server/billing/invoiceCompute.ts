@@ -127,7 +127,42 @@ export function computeInvoiceLines(
 
     const productId = item.productId
     if (productId == null || productId <= 0) {
-      throw new Error('Sale lines require a product')
+      const metalRate = item.metalRate ?? (item.rate > 0 ? item.rate : 0)
+      const netWeight = item.netWeight ?? 0
+      const pricingInput = {
+        qty: item.qty,
+        metalRate,
+        grossWeight: item.grossWeight ?? netWeight,
+        netWeight,
+        stoneWeight: item.stoneWeight ?? 0,
+        makingCharges: item.makingCharges ?? 0,
+        wastagePct: item.wastagePct ?? 0,
+        stoneRate: item.stoneRate ?? 0,
+        otherCharges: item.otherCharges ?? 0,
+        hsnCode: item.hsnCode,
+      }
+      const priced = computeLinePricing(pricingInput)
+      return {
+        input: item,
+        lineKind,
+        description: item.description?.trim() || 'Manual item',
+        lineSubtotal: priced.lineSubtotal,
+        lineTotal: priced.lineTotal,
+        lineTax: 0,
+        metalRate,
+        grossWeight: pricingInput.grossWeight,
+        netWeight: pricingInput.netWeight,
+        stoneWeight: pricingInput.stoneWeight,
+        makingCharges: pricingInput.makingCharges,
+        wastagePct: pricingInput.wastagePct,
+        stoneRate: pricingInput.stoneRate,
+        otherCharges: pricingInput.otherCharges,
+        hsnCode: priced.hsnCode,
+        rate: metalRate,
+        metal: item.metal?.trim() || '',
+        category: item.category?.trim() || '',
+        productId: null,
+      }
     }
     const product = productsById.get(productId)
     if (!product) {

@@ -235,6 +235,42 @@ describe('invoices IPC', () => {
     )
   })
 
+  it('creates and finalizes a sale line with no stock product', async () => {
+    const customer = await ipc(IPC_CHANNELS.CUSTOMERS_CREATE, {
+      name: 'Walk-in',
+      phone: '9000000001',
+      address: 'Salem',
+      notes: '',
+    })
+    const draft = await ipc(IPC_CHANNELS.INVOICES_CREATE, {
+      customerId: customer.id,
+      invoiceDate: '2026-09-26',
+      tax: 0,
+      autoTax: false,
+      billFormat: 'cash_bill',
+      items: [
+        {
+          productId: null,
+          qty: 1,
+          rate: 10000,
+          metalRate: 10000,
+          grossWeight: 2,
+          netWeight: 2,
+          lineKind: 'sale',
+          description: 'Gold chain',
+        },
+      ],
+    })
+    expect(draft.subtotal).toBe(20000)
+    expect(draft.items).toHaveLength(1)
+    expect(draft.items[0].productId).toBeNull()
+    expect(draft.items[0].description).toBe('Gold chain')
+
+    const finalized = await ipc(IPC_CHANNELS.INVOICES_FINALIZE, draft.id)
+    expect(finalized.status).toBe('final')
+    expect(finalized.subtotal).toBe(20000)
+  })
+
   it('round-trips percent-mode and rupee-mode VA/MC lines', async () => {
     const { customer, product } = await seedCustomerAndProduct()
     const draft = await ipc(IPC_CHANNELS.INVOICES_CREATE, {

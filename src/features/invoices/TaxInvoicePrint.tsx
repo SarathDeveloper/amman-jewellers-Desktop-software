@@ -9,8 +9,8 @@ import {
 import { paperClassName } from "./paperSize";
 import "./TaxInvoicePrint.css";
 
-const MIN_BODY_ROWS_A5 = 8;
-const MIN_BODY_ROWS_A4 = 12;
+const MIN_BODY_ROWS_A5 = 5;
+const MIN_BODY_ROWS_A4 = 6;
 
 function fmt3(value: number): string {
   return value.toFixed(3);
@@ -60,10 +60,16 @@ export function TaxInvoicePrint({
 
   return (
     <div
-      className={`tax-invoice-root ${paperClassName(paperSize)}`}
+      className={`tax-invoice-root ${paperClassName(paperSize)}${filled.length > 8 ? ' tax-invoice-root--dense' : ''}`}
       data-print-root
     >
       <article className="tax-invoice">
+        <img
+          className="print-watermark"
+          src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)}
+          alt=""
+          aria-hidden
+        />
         <header className="tax-invoice-header">
           <div className="tax-invoice-brand-row">
             <div className="tax-invoice-gstin">

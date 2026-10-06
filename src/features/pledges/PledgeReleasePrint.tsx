@@ -46,6 +46,12 @@ export function PledgeReleasePrint({
   return (
     <div className="pledge-print-root" data-print-root>
       <article className="pledge-print">
+        <img
+          className="print-watermark"
+          src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)}
+          alt=""
+          aria-hidden
+        />
         <header className="pledge-print-top">
           <div className="pledge-print-brand">
             <img

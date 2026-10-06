@@ -31,6 +31,8 @@ import {
   type BillingType,
 } from './billingType'
 import { InvoicePreviewModal } from './InvoicePreviewModal'
+import { billPrintPath } from './billingPrint'
+import { downloadPrintPdf } from '../print/downloadPrintPdf'
 import { PledgePreviewModal } from '../pledges/PledgePreviewModal'
 
 const PAGE_SIZE_OPTIONS = [5, 10, 25]
@@ -185,8 +187,12 @@ export function InvoicesPage() {
   const [selectedKeys, setSelectedKeys] = useState<string[]>([])
   const [menuKey, setMenuKey] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [previewInvoice, setPreviewInvoice] = useState<{ id: number; format: BillFormat } | null>(null)
-  const [previewPledgeId, setPreviewPledgeId] = useState<number | null>(null)
+  const [previewInvoice, setPreviewInvoice] = useState<{
+    id: number
+    format: BillFormat
+    invoiceNo: string
+  } | null>(null)
+  const [previewPledge, setPreviewPledge] = useState<{ id: number; receiptNo: string } | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
   const adaguOnly = billTypeFilter === 'adagu'
@@ -372,18 +378,29 @@ export function InvoicesPage() {
 
   function printInvoice(invoice: Invoice) {
     setError(null)
-    setPreviewInvoice({ id: invoice.id, format: printFormatFor(invoice) })
+    setPreviewInvoice({
+      id: invoice.id,
+      format: printFormatFor(invoice),
+      invoiceNo: invoice.invoiceNo,
+    })
   }
 
   function printPledge(pledge: Pledge) {
     setError(null)
-    setPreviewPledgeId(pledge.id)
+    setPreviewPledge({ id: pledge.id, receiptNo: pledge.receiptNo })
   }
 
-  function exportPdf(invoice: Invoice) {
+  async function exportPdf(invoice: Invoice) {
     setMenuKey(null)
     setError(null)
-    setPreviewInvoice({ id: invoice.id, format: printFormatFor(invoice) })
+    try {
+      await downloadPrintPdf(
+        billPrintPath(invoice.id, printFormatFor(invoice)),
+        `${invoice.invoiceNo}.pdf`,
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download PDF')
+    }
   }
 
   function toggleSelected(key: string) {
@@ -791,7 +808,7 @@ export function InvoicesPage() {
                                 <button
                                   type="button"
                                   role="menuitem"
-                                  onClick={() => exportPdf(invoice)}
+                                  onClick={() => void exportPdf(invoice)}
                                 >
                                   Export PDF
                                 </button>
@@ -822,12 +839,17 @@ export function InvoicesPage() {
         <InvoicePreviewModal
           invoiceId={previewInvoice.id}
           initialFormat={previewInvoice.format}
+          pdfFilename={`${previewInvoice.invoiceNo}.pdf`}
           onClose={() => setPreviewInvoice(null)}
         />
       )}
 
-      {previewPledgeId != null ? (
-        <PledgePreviewModal pledgeId={previewPledgeId} onClose={() => setPreviewPledgeId(null)} />
+      {previewPledge ? (
+        <PledgePreviewModal
+          pledgeId={previewPledge.id}
+          pdfFilename={`${previewPledge.receiptNo}.pdf`}
+          onClose={() => setPreviewPledge(null)}
+        />
       ) : null}
     </div>
   )
