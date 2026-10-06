@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, Download, ShieldAlert, ShieldCheck, Upload } from 'lucide-react'
+import { AlertTriangle, Download, FileSpreadsheet, FolderOpen, ShieldAlert, ShieldCheck, Upload } from 'lucide-react'
 import type { BackupFile, BackupStatus } from '@shared/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { TimeInput } from '../../components/DateInput'
@@ -36,13 +36,23 @@ function daysSinceBackup(iso: string | null): number | null {
   return Math.round((startOfLocalDay(new Date()) - startOfLocalDay(last)) / 86_400_000)
 }
 
-function healthTone(days: number | null): HealthTone {
+function offsiteCopyCurrent(offsiteDir: string, lastOffsiteAt: string | null, lastOffsiteError: string | null): boolean {
+  if (!offsiteDir.trim()) return true
+  return !lastOffsiteError && Boolean(lastOffsiteAt)
+}
+
+function healthTone(days: number | null, offsiteCurrent: boolean): HealthTone {
+  if (!offsiteCurrent) {
+    if (days === null || days >= 8) return 'stale'
+    return 'warn'
+  }
   if (days === null || days >= 8) return 'stale'
   if (days >= 1) return 'warn'
   return 'ok'
 }
 
-function healthTitle(days: number | null): string {
+function healthTitle(days: number | null, offsiteCurrent: boolean): string {
+  if (!offsiteCurrent) return 'Off-machine copy is not current'
   if (days === null) return 'No backup yet'
   if (days === 0) return 'Backed up today'
   if (days === 1) return 'Last backup 1 day ago'
@@ -55,17 +65,24 @@ export function BackupSettings() {
   const [frequency, setFrequency] = useState<BackupStatus['frequency']>('daily')
   const [time, setTime] = useState('21:00')
   const [nextBackup, setNextBackup] = useState<string | null>(null)
+  const [offsiteDir, setOffsiteDir] = useState('')
+  const [lastOffsiteAt, setLastOffsiteAt] = useState<string | null>(null)
+  const [lastOffsiteError, setLastOffsiteError] = useState<string | null>(null)
   const [backups, setBackups] = useState<BackupFile[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingAction | null>(null)
+  const canBrowse = Boolean(window.desktopAPI?.chooseBackupFolder)
 
   function applyStatus(status: BackupStatus) {
     setLastBackup(status.lastBackupAt)
     setFrequency(status.frequency)
     setTime(status.time)
     setNextBackup(status.nextBackupAt)
+    setOffsiteDir(status.offsiteDir ?? '')
+    setLastOffsiteAt(status.lastOffsiteAt ?? null)
+    setLastOffsiteError(status.lastOffsiteError ?? null)
   }
 
   const refresh = useCallback(async () => {
@@ -88,7 +105,8 @@ export function BackupSettings() {
   }, [refresh])
 
   const days = daysSinceBackup(lastBackup)
-  const tone = healthTone(days)
+  const offsiteCurrent = offsiteCopyCurrent(offsiteDir, lastOffsiteAt, lastOffsiteError)
+  const tone = healthTone(days, offsiteCurrent)
 
   async function backupNow() {
     setBusy(true)
@@ -125,10 +143,28 @@ export function BackupSettings() {
     }
   }
 
+  async function exportExcel() {
+    setBusy(true)
+    try {
+      await api.exportExcel()
+      showToast('Excel backup downloaded', 'success')
+      setError(null)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Excel export failed'
+      if (message === 'Export cancelled') {
+        return
+      }
+      setError(message)
+      showToast(message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function saveSchedule() {
     setBusy(true)
     try {
-      const status = await api.updateBackupSettings({ frequency, time })
+      const status = await api.updateBackupSettings({ frequency, time, offsiteDir })
       applyStatus(status)
       showToast('Backup schedule saved', 'success')
       setError(null)
@@ -136,6 +172,35 @@ export function BackupSettings() {
       const message = err instanceof Error ? err.message : 'Failed to save schedule'
       setError(message)
       showToast(message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function browseOffsiteFolder() {
+    const picked = await window.desktopAPI?.chooseBackupFolder()
+    if (!picked) return
+    setOffsiteDir(picked)
+  }
+
+  async function copyOffsiteNow() {
+    setBusy(true)
+    try {
+      applyStatus(await api.updateBackupSettings({ frequency, time, offsiteDir }))
+      const status = await api.copyBackupOffsite()
+      applyStatus(status)
+      await refresh()
+      showToast('Off-machine copy verified', 'success')
+      setError(null)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Off-machine copy failed'
+      setError(message)
+      showToast(message, 'error')
+      try {
+        await refresh()
+      } catch {
+        // keep the copy error visible
+      }
     } finally {
       setBusy(false)
     }
@@ -190,7 +255,7 @@ export function BackupSettings() {
           </span>
           <div>
             <h2 className="settings-section-title">Database Backup</h2>
-            <p className="backup-health-status">{healthTitle(days)}</p>
+            <p className="backup-health-status">{healthTitle(days, offsiteCurrent)}</p>
             <p className="muted">
               {lastBackup
                 ? `Last backup ${formatDisplayDateTime(lastBackup)}`
@@ -199,6 +264,17 @@ export function BackupSettings() {
             <p className="muted">
               Automatic: {frequencyLabel} at {formatDisplayClock(time)}
             </p>
+            {offsiteDir.trim() ? (
+              <p className="muted">
+                {lastOffsiteError
+                  ? `Off-machine copy failed: ${lastOffsiteError}`
+                  : lastOffsiteAt
+                    ? `Off-machine copy ${formatDisplayDateTime(lastOffsiteAt)}`
+                    : 'Off-machine folder is set. Copy now or wait for the next backup.'}
+              </p>
+            ) : (
+              <p className="muted">Choose a USB or other folder so a second copy is not on this computer.</p>
+            )}
           </div>
         </div>
         <div className="backup-health-actions">
@@ -208,6 +284,10 @@ export function BackupSettings() {
           <button type="button" className="btn secondary" disabled={busy} onClick={() => void exportCopy()}>
             <Download size={16} strokeWidth={1.75} aria-hidden />
             Export Copy
+          </button>
+          <button type="button" className="btn secondary" disabled={busy} onClick={() => void exportExcel()}>
+            <FileSpreadsheet size={16} strokeWidth={1.75} aria-hidden />
+            Export Excel
           </button>
           <label className={`btn secondary${busy ? ' backup-action-disabled' : ''}`}>
             <Upload size={16} strokeWidth={1.75} aria-hidden />
@@ -235,7 +315,8 @@ export function BackupSettings() {
             <h2 className="settings-section-title">Automatic backup</h2>
             <p className="muted settings-card-subtitle">
               The app takes a backup at this time when it is open. If it was closed through the
-              scheduled slot, it catches up on the next launch.
+              scheduled slot, it catches up on the next launch. Each backup includes a .db file for
+              restore and an Excel workbook of every table.
             </p>
           </div>
         </div>
@@ -274,13 +355,73 @@ export function BackupSettings() {
         </button>
       </div>
 
+      <div className="card padded backup-offsite">
+        <div className="settings-card-head">
+          <div>
+            <h2 className="settings-section-title">Off-machine copy</h2>
+            <p className="muted settings-card-subtitle">
+              After each local backup, the newest database file and its Excel workbook are copied
+              here. The .db copy is opened to prove it can restore. Use a USB drive or another disk,
+              not this computer&apos;s app data folder.
+            </p>
+          </div>
+        </div>
+        <label className="backup-offsite-path-label">
+          Folder
+          <div className="backup-offsite-path">
+            <input
+              className="input"
+              aria-label="Off-machine folder"
+              placeholder="E:\JewelTrackerPro"
+              value={offsiteDir}
+              disabled={busy}
+              onChange={(event) => setOffsiteDir(event.target.value)}
+            />
+            {canBrowse ? (
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={busy}
+                onClick={() => void browseOffsiteFolder()}
+              >
+                <FolderOpen size={16} strokeWidth={1.75} aria-hidden />
+                Browse
+              </button>
+            ) : null}
+          </div>
+        </label>
+        <p className="muted backup-offsite-status">
+          {lastOffsiteError
+            ? lastOffsiteError
+            : lastOffsiteAt
+              ? `Last verified copy ${formatDisplayDateTime(lastOffsiteAt)}`
+              : offsiteDir.trim()
+                ? 'No verified copy yet'
+                : 'Leave empty to turn this off'}
+        </p>
+        <div className="backup-offsite-actions">
+          <button type="button" className="btn settings-save-btn" disabled={busy} onClick={() => void saveSchedule()}>
+            Save Changes
+          </button>
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={busy || !offsiteDir.trim()}
+            onClick={() => void copyOffsiteNow()}
+          >
+            Copy now
+          </button>
+        </div>
+      </div>
+
       <div className="card padded backup-list">
         <div className="settings-card-head">
           <div>
             <h2 className="settings-section-title">Saved backups</h2>
             <p className="muted settings-card-subtitle">
               Automatic backups run on the schedule above and the last 14 copies are kept. Manual
-              backups are never auto-deleted.
+              backups are never auto-deleted. Restore uses the .db file. Excel is a readable copy of
+              every table.
             </p>
           </div>
         </div>

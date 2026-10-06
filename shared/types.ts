@@ -594,6 +594,9 @@ export interface BackupStatus {
   frequency: 'daily' | 'weekly'
   time: string
   nextBackupAt: string | null
+  offsiteDir: string
+  lastOffsiteAt: string | null
+  lastOffsiteError: string | null
 }
 
 export interface BackupFile {

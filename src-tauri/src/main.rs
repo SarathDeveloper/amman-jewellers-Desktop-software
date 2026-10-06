@@ -246,12 +246,33 @@ fn get_app_version(app: AppHandle) -> String {
 }
 
 #[tauri::command]
-async fn choose_backup_path(app: AppHandle, default_filename: String) -> Result<Option<String>, String> {
+async fn choose_backup_folder(app: AppHandle) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let picked = app.dialog().file().blocking_pick_folder();
+        match picked {
+            Some(FilePath::Path(path)) => Ok(Some(path.to_string_lossy().into_owned())),
+            Some(FilePath::Url(url)) => Ok(Some(url.to_string())),
+            None => Ok(None),
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn choose_backup_path(
+    app: AppHandle,
+    default_filename: String,
+    filter_name: Option<String>,
+    extension: Option<String>,
+) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let filter = filter_name.unwrap_or_else(|| "SQLite database".to_string());
+        let ext = extension.unwrap_or_else(|| "db".to_string());
         let picked = app
             .dialog()
             .file()
-            .add_filter("SQLite database", &["db"])
+            .add_filter(&filter, &[ext.as_str()])
             .set_file_name(&default_filename)
             .blocking_save_file();
         match picked {
@@ -292,6 +313,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_app_version,
             choose_backup_path,
+            choose_backup_folder,
             write_backup_file
         ])
         .setup(|app| {

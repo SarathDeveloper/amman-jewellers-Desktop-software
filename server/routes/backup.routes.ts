@@ -6,15 +6,18 @@ import multer from 'multer'
 import { backupSettingsSchema, restoreBackupNameSchema } from '@shared/schemas'
 import {
   backupDatabaseTo,
+  copyNewestBackupOffsite,
   createManualBackup,
   deleteBackup,
   getBackupStatus,
+  getOffsiteDir,
   listBackups,
   restoreBackupByName,
   restoreDatabaseFrom,
   updateBackupSchedule,
 } from '../db/backup'
-import { getDbPath } from '../db'
+import { writeExcelBackupFromDatabase } from '../db/excelBackup'
+import { getDatabase, getDbPath } from '../db'
 import { asyncHandler, HttpError, parseBody } from '../lib/http'
 
 const upload = multer({
@@ -53,12 +56,36 @@ router.post(
   }),
 )
 
+router.post(
+  '/offsite-copy',
+  asyncHandler(async (_req, res) => {
+    if (!getOffsiteDir()) {
+      throw new HttpError(400, 'Choose an off-machine folder first')
+    }
+    const status = await copyNewestBackupOffsite({ forceFresh: true })
+    if (status.lastOffsiteError) {
+      throw new HttpError(400, status.lastOffsiteError)
+    }
+    res.json(status)
+  }),
+)
+
 router.get(
   '/export',
   asyncHandler(async (_req, res) => {
     const filename = `jeweltrackerpro-backup-${new Date().toISOString().slice(0, 10)}.db`
     const destination = join(tmpdir(), filename)
     await backupDatabaseTo(destination)
+    res.download(destination, filename)
+  }),
+)
+
+router.get(
+  '/export-excel',
+  asyncHandler((_req, res) => {
+    const filename = `jeweltrackerpro-tables-${new Date().toISOString().slice(0, 10)}.xlsx`
+    const destination = join(tmpdir(), filename)
+    writeExcelBackupFromDatabase(getDatabase(), destination)
     res.download(destination, filename)
   }),
 )

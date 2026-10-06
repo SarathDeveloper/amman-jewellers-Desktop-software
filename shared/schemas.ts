@@ -780,6 +780,7 @@ export const restoreBackupNameSchema = z.object({
 export const backupSettingsSchema = z.object({
   frequency: z.enum(['daily', 'weekly']),
   time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, 'Time must be HH:mm'),
+  offsiteDir: z.string().trim().max(260).optional(),
 })
 
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date')

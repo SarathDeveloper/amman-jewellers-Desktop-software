@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "desktop-commands"
 description = "Version and backup-export commands used by the desktop window"
-commands.allow = ["get_app_version", "choose_backup_path", "write_backup_file"]
+commands.allow = ["get_app_version", "choose_backup_path", "choose_backup_folder", "write_backup_file"]

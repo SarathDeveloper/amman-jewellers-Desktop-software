@@ -480,8 +480,12 @@ export const api = {
     ),
 
   getBackupStatus: () => request<BackupStatus>('/api/backup/status'),
-  updateBackupSettings: (input: { frequency: BackupStatus['frequency']; time: string }) =>
-    request<BackupStatus>('/api/backup/settings', { method: 'PUT', body: JSON.stringify(input) }),
+  updateBackupSettings: (input: {
+    frequency: BackupStatus['frequency']
+    time: string
+    offsiteDir?: string
+  }) => request<BackupStatus>('/api/backup/settings', { method: 'PUT', body: JSON.stringify(input) }),
+  copyBackupOffsite: () => request<BackupStatus>('/api/backup/offsite-copy', { method: 'POST' }),
   listBackups: () => request<BackupFile[]>('/api/backup/list'),
   createBackup: () => request<BackupFile>('/api/backup/create', { method: 'POST' }),
   restoreBackupByName: (name: string) =>
@@ -508,6 +512,26 @@ export const api = {
     const link = document.createElement('a')
     link.href = url
     link.download = `jeweltrackerpro-backup-${new Date().toISOString().slice(0, 10)}.db`
+    link.click()
+    URL.revokeObjectURL(url)
+  },
+  exportExcel: async () => {
+    if (window.desktopAPI) {
+      const result = await window.desktopAPI.exportExcel()
+      if (result.canceled) {
+        throw new Error('Export cancelled')
+      }
+      return
+    }
+    const response = await fetch('/api/backup/export-excel', { credentials: 'same-origin' })
+    if (!response.ok) {
+      throw new Error('Excel export failed')
+    }
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `jeweltrackerpro-tables-${new Date().toISOString().slice(0, 10)}.xlsx`
     link.click()
     URL.revokeObjectURL(url)
   },

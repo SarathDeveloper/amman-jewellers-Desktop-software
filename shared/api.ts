@@ -95,9 +95,15 @@ export interface JewelTrackerProApi {
   resetUserPassword: (id: number, input: ResetPasswordInput) => Promise<User>
   deleteUser: (id: number) => Promise<void>
   exportDatabase: () => Promise<void>
+  exportExcel: () => Promise<void>
   restoreDatabase: (file: File) => Promise<BackupStatus>
   getBackupStatus: () => Promise<BackupStatus>
-  updateBackupSettings: (input: { frequency: BackupStatus['frequency']; time: string }) => Promise<BackupStatus>
+  updateBackupSettings: (input: {
+    frequency: BackupStatus['frequency']
+    time: string
+    offsiteDir?: string
+  }) => Promise<BackupStatus>
+  copyBackupOffsite: () => Promise<BackupStatus>
   listBackups: () => Promise<BackupFile[]>
   createBackup: () => Promise<BackupFile>
   restoreBackupByName: (name: string) => Promise<BackupStatus>

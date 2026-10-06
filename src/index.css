@@ -416,6 +416,37 @@ button {
 .backup-schedule-next {
   margin: 0.75rem 0 0;
 }
+.backup-offsite .settings-card-head {
+  margin-bottom: 0.85rem;
+}
+.backup-offsite-path-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.backup-offsite-path {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.backup-offsite-path .input {
+  flex: 1;
+  min-width: 0;
+}
+.backup-offsite-status {
+  margin: 0.75rem 0 0;
+}
+.backup-offsite-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.backup-offsite-actions .settings-save-btn {
+  margin-top: 0;
+}
 @media (max-width: 800px) {
   .backup-schedule-grid {
     grid-template-columns: 1fr;
