@@ -83,8 +83,13 @@ export function syncDueEntryForPledge(db: Database.Database, pledgeId: number): 
 }
 
 export function refreshActivePledgeDues(db: Database.Database): void {
-  const rows = db.prepare(`SELECT id FROM pledges WHERE status = 'active'`).all() as Array<{ id: number }>
-  for (const row of rows) {
-    syncDueEntryForPledge(db, row.id)
-  }
+  const tx = db.transaction(() => {
+    const rows = db.prepare(`SELECT id FROM pledges WHERE status = 'active'`).all() as Array<{
+      id: number
+    }>
+    for (const row of rows) {
+      syncDueEntryForPledge(db, row.id)
+    }
+  })
+  tx()
 }

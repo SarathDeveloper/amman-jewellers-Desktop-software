@@ -1,6 +1,7 @@
 import { isRouteErrorResponse, useRouteError } from 'react-router-dom'
 import type { DiagnosticReport } from '@shared/types'
 import { FatalErrorScreen } from './FatalErrorScreen'
+import { NotFoundPage } from './NotFoundPage'
 
 function reportFromUnknown(error: unknown): DiagnosticReport {
   if (isRouteErrorResponse(error)) {
@@ -32,5 +33,12 @@ function reportFromUnknown(error: unknown): DiagnosticReport {
 }
 
 export function RouteErrorPage() {
-  return <FatalErrorScreen error={reportFromUnknown(useRouteError())} />
+  const error = useRouteError()
+  // A 404 route response means the URL did not match any route. That is a
+  // missing page, not a crash, so show the not-found screen without raising a
+  // fatal `JTP-ERR-ROUTE` report.
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <NotFoundPage />
+  }
+  return <FatalErrorScreen error={reportFromUnknown(error)} />
 }

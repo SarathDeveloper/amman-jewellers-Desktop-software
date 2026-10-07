@@ -7,10 +7,10 @@
   "productName": "JewelTrackerPro",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k \"vite\" \"tsx watch --tsconfig tsconfig.server.json server/index.ts\"",
+    "dev": "concurrently --names vite,api \"vite\" \"tsx watch --tsconfig tsconfig.server.json server/index.ts\"",
     "server": "tsx watch --tsconfig tsconfig.server.json server/index.ts",
     "build": "vite build",
-    "start": "NODE_ENV=production tsx --tsconfig tsconfig.server.json server/index.ts",
+    "start": "tsx --tsconfig tsconfig.server.json server/index.ts",
     "lint": "eslint .",
     "test:integration": "vitest run",
     "test:e2e": "npm run build && playwright test",

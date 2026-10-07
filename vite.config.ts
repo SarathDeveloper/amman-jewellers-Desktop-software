@@ -28,4 +28,12 @@ export default defineConfig({
       '/uploads': 'http://127.0.0.1:3000',
     },
   },
+  preview: {
+    host: '127.0.0.1',
+    port: 4173,
+    proxy: {
+      '/api': 'http://127.0.0.1:3000',
+      '/uploads': 'http://127.0.0.1:3000',
+    },
+  },
 })

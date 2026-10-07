@@ -20,7 +20,6 @@ import type {
   PledgeRedeemInput,
   PledgeStatus,
   PledgeTopupInput,
-  PledgeUpdateInput,
 } from '@shared/types'
 import { getDatabase } from '../db'
 import { syncDueEntryForPledge } from '../dues/pledgeSync'
@@ -398,7 +397,8 @@ router.post(
   asyncHandler((req, res) => {
     const input = parseBody(pledgeInputSchema, req.body)
     const db = getDatabase()
-    res.status(201).json(savePledge(db, input))
+    const tx = db.transaction(() => savePledge(db, input))
+    res.status(201).json(tx())
   }),
 )
 
@@ -408,7 +408,8 @@ router.put(
     const id = parseIdParam(req.params.id)
     const input = parseBody(pledgeUpdateInputSchema, { ...req.body, id })
     const db = getDatabase()
-    res.json(savePledge(db, input, id))
+    const tx = db.transaction(() => savePledge(db, input, id))
+    res.json(tx())
   }),
 )
 
@@ -417,10 +418,13 @@ router.post(
   asyncHandler((req, res) => {
     const id = parseIdParam(req.params.id)
     const db = getDatabase()
-    assertDraft(db, id)
-    db.prepare(`UPDATE pledges SET status = 'active' WHERE id = ?`).run(id)
-    syncDueEntryForPledge(db, id)
-    res.json(mapPledge(db, getPledgeRow(db, id)))
+    const tx = db.transaction(() => {
+      assertDraft(db, id)
+      db.prepare(`UPDATE pledges SET status = 'active' WHERE id = ?`).run(id)
+      syncDueEntryForPledge(db, id)
+      return mapPledge(db, getPledgeRow(db, id))
+    })
+    res.json(tx())
   }),
 )
 
@@ -430,18 +434,21 @@ router.post(
     const id = parseIdParam(req.params.id)
     const input = parseBody(pledgeRedeemInputSchema, { ...req.body, id }) as PledgeRedeemInput
     const db = getDatabase()
-    assertActive(db, id)
-    const row = getPledgeRow(db, id)
-    const nextCollected = roundMoney(row.amount_collected + input.amountCollected)
-    db.prepare(
-      `UPDATE pledges SET
-        status = 'redeemed',
-        redeemed_date = ?,
-        amount_collected = ?
-       WHERE id = ?`,
-    ).run(input.redeemedDate, nextCollected, id)
-    syncDueEntryForPledge(db, id)
-    res.json(mapPledge(db, getPledgeRow(db, id)))
+    const tx = db.transaction(() => {
+      assertActive(db, id)
+      const row = getPledgeRow(db, id)
+      const nextCollected = roundMoney(row.amount_collected + input.amountCollected)
+      db.prepare(
+        `UPDATE pledges SET
+          status = 'redeemed',
+          redeemed_date = ?,
+          amount_collected = ?
+         WHERE id = ?`,
+      ).run(input.redeemedDate, nextCollected, id)
+      syncDueEntryForPledge(db, id)
+      return mapPledge(db, getPledgeRow(db, id))
+    })
+    res.json(tx())
   }),
 )
 
@@ -451,33 +458,36 @@ router.post(
     const id = parseIdParam(req.params.id)
     const input = parseBody(pledgeCollectInputSchema, { ...req.body, id }) as PledgeCollectInput
     const db = getDatabase()
-    assertActive(db, id)
-    const row = getPledgeRow(db, id)
-    const { due } = computePledgeDueWithLoadedTopups(
-      db,
-      {
-        id: row.id,
-        loan_amount: row.loan_amount,
-        interest_pct: row.interest_pct,
-        pledge_date: row.pledge_date,
-        amount_collected: row.amount_collected,
-      },
-      input.collectedDate,
-    )
-    const nextCollected = roundMoney(row.amount_collected + input.amount)
-    if (nextCollected >= due.totalDue) {
-      db.prepare(
-        `UPDATE pledges SET
-          status = 'redeemed',
-          redeemed_date = ?,
-          amount_collected = ?
-         WHERE id = ?`,
-      ).run(input.collectedDate, nextCollected, id)
-    } else {
-      db.prepare(`UPDATE pledges SET amount_collected = ? WHERE id = ?`).run(nextCollected, id)
-    }
-    syncDueEntryForPledge(db, id)
-    res.json(mapPledge(db, getPledgeRow(db, id)))
+    const tx = db.transaction(() => {
+      assertActive(db, id)
+      const row = getPledgeRow(db, id)
+      const { due } = computePledgeDueWithLoadedTopups(
+        db,
+        {
+          id: row.id,
+          loan_amount: row.loan_amount,
+          interest_pct: row.interest_pct,
+          pledge_date: row.pledge_date,
+          amount_collected: row.amount_collected,
+        },
+        input.collectedDate,
+      )
+      const nextCollected = roundMoney(row.amount_collected + input.amount)
+      if (nextCollected >= due.totalDue) {
+        db.prepare(
+          `UPDATE pledges SET
+            status = 'redeemed',
+            redeemed_date = ?,
+            amount_collected = ?
+           WHERE id = ?`,
+        ).run(input.collectedDate, nextCollected, id)
+      } else {
+        db.prepare(`UPDATE pledges SET amount_collected = ? WHERE id = ?`).run(nextCollected, id)
+      }
+      syncDueEntryForPledge(db, id)
+      return mapPledge(db, getPledgeRow(db, id))
+    })
+    res.json(tx())
   }),
 )
 
@@ -487,15 +497,18 @@ router.post(
     const id = parseIdParam(req.params.id)
     const input = parseBody(pledgeForfeitInputSchema, { ...req.body, id }) as PledgeForfeitInput
     const db = getDatabase()
-    assertActive(db, id)
-    db.prepare(
-      `UPDATE pledges SET
-        status = 'forfeited',
-        redeemed_date = ?
-       WHERE id = ?`,
-    ).run(input.forfeitedDate, id)
-    syncDueEntryForPledge(db, id)
-    res.json(mapPledge(db, getPledgeRow(db, id)))
+    const tx = db.transaction(() => {
+      assertActive(db, id)
+      db.prepare(
+        `UPDATE pledges SET
+          status = 'forfeited',
+          redeemed_date = ?
+         WHERE id = ?`,
+      ).run(input.forfeitedDate, id)
+      syncDueEntryForPledge(db, id)
+      return mapPledge(db, getPledgeRow(db, id))
+    })
+    res.json(tx())
   }),
 )
 
@@ -515,19 +528,22 @@ router.post(
     const id = parseIdParam(req.params.id)
     const input = parseBody(pledgeTopupInputSchema, { ...req.body, pledgeId: id }) as PledgeTopupInput
     const db = getDatabase()
-    assertActive(db, id)
-    const row = getPledgeRow(db, id)
-    if (input.topupDate < row.pledge_date) {
-      throw new HttpError(400, 'Top-up date cannot be before the pledge date')
-    }
+    const tx = db.transaction(() => {
+      assertActive(db, id)
+      const row = getPledgeRow(db, id)
+      if (input.topupDate < row.pledge_date) {
+        throw new HttpError(400, 'Top-up date cannot be before the pledge date')
+      }
 
-    db.prepare(
-      `INSERT INTO pledge_topups (pledge_id, topup_date, amount, interest_pct, note)
-       VALUES (?, ?, ?, ?, ?)`,
-    ).run(id, input.topupDate, input.amount, row.interest_pct, input.note ?? '')
+      db.prepare(
+        `INSERT INTO pledge_topups (pledge_id, topup_date, amount, interest_pct, note)
+         VALUES (?, ?, ?, ?, ?)`,
+      ).run(id, input.topupDate, input.amount, row.interest_pct, input.note ?? '')
 
-    syncDueEntryForPledge(db, id)
-    res.status(201).json(mapPledge(db, getPledgeRow(db, id)))
+      syncDueEntryForPledge(db, id)
+      return mapPledge(db, getPledgeRow(db, id))
+    })
+    res.status(201).json(tx())
   }),
 )
 

@@ -36,8 +36,8 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 60mm;
-  height: 60mm;
+  width: 120mm;
+  height: 120mm;
   object-fit: contain;
   opacity: 0.06;
   pointer-events: none;

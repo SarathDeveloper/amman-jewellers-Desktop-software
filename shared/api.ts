@@ -187,7 +187,7 @@ export interface JewelTrackerProApi {
   getShopSettings: () => Promise<ShopSettings>
   getRecordCounts: () => Promise<RecordCounts>
   updateShopSettings: (input: ShopSettings) => Promise<ShopSettings>
-  uploadShopImage: (file: File) => Promise<{ path: string }>>
+  uploadShopImage: (file: File) => Promise<{ path: string }>
   getLatestMetalRates: () => Promise<MetalRates | null>
   listMetalRates: (days?: number) => Promise<MetalRates[]>
   upsertMetalRates: (input: MetalRatesInput) => Promise<MetalRates>

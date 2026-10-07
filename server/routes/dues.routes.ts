@@ -26,7 +26,7 @@ import type {
 import type Database from 'better-sqlite3'
 import { getDatabase } from '../db'
 import { refreshActivePledgeDues } from '../dues/pledgeSync'
-import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
+import { asyncHandler, HttpError, parseBody, parseIdParam } from '../lib/http'
 import { computePledgeDueWithLoadedTopups } from '../pledges/topups'
 
 const router = Router()
@@ -328,6 +328,39 @@ function buildAdaguDues(
   return { adaguDues, adaguOutstanding }
 }
 
+function loadInvoicePaymentState(
+  db: Database.Database,
+  invoiceId: number,
+): { payable: number; amountPaid: number } {
+  const invoice = db
+    .prepare(
+      `SELECT total, amount_paid, COALESCE(amount_payable, total) AS amount_payable
+       FROM invoices WHERE id = ?`,
+    )
+    .get(invoiceId) as
+    | { total: number; amount_paid: number; amount_payable: number }
+    | undefined
+  if (!invoice) {
+    throw new Error('Invoice not found')
+  }
+  return {
+    payable: resolveAmountPayable(invoice.amount_payable, invoice.total),
+    amountPaid: invoice.amount_paid,
+  }
+}
+
+function assertActivePledgeForPayment(db: Database.Database, pledgeId: number): void {
+  const pledge = db.prepare('SELECT status FROM pledges WHERE id = ?').get(pledgeId) as
+    | { status: string }
+    | undefined
+  if (!pledge) {
+    throw new HttpError(404, 'Pledge not found')
+  }
+  if (pledge.status !== 'active') {
+    throw new HttpError(400, 'Only active Adagu pledges can receive payments')
+  }
+}
+
 export function insertPayment(
   db: Database.Database,
   input: {
@@ -339,6 +372,18 @@ export function insertPayment(
     pledgeId: number | null
   },
 ): DueEntry {
+  // Validate the linked document before writing, so a rejected payment does not
+  // leave an orphan payment row in the ledger.
+  if (input.invoiceId !== null) {
+    const invoice = loadInvoicePaymentState(db, input.invoiceId)
+    if (invoice.amountPaid + input.amount - invoice.payable > 0.009) {
+      throw new Error('Payment cannot exceed the balance due')
+    }
+  }
+  if (input.pledgeId !== null) {
+    assertActivePledgeForPayment(db, input.pledgeId)
+  }
+
   const result = db
     .prepare(
       `INSERT INTO customer_dues (customer_id, entry_date, kind, amount, note, invoice_id, pledge_id, created_at)
@@ -354,23 +399,9 @@ export function insertPayment(
     )
 
   if (input.invoiceId !== null) {
-    const invoice = db
-      .prepare(
-        `SELECT total, amount_paid, COALESCE(amount_payable, total) AS amount_payable
-         FROM invoices WHERE id = ?`,
-      )
-      .get(input.invoiceId) as
-      | { total: number; amount_paid: number; amount_payable: number }
-      | undefined
-    if (!invoice) {
-      throw new Error('Invoice not found')
-    }
-    const payable = resolveAmountPayable(invoice.amount_payable, invoice.total)
-    const amountPaid = invoice.amount_paid + input.amount
-    if (amountPaid - payable > 0.009) {
-      throw new Error('Payment cannot exceed the balance due')
-    }
-    const balanceDue = Math.max(0, payable - amountPaid)
+    const invoice = loadInvoicePaymentState(db, input.invoiceId)
+    const amountPaid = invoice.amountPaid + input.amount
+    const balanceDue = Math.max(0, invoice.payable - amountPaid)
     db.prepare('UPDATE invoices SET amount_paid = ?, balance_due = ? WHERE id = ?').run(
       amountPaid,
       balanceDue,
@@ -407,10 +438,10 @@ function applyPledgeCollection(
       }
     | undefined
   if (!pledge) {
-    throw new Error('Pledge not found')
+    throw new HttpError(404, 'Pledge not found')
   }
   if (pledge.status !== 'active') {
-    throw new Error('Only active Adagu pledges can receive payments')
+    throw new HttpError(400, 'Only active Adagu pledges can receive payments')
   }
 
   const { due } = computePledgeDueWithLoadedTopups(db, pledge, collectedDate)
@@ -663,32 +694,33 @@ router.post(
     const id = parseIdParam(req.params.id)
     const input = parseBody(duePaymentInputSchema, { ...req.body, dueEntryId: id }) as DuePaymentInput
     const db = getDatabase()
-    const due = loadDueEntry(db, input.dueEntryId)
-    const remaining = remainingForDue(db, due)
+    const tx = db.transaction(() => {
+      const due = loadDueEntry(db, input.dueEntryId)
+      const remaining = remainingForDue(db, due)
 
-    if (remaining <= 0) {
-      throw new Error('This due is already settled')
-    }
-    if (input.amount > remaining + 1e-9) {
-      throw new Error(`Payment exceeds remaining balance of ${remaining}`)
-    }
+      if (remaining <= 0) {
+        throw new Error('This due is already settled')
+      }
+      if (input.amount > remaining + 1e-9) {
+        throw new Error(`Payment exceeds remaining balance of ${remaining}`)
+      }
 
-    const label = due.invoiceNo
-      ? `Payment for ${due.invoiceNo}`
-      : due.pledgeReceiptNo
-        ? `Payment for ${due.pledgeReceiptNo}`
-        : 'Payment'
+      const label = due.invoiceNo
+        ? `Payment for ${due.invoiceNo}`
+        : due.pledgeReceiptNo
+          ? `Payment for ${due.pledgeReceiptNo}`
+          : 'Payment'
 
-    res.json(
-      insertPayment(db, {
+      return insertPayment(db, {
         customerId: due.customerId,
         entryDate: input.entryDate,
         amount: input.amount,
         note: input.note || label,
         invoiceId: due.invoiceId,
         pledgeId: due.pledgeId,
-      }),
-    )
+      })
+    })
+    res.json(tx())
   }),
 )
 
@@ -697,30 +729,31 @@ router.post(
   asyncHandler((req, res) => {
     const id = parseIdParam(req.params.id)
     const db = getDatabase()
-    const due = loadDueEntry(db, id)
-    const remaining = remainingForDue(db, due)
+    const tx = db.transaction(() => {
+      const due = loadDueEntry(db, id)
+      const remaining = remainingForDue(db, due)
 
-    if (remaining <= 0) {
-      throw new Error('This due is already settled')
-    }
+      if (remaining <= 0) {
+        throw new Error('This due is already settled')
+      }
 
-    const entryDate = localTodayIso()
-    const label = due.invoiceNo
-      ? `Settled ${due.invoiceNo}`
-      : due.pledgeReceiptNo
-        ? `Settled ${due.pledgeReceiptNo}`
-        : 'Settled'
+      const entryDate = localTodayIso()
+      const label = due.invoiceNo
+        ? `Settled ${due.invoiceNo}`
+        : due.pledgeReceiptNo
+          ? `Settled ${due.pledgeReceiptNo}`
+          : 'Settled'
 
-    res.json(
-      insertPayment(db, {
+      return insertPayment(db, {
         customerId: due.customerId,
         entryDate,
         amount: remaining,
         note: label,
         invoiceId: due.invoiceId,
         pledgeId: due.pledgeId,
-      }),
-    )
+      })
+    })
+    res.json(tx())
   }),
 )
 

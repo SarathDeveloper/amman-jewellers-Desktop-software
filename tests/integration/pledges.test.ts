@@ -1,5 +1,51 @@
 import { describe, expect, it } from 'vitest'
+import { getDatabase } from '../../server/db'
 import { getTestAgent, ipc, IPC_CHANNELS, useIntegrationEnv, withHuids } from './helpers/testEnv'
+
+async function createPledgeCustomer(name: string, phone: string): Promise<number> {
+  const customer = await ipc<{ id: number }>(IPC_CHANNELS.CUSTOMERS_CREATE, {
+    name,
+    phone,
+    address: 'Salem',
+    notes: '',
+  })
+  return customer.id
+}
+
+function goldItem(description: string, overrides: Record<string, unknown> = {}) {
+  return {
+    description,
+    metal: 'Gold',
+    purity: '22K',
+    grossWeight: 10,
+    netWeight: 9.5,
+    pieces: 1,
+    ...overrides,
+  }
+}
+
+async function createDraftPledge(customerId: number, items: Array<Record<string, unknown>>) {
+  return getTestAgent().post('/api/pledges').send({
+    customerId,
+    pledgeDate: '2026-08-01',
+    assessedValue: 40000,
+    loanAmount: 20000,
+    interestPct: 2,
+    items,
+  })
+}
+
+function countRows(table: 'pledges' | 'pledge_items', where = '', params: unknown[] = []): number {
+  const db = getDatabase()
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM ${table}${where ? ` WHERE ${where}` : ''}`)
+    .get(...params) as { n: number }
+  return row.n
+}
+
+function dropTrigger(name: string): void {
+  getDatabase().exec(`DROP TRIGGER IF EXISTS ${name}`)
+}
 
 describe('pledges API', () => {
   useIntegrationEnv()
@@ -427,5 +473,144 @@ describe('pledges API', () => {
     expect(adagu).toBeDefined()
     expect(adagu?.principal).toBe(12500)
     expect(adagu?.monthlyInterest).toBe(250)
+  })
+
+  it('rolls back a pledge create when an item insert fails', async () => {
+    const customerId = await createPledgeCustomer('Atomic Create', '9000000021')
+    const receiptBefore = await getTestAgent().get('/api/pledges/next-receipt-no')
+    const pledgesBefore = countRows('pledges')
+    const itemsBefore = countRows('pledge_items')
+
+    getDatabase().exec(`
+      CREATE TEMP TRIGGER fail_pledge_item BEFORE INSERT ON pledge_items
+      WHEN NEW.description = 'FAIL'
+      BEGIN SELECT RAISE(ABORT, 'forced item failure'); END
+    `)
+
+    try {
+      const created = await createDraftPledge(customerId, [goldItem('Chain'), goldItem('FAIL')])
+      expect(created.status).toBeGreaterThanOrEqual(400)
+    } finally {
+      dropTrigger('fail_pledge_item')
+    }
+
+    expect(countRows('pledges')).toBe(pledgesBefore)
+    expect(countRows('pledge_items')).toBe(itemsBefore)
+    const receiptAfter = await getTestAgent().get('/api/pledges/next-receipt-no')
+    expect(receiptAfter.body.receiptNo).toBe(receiptBefore.body.receiptNo)
+  })
+
+  it('rolls back a pledge update and keeps the original items', async () => {
+    const customerId = await createPledgeCustomer('Atomic Update', '9000000022')
+    const created = await createDraftPledge(customerId, [goldItem('Chain')])
+    expect(created.status).toBe(201)
+    const pledgeId = created.body.id
+
+    getDatabase().exec(`
+      CREATE TEMP TRIGGER fail_pledge_item BEFORE INSERT ON pledge_items
+      WHEN NEW.description = 'FAIL'
+      BEGIN SELECT RAISE(ABORT, 'forced item failure'); END
+    `)
+
+    try {
+      const updated = await getTestAgent()
+        .put(`/api/pledges/${pledgeId}`)
+        .send({
+          id: pledgeId,
+          customerId,
+          pledgeDate: '2026-08-01',
+          assessedValue: 52000,
+          loanAmount: 15500,
+          interestPct: 2,
+          items: [goldItem('Chain'), goldItem('FAIL')],
+        })
+      expect(updated.status).toBeGreaterThanOrEqual(400)
+    } finally {
+      dropTrigger('fail_pledge_item')
+    }
+
+    const after = await getTestAgent().get(`/api/pledges/${pledgeId}`)
+    expect(after.body.items).toHaveLength(1)
+    expect(after.body.items[0].description).toBe('Chain')
+    expect(after.body.loanAmount).toBe(20000)
+  })
+
+  it('rolls back a sanction when the dues entry cannot be written', async () => {
+    const customerId = await createPledgeCustomer('Atomic Sanction', '9000000023')
+    const created = await createDraftPledge(customerId, [goldItem('Ring')])
+    expect(created.status).toBe(201)
+    const pledgeId = created.body.id
+
+    getDatabase().exec(`
+      CREATE TEMP TRIGGER fail_pledge_due BEFORE INSERT ON customer_dues
+      WHEN NEW.pledge_id = ${pledgeId} AND NEW.kind = 'due'
+      BEGIN SELECT RAISE(ABORT, 'forced due failure'); END
+    `)
+
+    try {
+      const sanctioned = await getTestAgent().post(`/api/pledges/${pledgeId}/sanction`)
+      expect(sanctioned.status).toBeGreaterThanOrEqual(400)
+    } finally {
+      dropTrigger('fail_pledge_due')
+    }
+
+    const after = await getTestAgent().get(`/api/pledges/${pledgeId}`)
+    expect(after.body.status).toBe('draft')
+  })
+
+  it('rolls back a collection when the dues payment cannot be written', async () => {
+    const customerId = await createPledgeCustomer('Atomic Collect', '9000000024')
+    const created = await createDraftPledge(customerId, [goldItem('Bangle')])
+    expect(created.status).toBe(201)
+    const pledgeId = created.body.id
+    const sanctioned = await getTestAgent().post(`/api/pledges/${pledgeId}/sanction`)
+    expect(sanctioned.status).toBe(200)
+
+    getDatabase().exec(`
+      CREATE TEMP TRIGGER fail_pledge_payment BEFORE INSERT ON customer_dues
+      WHEN NEW.pledge_id = ${pledgeId} AND NEW.kind = 'payment'
+      BEGIN SELECT RAISE(ABORT, 'forced payment failure'); END
+    `)
+
+    try {
+      const collected = await getTestAgent()
+        .post(`/api/pledges/${pledgeId}/collect`)
+        .send({ collectedDate: '2026-09-01', amount: 5000 })
+      expect(collected.status).toBeGreaterThanOrEqual(400)
+    } finally {
+      dropTrigger('fail_pledge_payment')
+    }
+
+    const after = await getTestAgent().get(`/api/pledges/${pledgeId}`)
+    expect(after.body.status).toBe('active')
+    expect(after.body.amountCollected).toBe(0)
+  })
+
+  it('does not write a dues payment against a forfeited pledge', async () => {
+    const customerId = await createPledgeCustomer('Atomic Forfeit', '9000000025')
+    const created = await createDraftPledge(customerId, [goldItem('Stud')])
+    expect(created.status).toBe(201)
+    const pledgeId = created.body.id
+    await getTestAgent().post(`/api/pledges/${pledgeId}/sanction`)
+    const forfeited = await getTestAgent()
+      .post(`/api/pledges/${pledgeId}/forfeit`)
+      .send({ forfeitedDate: '2026-09-26' })
+    expect(forfeited.status).toBe(200)
+
+    const ledger = await ipc<{
+      columns: Array<{ customerId: number; entries: Array<{ id: number; kind: string; pledgeId: number | null }> }>
+    }>(IPC_CHANNELS.DUES_LIST)
+    const column = ledger.columns.find((entry) => entry.customerId === customerId)
+    const dueEntry = column?.entries.find((entry) => entry.pledgeId === pledgeId && entry.kind === 'due')
+    expect(dueEntry).toBeDefined()
+
+    const paymentsBefore = countRows('customer_dues', `pledge_id = ? AND kind = 'payment'`, [pledgeId])
+    const paid = await getTestAgent()
+      .post(`/api/dues/${dueEntry!.id}/payment`)
+      .send({ dueEntryId: dueEntry!.id, entryDate: '2026-09-27', amount: 1000, note: '' })
+    expect(paid.status).toBe(400)
+    expect(countRows('customer_dues', `pledge_id = ? AND kind = 'payment'`, [pledgeId])).toBe(
+      paymentsBefore,
+    )
   })
 })

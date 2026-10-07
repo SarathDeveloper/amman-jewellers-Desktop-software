@@ -34,6 +34,7 @@ import { MaturityPage } from '../features/goldSavings/maturity/MaturityPage'
 import { GoldSavingsReportsPage } from '../features/goldSavings/reports/GoldSavingsReportsPage'
 import { OverdueAgingPage } from '../features/goldSavings/overdue/OverdueAgingPage'
 import { RouteErrorPage } from '../components/RouteErrorPage'
+import { NotFoundPage } from '../components/NotFoundPage'
 
 const UsersPage = lazy(() =>
   import('../features/users/UsersPage').then((module) => ({ default: module.UsersPage })),
@@ -249,6 +250,10 @@ export const router = createBrowserRouter([
       { path: 'settings', element: <SettingsPage /> },
       { path: 'users', element: <UsersPage /> },
     ],
+  },
+  {
+    path: '*',
+    element: <NotFoundPage />,
   },
     ],
   },
