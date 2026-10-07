@@ -18,6 +18,7 @@ Jewellery shop inventory, billing, gold/silver weight tracking, and customer due
 - **Windows shop PCs** need 64-bit Windows 10 (1809+) and the [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/). The installer can download it if it is missing.
 - **Windows PCs** may also need the [Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) (x64) if Windows reports a missing `VCRUNTIME` DLL
 - **macOS installer builds** need Xcode command-line tools
+- The Windows installer is produced with the NSIS 3.11 toolchain. `npm run nsis:prepare` (included in `npm run desktop:prepare`) caches it in `%LOCALAPPDATA%\tauri\NSIS` before bundling. Tauri downloads the same tools on its own, but on a slow or filtered GitHub connection that download hits its global HTTP timeout and the bundle fails with ``failed to bundle project: `timeout: global` `` after the app binary has already been compiled.
 
 ### Cross-compile the Windows installer from macOS
 

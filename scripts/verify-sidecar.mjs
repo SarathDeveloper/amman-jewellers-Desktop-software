@@ -5,12 +5,18 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const sourceAddon = join(root, 'src-tauri', 'binaries', 'better-sqlite3-win32-x64.node')
 const sourceSidecar = join(root, 'src-tauri', 'binaries', 'jeweltrackerpro-api-x86_64-pc-windows-msvc.exe')
+// `tauri build` copies `binaries/*.node` resources next to the built app, keeping the
+// subdirectory from tauri.conf.json. These mirror resolve_sqlite_addon() in
+// src-tauri/src/main.rs, which probes <resource>/binaries, <resource>/resources and the
+// executable's own directory, for both the --target and the default output folders.
 const packagedCandidates = [
-  join(root, 'src-tauri', 'target', 'x86_64-pc-windows-msvc', 'release', 'better-sqlite3-win32-x64.node'),
-  join(root, 'src-tauri', 'target', 'x86_64-pc-windows-msvc', 'release', 'resources', 'better-sqlite3-win32-x64.node'),
-  join(root, 'src-tauri', 'target', 'release', 'better-sqlite3-win32-x64.node'),
-  join(root, 'src-tauri', 'target', 'release', 'resources', 'better-sqlite3-win32-x64.node'),
-]
+  join(root, 'src-tauri', 'target', 'x86_64-pc-windows-msvc', 'release'),
+  join(root, 'src-tauri', 'target', 'release'),
+].flatMap((targetDir) => [
+  join(targetDir, 'binaries', 'better-sqlite3-win32-x64.node'),
+  join(targetDir, 'resources', 'better-sqlite3-win32-x64.node'),
+  join(targetDir, 'better-sqlite3-win32-x64.node'),
+])
 
 const mode = process.argv.includes('--packaged') ? 'packaged' : 'source'
 
