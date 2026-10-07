@@ -102,9 +102,39 @@ button {
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 2px 0 8px rgba(0,0,0,0.05);
 }
-.sidebar:hover {
-  width: 15.5rem;
-  box-shadow: 4px 0 16px rgba(0,0,0,0.1);
+/* Desktop keeps the rail at its collapsed width while hovering, so it never widens
+   over the content beside it; a hovered icon shows its label as a floating chip
+   instead (see .nav-tooltip). The tablet/phone drawer restores a full-width rail in
+   responsive.css. */
+@media (min-width: 1025px) {
+  .sidebar:hover {
+    width: 4.5rem;
+    box-shadow: 2px 0 8px rgba(0,0,0,0.05);
+  }
+}
+/* Hover label for the collapsed rail. Hidden by default (the drawer shows the real
+   labels) and positioned inline by AppLayout so it tracks the hovered icon. */
+.nav-tooltip {
+  display: none;
+  pointer-events: none;
+}
+
+@media (min-width: 1025px) {
+  .nav-tooltip {
+    position: fixed;
+    z-index: 300;
+    display: block;
+    transform: translateY(-50%);
+    padding: 0.35rem 0.65rem;
+    border: 1px solid var(--sidebar-border);
+    border-radius: 0.5rem;
+    background: var(--sidebar-bg);
+    color: var(--sidebar-text);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
 }
 .sidebar .brand-text,
 .sidebar .sidebar-user,

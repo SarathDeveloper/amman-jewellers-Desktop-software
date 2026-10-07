@@ -89,6 +89,7 @@ export function AppLayout() {
       !(onInventory && inventoryAllowed))
 
   const [navOpen, setNavOpen] = useState(false)
+  const [navTip, setNavTip] = useState<{ label: string; top: number; left: number } | null>(null)
 
   useEffect(() => {
     if (!navOpen) return
@@ -120,6 +121,29 @@ export function AppLayout() {
   ) : (
     <Gem size={20} strokeWidth={1.75} />
   )
+
+  // Desktop keeps the rail at its collapsed width, so a hovered icon surfaces its
+  // label as a chip beside the rail instead of widening the rail over the content.
+  // The chip is fixed-position on purpose: the rail clips its own contents and the
+  // nav list scrolls, so a chip laid out inside either would be cut off or scroll
+  // away from its icon.
+  function placeTip(label: string, anchor: HTMLElement) {
+    const rect = anchor.getBoundingClientRect()
+    // Anchor horizontally to the rail's edge, not the hovered element's: elements are
+    // inset by the rail's padding, so their own right edge sits inside the rail.
+    const left = (anchor.closest('.sidebar')?.getBoundingClientRect().right ?? rect.right) + 8
+    setNavTip({ label, top: rect.top + rect.height / 2, left })
+  }
+
+  function hideTip() {
+    setNavTip(null)
+  }
+
+  /** Show the chip for `label` while the pointer or keyboard focus is on the element. */
+  function tipHandlers(label: string) {
+    const show = (event: { currentTarget: HTMLElement }) => placeTip(label, event.currentTarget)
+    return { onMouseEnter: show, onMouseLeave: hideTip, onFocus: show, onBlur: hideTip }
+  }
 
   return (
     <div className="app-shell">
@@ -153,7 +177,7 @@ export function AppLayout() {
         onClick={() => setNavOpen(false)}
       />
       <aside id="app-sidebar" className={`sidebar${navOpen ? ' open' : ''}`}>
-        <div className="brand">
+        <div className="brand" {...tipHandlers(shopName)}>
           <span className={`brand-icon${logoSrc ? ' has-logo' : ''}`} aria-hidden="true">
             {brandIcon}
           </span>
@@ -170,6 +194,7 @@ export function AppLayout() {
                   to={link.to}
                   className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
                   onClick={() => setNavOpen(false)}
+                  {...tipHandlers(link.label)}
                 >
                   <link.icon className="nav-link-icon" size={20} strokeWidth={1.75} aria-hidden />
                   {link.label}
@@ -179,10 +204,11 @@ export function AppLayout() {
           </ul>
         </nav>
         <div className="sidebar-footer">
-          <span className="sidebar-user">{user?.username}</span>
+          <span className="sidebar-user" {...tipHandlers(user?.username ?? '')}>{user?.username}</span>
           <button
             type="button"
             className="btn secondary sidebar-logout"
+            {...tipHandlers('Sign out')}
             onClick={() => void logout()}
           >
             <LogOut size={20} strokeWidth={1.75} aria-hidden />
@@ -190,6 +216,15 @@ export function AppLayout() {
           </button>
           <span className="sidebar-version">v{APP_VERSION}</span>
         </div>
+        {navTip ? (
+          <span
+            className="nav-tooltip"
+            aria-hidden="true"
+            style={{ top: `${navTip.top}px`, left: `${navTip.left}px` }}
+          >
+            {navTip.label}
+          </span>
+        ) : null}
       </aside>
       <main className="content">
         {/* Pages load on demand, so keep the sidebar and the module tabs in
