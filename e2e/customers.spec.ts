@@ -31,7 +31,7 @@ test('customer profile shows purchase and due history', async ({ window }) => {
   await sidebarLink(window, 'Customers').click()
   await expect(window.getByRole('heading', { name: 'Customers' })).toBeVisible()
   const customerRow = window.getByRole('row').filter({ hasText: 'E2E Customer' })
-  await customerRow.getByRole('button', { name: 'E2E Customer' }).click({ force: true })
+  await customerRow.getByRole('button', { name: 'E2E Customer' }).click()
 
   const drawer = window.getByRole('dialog', { name: 'E2E Customer' })
   await expect(drawer.getByRole('heading', { name: 'Customer Profile' })).toBeVisible()

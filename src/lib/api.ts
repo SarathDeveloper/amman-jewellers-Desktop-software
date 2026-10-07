@@ -85,6 +85,7 @@ import type {
   GoldSavingSchemeInput,
 } from '@shared/types'
 import type { ReportDefinition, ReportId, ReportLookups, ReportResult } from '@shared/reportsCatalog'
+import { downscaleImageFile } from './downscaleImage'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
@@ -385,7 +386,9 @@ export const api = {
     request<ShopSettings>('/api/settings', { method: 'PUT', body: JSON.stringify(input) }),
   uploadShopImage: async (file: File) => {
     const body = new FormData()
-    body.append('file', file)
+    // Uploaded images are shrunk first: they print a few centimetres wide but
+    // are decoded on every print preview.
+    body.append('file', await downscaleImageFile(file))
     return request<{ path: string }>('/api/settings/image', { method: 'POST', body })
   },
 

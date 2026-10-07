@@ -25,9 +25,13 @@ export function TaxInvoicePrintPage() {
         if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
           throw new Error('Invalid invoice id')
         }
-        const invoice = await api.getInvoice(invoiceId)
-        const [customer, settings, rates] = await Promise.all([
-          api.getCustomer(invoice.customerId),
+        // Settings, rates, and the customer id do not depend on each other, so
+        // only the invoice itself has to arrive before its customer is known.
+        const invoicePromise = api.getInvoice(invoiceId)
+        const customerPromise = invoicePromise.then((invoice) => api.getCustomer(invoice.customerId))
+        const [invoice, customer, settings, rates] = await Promise.all([
+          invoicePromise,
+          customerPromise,
           api.getShopSettings(),
           api.getLatestMetalRates(),
         ])

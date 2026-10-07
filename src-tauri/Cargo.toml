@@ -17,3 +17,9 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-single-instance = "2"
+
+# Pinned to the versions wry 0.57 builds against. Used only to observe WebView2
+# process failures, which the web layer cannot see (see src/recovery.rs).
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows-core = "0.62"

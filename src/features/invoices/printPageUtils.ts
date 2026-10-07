@@ -7,13 +7,27 @@ export async function waitForDocumentImages(): Promise<void> {
   await Promise.all(
     images.map((img) =>
       img.complete
-        ? Promise.resolve()
+        ? decodeImage(img)
         : new Promise<void>((resolve) => {
-            img.addEventListener('load', () => resolve(), { once: true })
+            img.addEventListener('load', () => void decodeImage(img).then(resolve), { once: true })
             img.addEventListener('error', () => resolve(), { once: true })
           }),
     ),
   )
+}
+
+/**
+ * Decoding is separate from loading, and it is the part that costs CPU on a
+ * large logo. Waiting for it here means the image is paintable by the time the
+ * frame reports itself ready, instead of being decoded during the first paint.
+ * Never rejects: a broken image is not worth failing the preview over.
+ */
+async function decodeImage(img: HTMLImageElement): Promise<void> {
+  try {
+    await img.decode()
+  } catch {
+    /* already decoded, or undecodable */
+  }
 }
 
 export async function waitForPrintLayout(): Promise<void> {

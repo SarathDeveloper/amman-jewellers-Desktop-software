@@ -20,8 +20,14 @@ export function GsReceiptPrintPage() {
       try {
         const paymentId = Number(id)
         if (!Number.isInteger(paymentId) || paymentId <= 0) throw new Error('Invalid receipt')
-        const [next, settings] = await Promise.all([api.getGsPayment(paymentId), api.getShopSettings()])
-        const pb = await api.getGsPassbook(next.accountId)
+        // The passbook fetch needs the payment's account id, so it is chained
+        // off the payment request instead of running after everything else.
+        const paymentPromise = api.getGsPayment(paymentId)
+        const [, settings, pb] = await Promise.all([
+          paymentPromise,
+          api.getShopSettings(),
+          paymentPromise.then((payment) => api.getGsPassbook(payment.accountId)),
+        ])
         if (!active) return
         setPassbook(pb)
         setShop(shopSettingsToDisplay(settings))

@@ -1,8 +1,33 @@
 import { expect, type Page } from '@playwright/test'
 
-/** Sidebar nav link (avoids duplicate links on the dashboard quick actions). */
+/**
+ * The desktop sidebar is a collapsed icon rail that expands over the content
+ * while the pointer rests on it. Clicking a nav link leaves the pointer inside
+ * the expanded rail, which then covers the left edge of the page. Any click in
+ * that band (the first module tab, the first table column) lands on the sidebar
+ * instead. Park the pointer clear of the rail so it collapses, which is where a
+ * user's pointer would be once they reach for something in the content.
+ */
+export async function parkPointer(page: Page): Promise<void> {
+  const viewport = page.viewportSize() ?? { width: 1280, height: 720 }
+  await page.mouse.move(Math.round(viewport.width * 0.7), Math.round(viewport.height * 0.5))
+}
+
+/**
+ * Sidebar nav link (avoids duplicate links on the dashboard quick actions).
+ *
+ * Clicking parks the pointer, so callers can immediately click something along
+ * the left edge of the content. Only `click` is exposed because that is all any
+ * spec needs; parking has to happen on the click itself to cover every caller.
+ */
 export function sidebarLink(page: Page, name: string | RegExp) {
-  return page.locator('.sidebar-nav').getByRole('link', { name })
+  const locator = page.locator('.sidebar-nav').getByRole('link', { name })
+  return {
+    click: async (): Promise<void> => {
+      await locator.click()
+      await parkPointer(page)
+    },
+  }
 }
 
 /** Open a Monthly Gold Savings chrome tab. */

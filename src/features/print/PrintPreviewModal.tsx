@@ -4,6 +4,14 @@ import { Modal } from '../../components/Modal'
 import { downloadPrintDocument } from './downloadPrintPdf'
 import { withEmbedFlag } from './printPreviewPaths'
 
+interface FrameSize {
+  width: number
+  height: number
+  scale: number
+}
+
+const INITIAL_SIZE: FrameSize = { width: 0, height: 480, scale: 1 }
+
 export function PrintPreviewModal({
   title,
   path,
@@ -25,23 +33,50 @@ export function PrintPreviewModal({
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savingPdf, setSavingPdf] = useState(false)
-  const [frameHeight, setFrameHeight] = useState(480)
-  const [scale, setScale] = useState(1)
+  const [size, setSize] = useState<FrameSize>(INITIAL_SIZE)
 
-  const sizeFrame = useCallback(() => {
+  // Measuring reads layout and writes state, so it is kept to one pass per frame
+  // and skipped entirely when nothing changed. Without both guards this modal
+  // measured four times per open and re-measured itself on every resize.
+  const rafRef = useRef<number | null>(null)
+  const measuredRef = useRef<FrameSize>(INITIAL_SIZE)
+
+  const measure = useCallback(() => {
     try {
       const doc = frameRef.current?.contentDocument
       const sheet = sheetRef.current
       if (!doc || !sheet) return
       const height = Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight ?? 0, 320)
       const width = Math.max(doc.documentElement.scrollWidth, doc.body?.scrollWidth ?? 0, 1)
-      setFrameHeight(height)
       const available = sheet.clientWidth
-      setScale(available > 0 && width > available ? available / width : 1)
+      const scale = available > 0 && width > available ? available / width : 1
+      const previous = measuredRef.current
+      if (previous.width === width && previous.height === height && previous.scale === scale) {
+        return
+      }
+      measuredRef.current = { width, height, scale }
+      setSize({ width, height, scale })
     } catch {
       // iframe document may be unavailable while the preview document is still loading
     }
   }, [])
+
+  const scheduleSize = useCallback(() => {
+    if (rafRef.current !== null) return
+    rafRef.current = window.requestAnimationFrame(() => {
+      rafRef.current = null
+      measure()
+    })
+  }, [measure])
+
+  useEffect(
+    () => () => {
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -57,13 +92,14 @@ export function PrintPreviewModal({
       if (data.type === 'print-ready') {
         setError(null)
         setReady(true)
-        window.requestAnimationFrame(sizeFrame)
-        window.setTimeout(sizeFrame, 50)
+        // The document has finished loading its images, so this is the one
+        // measurement that matters.
+        scheduleSize()
       }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [sizeFrame])
+  }, [scheduleSize])
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -73,18 +109,32 @@ export function PrintPreviewModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // Only a change in available width needs a re-measure. The sheet height is
+  // derived from this state, so reacting to height would loop.
   useEffect(() => {
     const wrap = frameWrapRef.current
     if (!wrap || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => sizeFrame())
+    let lastWidth = wrap.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (wrap.clientWidth === lastWidth) return
+      lastWidth = wrap.clientWidth
+      scheduleSize()
+    })
     observer.observe(wrap)
     return () => observer.disconnect()
-  }, [sizeFrame])
+  }, [scheduleSize])
 
   useEffect(() => {
-    window.addEventListener('resize', sizeFrame)
-    return () => window.removeEventListener('resize', sizeFrame)
-  }, [sizeFrame])
+    let lastWidth = frameWrapRef.current?.clientWidth ?? 0
+    function onResize() {
+      const width = frameWrapRef.current?.clientWidth ?? 0
+      if (width === lastWidth) return
+      lastWidth = width
+      scheduleSize()
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [scheduleSize])
 
   function printFrame() {
     frameRef.current?.contentWindow?.print()
@@ -137,17 +187,24 @@ export function PrintPreviewModal({
         <div
           className="print-preview-sheet"
           ref={sheetRef}
-          style={{ height: frameHeight * scale }}
+          style={{ height: size.height * size.scale }}
         >
           <iframe
             ref={frameRef}
             title={title}
             src={withEmbedFlag(path)}
-            onLoad={sizeFrame}
+            onLoad={() => {
+              // The ready message is the signal to measure. Loading alone is too
+              // early, because images and fonts are still arriving.
+              if (ready) scheduleSize()
+            }}
             style={{
-              height: frameHeight,
-              width: scale < 1 ? `${100 / scale}%` : '100%',
-              transform: scale < 1 ? `scale(${scale})` : undefined,
+              height: size.height,
+              // Laid out at its own paper width and scaled down, rather than
+              // laid out wider than the modal and scaled. The browser then only
+              // rasterizes what is on screen.
+              width: size.width > 0 ? size.width : '100%',
+              transform: size.scale < 1 ? `scale(${size.scale})` : undefined,
               transformOrigin: 'top left',
             }}
           />

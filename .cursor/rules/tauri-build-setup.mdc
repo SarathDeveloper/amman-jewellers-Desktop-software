@@ -1,0 +1,48 @@
+---
+description: Protected Tauri Windows build setup. Do not change without an explicit request
+alwaysApply: true
+---
+
+# Tauri build setup (protected)
+
+**Do not change this setup unless the user explicitly asks to change the desktop build.** If a task seems to require a change here, stop and ask first. Most of it exists to fix a specific failure that is expensive to rediscover.
+
+## How it works
+
+```mermaid
+flowchart LR
+  viteBuild["npm run build: dist"] --> sidecarBuild["build-sidecar.mjs: esbuild server, SQLite addons"]
+  sidecarBuild --> sidecarPackage["package-sidecar.mjs: Node SEA exe"]
+  sidecarPackage --> verifySource["verify-sidecar.mjs"]
+  verifySource --> prepResources["prepare-tauri-resources.mjs: dist, migrations, package.json"]
+  prepResources --> prepNsis["prepare-tauri-nsis.mjs: NSIS cache"]
+  prepNsis --> tauriBuild["run-tauri.mjs build --target x86_64-pc-windows-msvc"]
+  tauriBuild --> verifyPackaged["verify-sidecar.mjs --packaged"]
+  verifyPackaged --> releaseCopy["copy to release/JewelTrackerPro-Setup-1.0.0.exe"]
+```
+
+Tauri does not serve the app through its asset protocol. [main.rs](src-tauri/src/main.rs) starts the API sidecar, reads its port, then opens `http://127.0.0.1:<port>` via `WebviewUrl::External`, and Express serves `dist/`. That is why `frontendDist` is only `splash`, and why the `/print/*` fallback in [server/app.ts](server/app.ts) is the production path.
+
+## Protected files and invariants
+
+- [package.json](package.json) scripts: keep `desktop:prepare` and `tauri:build:win` in their current order. `tauri:build:win` must keep `--target x86_64-pc-windows-msvc` and end with `verify-sidecar.mjs --packaged`. Do not skip `nsis:prepare`, which avoids the bundler's NSIS download timeout (tauri-apps/tauri#13147).
+- [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json): `frontendDist: "splash"`, `devUrl: "http://127.0.0.1:5173"`, `externalBin: ["binaries/jeweltrackerpro-api"]`, the four `resources` entries, `webviewInstallMode: downloadBootstrapper`, NSIS `installMode: currentUser`, `csp: null`. `version` stays equal to `package.json`.
+- [scripts/build-sidecar.mjs](scripts/build-sidecar.mjs): esbuild stays `node20`/`cjs`, the `@shared` alias stays, `.node` stays external, and the four `better-sqlite3-<platform>.node` addons are copied into `src-tauri/binaries`.
+- [scripts/package-sidecar.mjs](scripts/package-sidecar.mjs): the SEA sentinel fuse `NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2` and the output name `jeweltrackerpro-api-x86_64-pc-windows-msvc.exe` must match `externalBin`. The postject "signature seems corrupted" warning is expected.
+- [scripts/prepare-tauri-resources.mjs](scripts/prepare-tauri-resources.mjs): copies all of `dist/`, so `print.html` ships with no extra step. Never hand-edit `src-tauri/resources/`; it is regenerated on every build.
+- [scripts/prepare-tauri-nsis.mjs](scripts/prepare-tauri-nsis.mjs): the NSIS URLs and SHA-1s track the bundler. Change them only when upgrading `@tauri-apps/cli`.
+- [scripts/verify-sidecar.mjs](scripts/verify-sidecar.mjs): the packaged addon paths mirror `resolve_sqlite_addon()` in `main.rs`. Change both together.
+- [src-tauri/src/main.rs](src-tauri/src/main.rs): `windows_browser_args()` leaves the GPU enabled and adds `--disable-gpu --disable-software-rasterizer` only when `JEWELTRACKERPRO_SAFE_GRAPHICS=1`. Never make that the default; it caused the white-screen crash loop (`exit -36861`) on the i3-7100U. Keep `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (set only when unset), the five `JEWELTRACKERPRO_*` sidecar env vars, and `recovery::attach_renderer_guard`.
+- [src-tauri/src/recovery.rs](src-tauri/src/recovery.rs) and [src-tauri/Cargo.toml](src-tauri/Cargo.toml): keep the renderer guard (`MAX_AUTO_RELOADS = 3`, 5-minute decay, 1.5 s reload delay). Keep `webview2-com = "0.39"` and `windows-core = "0.62"`, pinned to wry 0.57; bump them only together with `tauri`.
+
+## Do / don't
+
+- **Do** build the installer only with `npm run tauri:build:win`, then copy `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/JewelTrackerPro_1.0.0_x64-setup.exe` to `release/JewelTrackerPro-Setup-1.0.0.exe`.
+- **Don't** reintroduce Electron or its leftovers (`electron`, `electron-builder`, `build/icon.*`).
+- **Don't** add `--disable-gpu` for everyone, weaken `verify-sidecar.mjs`, or bump the pinned WebView2 crates on their own.
+
+## Before changing any protected file
+
+- `cargo check` in `src-tauri` for any Rust or `Cargo.toml` change.
+- `npm run tauri:build:win`. It must finish with "OK packaged Windows SQLite addon".
+- Confirm `src-tauri/resources/dist/print.html` exists and references `/assets/print-*.js`.

@@ -957,3 +957,23 @@ export const reportQuerySchema = z.object({
     z.coerce.number().int().min(0).max(100000).optional(),
   ),
 })
+
+/**
+ * A fatal error the web layer caught: an error boundary, a window error, or an
+ * unhandled promise rejection.
+ */
+export const clientCrashReportSchema = z.object({
+  message: z.string().trim().min(1).max(2000),
+  stack: z.string().max(20_000).optional(),
+  source: z.enum(['boundary', 'window', 'rejection']),
+})
+
+/**
+ * A failure the desktop shell caught, such as a dead WebView2 process. `fatal`
+ * marks one the app could not recover from, which the next launch reports.
+ */
+export const hostCrashReportSchema = z.object({
+  message: z.string().trim().min(1).max(2000),
+  detail: z.string().max(20_000).optional().default(''),
+  fatal: z.boolean().optional().default(false),
+})

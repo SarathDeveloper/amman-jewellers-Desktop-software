@@ -133,5 +133,6 @@ test('printers backup and data settings are available', async ({ window }) => {
   await window.getByRole('tab', { name: 'Data', exact: true }).click()
   await expect(window.getByRole('heading', { name: 'Data' })).toBeVisible()
   await expect(window.getByText('App version')).toBeVisible()
+  await expect(window.getByText('Log folder')).toBeVisible()
   await expect(window.getByText(/products, .*customers/)).toBeVisible()
 })

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { DiagnosticReport } from '@shared/types'
 import {
+  ackPendingFatal,
   isExpectedApiFailure,
   isPrintRoute,
   isTransientFatal,
@@ -22,6 +23,8 @@ export function FatalErrorGate({ children }: { children: ReactNode }) {
     void loadPendingFatal().then((pending) => {
       if (!cancelled && pending && !isTransientFatal(pending)) {
         setFatal(pending)
+        // Show it once: the next launch starts normally again.
+        void ackPendingFatal()
       }
     })
 

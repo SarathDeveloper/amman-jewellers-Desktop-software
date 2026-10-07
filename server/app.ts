@@ -1,7 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { join, sep } from 'node:path'
 import cors from 'cors'
-import { getAppRoot } from './lib/appPaths'
+import { getAppRoot, getAppVersion } from './lib/appPaths'
 import express from 'express'
 import { attachSession, requireAuth, requireFeature, requireRole } from './auth/middleware'
 import { getDbPath } from './db'
@@ -11,6 +11,7 @@ import { getUploadsDir } from './lib/paths'
 import authRoutes from './routes/auth.routes'
 import backupRoutes from './routes/backup.routes'
 import customersRoutes from './routes/customers.routes'
+import diagnosticsRoutes from './routes/diagnostics.routes'
 import duesRoutes from './routes/dues.routes'
 import invoicesRoutes from './routes/invoices.routes'
 import inwardsRoutes from './routes/inwards.routes'
@@ -32,20 +33,21 @@ export function createApp(): express.Express {
   app.use(cors({ origin: true, credentials: true }))
   app.use(express.json({ limit: '2mb' }))
   app.use(attachSession)
-  app.use('/uploads', express.static(getUploadsDir()))
+  // Uploads are named with a random UUID and never overwritten, so a given URL
+  // always serves the same bytes and can be cached indefinitely. Shop logos and
+  // signatures are requested on every print preview, so this matters.
+  app.use('/uploads', express.static(getUploadsDir(), { maxAge: '365d', immutable: true }))
 
   app.get('/api/version', (_req, res) => {
-    const pkg = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf8')) as {
-      version: string
-    }
     res.json({
-      version: pkg.version,
+      version: getAppVersion(),
       dbPath: getDbPath(),
       logsPath: getLogsDir(),
     })
   })
 
   app.use('/api/auth', authRoutes)
+  app.use('/api/diagnostics', diagnosticsRoutes)
   app.use('/api/users', requireAuth, requireRole('admin'), usersRoutes)
   app.use('/api/backup', requireAuth, requireFeature('settings'), backupRoutes)
   app.use('/api/customers', requireAuth, requireFeature('customers'), customersRoutes)
@@ -69,13 +71,30 @@ export function createApp(): express.Express {
 
   const distDir = join(rootDir, 'dist')
   if (existsSync(distDir)) {
-    app.use(express.static(distDir))
+    app.use(
+      express.static(distDir, {
+        setHeaders: (res, filePath) => {
+          // Vite fingerprints everything under assets/, so those files are safe
+          // to cache forever. The two HTML documents are not, because they are
+          // what points at the current fingerprints.
+          if (filePath.includes(`${sep}assets${sep}`)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+          } else {
+            res.setHeader('Cache-Control', 'no-cache')
+          }
+        },
+      }),
+    )
+    // Print documents are a separate, much smaller entry so the preview iframe
+    // does not have to load the whole application.
+    const printDocument = join(distDir, 'print.html')
     app.use((req, res, next) => {
       if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
         next()
         return
       }
-      res.sendFile(join(distDir, 'index.html'))
+      const isPrint = req.path === '/print' || req.path.startsWith('/print/')
+      res.sendFile(isPrint && existsSync(printDocument) ? printDocument : join(distDir, 'index.html'))
     })
   }
 

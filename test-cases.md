@@ -24,7 +24,7 @@ Offline-first Tauri desktop app for jewellery shop inventory, billing, gold/silv
 | **Print routes** | `/print/cash-bill/:id`, `/print/tax-invoice/:id`, `/print/test/:role` | Silent/print windows; skip PIN |
 | **Platform** | App-wide | Offline SQLite, fatal error gate, diagnostics/logs, packaging |
 
-**Not in current UI (backend/API stubs only):** Day cash closing (`closing:*` channels / schemas exist; no sidebar page or preload wiring for shop use). Covered under **Gaps** at the end—do not treat as shippable feature until exposed.
+**Not in current UI (backend/API stubs only):** Day cash closing (`closing:*` schemas exist; no sidebar page or route wiring for shop use). Covered under **Gaps** at the end—do not treat as shippable feature until exposed.
 
 ---
 

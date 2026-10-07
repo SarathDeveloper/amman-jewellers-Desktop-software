@@ -1,8 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod host_log;
+mod recovery;
+
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -13,7 +17,69 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
-struct SidecarState(Mutex<Option<CommandChild>>);
+/// The running API sidecar.
+#[derive(Default)]
+struct SidecarState {
+    child: Mutex<Option<CommandChild>>,
+}
+
+/// Set once the app is on its way out, so an in-flight process exit or renderer
+/// failure is not mistaken for a crash.
+#[derive(Default)]
+struct Lifecycle {
+    shutting_down: AtomicBool,
+}
+
+impl Lifecycle {
+    fn begin_shutdown(&self) {
+        self.shutting_down.store(true, Ordering::SeqCst);
+    }
+
+    fn is_shutting_down(&self) -> bool {
+        self.shutting_down.load(Ordering::SeqCst)
+    }
+}
+
+/// Stops the API sidecar without reporting it as a failure.
+fn stop_sidecar(app: &AppHandle) {
+    app.state::<Lifecycle>().begin_shutdown();
+    let child = {
+        let state = app.state::<SidecarState>();
+        let mut slot = match state.child.lock() {
+            Ok(slot) => slot,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        slot.take()
+    };
+    if let Some(child) = child {
+        let _ = child.kill();
+    }
+}
+
+/// Whether this machine asked for the conservative graphics path.
+#[cfg(target_os = "windows")]
+fn safe_graphics_requested() -> bool {
+    match std::env::var("JEWELTRACKERPRO_SAFE_GRAPHICS") {
+        Ok(value) => value.trim() == "1" || value.trim().eq_ignore_ascii_case("true"),
+        Err(_) => false,
+    }
+}
+
+/// Extra WebView2 switches for Windows.
+///
+/// GPU acceleration is left enabled. Switching off the GPU *and* the software
+/// rasterizer removes both accelerators, which is a known way to end up with
+/// blank pages and dead renderers, especially on low-end laptops. A machine
+/// whose graphics driver misbehaves can opt in with
+/// `JEWELTRACKERPRO_SAFE_GRAPHICS=1` instead of penalising every machine.
+#[cfg(target_os = "windows")]
+fn windows_browser_args() -> String {
+    let mut args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection");
+    if safe_graphics_requested() {
+        args.push_str(" --disable-gpu --disable-software-rasterizer");
+    }
+    args
+}
 
 #[derive(Serialize)]
 struct DesktopExportResult {
@@ -168,7 +234,7 @@ async fn start_sidecar(app: &AppHandle) -> Result<u16, String> {
         .map_err(|error| error.to_string())?
         .envs(sidecar_env_pairs());
     let (mut rx, child) = command.spawn().map_err(|error| error.to_string())?;
-    if let Ok(mut slot) = app.state::<SidecarState>().0.lock() {
+    if let Ok(mut slot) = app.state::<SidecarState>().child.lock() {
         *slot = Some(child);
     }
 
@@ -196,9 +262,11 @@ async fn start_sidecar(app: &AppHandle) -> Result<u16, String> {
     }
 
     let port = port.ok_or_else(|| "The local API sidecar did not report a port".to_string())?;
+    let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         while let Some(event) = rx.recv().await {
-            if matches!(event, CommandEvent::Terminated(_)) {
+            if let CommandEvent::Terminated(payload) = event {
+                recovery::report_sidecar_exit(&handle, payload.code);
                 break;
             }
         }
@@ -207,7 +275,7 @@ async fn start_sidecar(app: &AppHandle) -> Result<u16, String> {
     Ok(port)
 }
 
-fn open_main_window(app: &AppHandle, url: &str) -> Result<(), String> {
+fn open_main_window(app: &AppHandle, url: &str, api_port: Option<u16>) -> Result<(), String> {
     let parsed = url.parse().map_err(|error| format!("{error}"))?;
     let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed))
         .title("JewelTrackerPro")
@@ -218,9 +286,8 @@ fn open_main_window(app: &AppHandle, url: &str) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        builder = builder.additional_browser_args(
-            "--disable-gpu --disable-software-rasterizer --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
-        );
+        let args = windows_browser_args();
+        builder = builder.additional_browser_args(&args);
     }
 
     #[cfg(debug_assertions)]
@@ -229,6 +296,9 @@ fn open_main_window(app: &AppHandle, url: &str) -> Result<(), String> {
     }
 
     let window = builder.build().map_err(|error| error.to_string())?;
+    // Watch the WebView2 processes so a renderer that dies is logged and
+    // recovered instead of leaving a blank window.
+    recovery::attach_renderer_guard(app, &window, api_port);
     window.show().map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -297,10 +367,15 @@ fn write_backup_file(path: String, bytes: Vec<u8>) -> Result<DesktopExportResult
 fn main() {
     #[cfg(target_os = "windows")]
     {
-        std::env::set_var(
-            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-            "--disable-gpu --disable-software-rasterizer",
-        );
+        // WebView2 applies this variable to every environment it creates, so
+        // keep the same policy as the window below and never overwrite a value
+        // an operator set deliberately.
+        if std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_none() {
+            std::env::set_var(
+                "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                windows_browser_args(),
+            );
+        }
     }
 
     tauri::Builder::default()
@@ -309,7 +384,9 @@ fn main() {
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(SidecarState(Mutex::new(None)))
+        .manage(SidecarState::default())
+        .manage(Lifecycle::default())
+        .manage(recovery::RendererGuard::default())
         .invoke_handler(tauri::generate_handler![
             get_app_version,
             choose_backup_path,
@@ -319,11 +396,11 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                let url = if cfg!(debug_assertions) {
-                    "http://127.0.0.1:5173".to_string()
+                let (url, api_port) = if cfg!(debug_assertions) {
+                    ("http://127.0.0.1:5173".to_string(), None)
                 } else {
                     match start_sidecar(&handle).await {
-                        Ok(port) => format!("http://127.0.0.1:{port}"),
+                        Ok(port) => (format!("http://127.0.0.1:{port}"), Some(port)),
                         Err(error) => {
                             eprintln!("{error}");
                             let _ = handle.exit(1);
@@ -331,7 +408,7 @@ fn main() {
                         }
                     }
                 };
-                if let Err(error) = open_main_window(&handle, &url) {
+                if let Err(error) = open_main_window(&handle, &url, api_port) {
                     eprintln!("{error}");
                     let _ = handle.exit(1);
                 }
@@ -342,11 +419,7 @@ fn main() {
         .expect("failed to build JewelTrackerPro")
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
-                if let Ok(mut slot) = app.state::<SidecarState>().0.lock() {
-                    if let Some(child) = slot.take() {
-                        let _ = child.kill();
-                    }
-                }
+                stop_sidecar(app);
             }
         });
 }

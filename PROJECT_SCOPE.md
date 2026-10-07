@@ -330,6 +330,7 @@ Historical bills use a **user-entered** bill number and are saved as `final` + `
 - A5 / A4 / thermal 80mm layouts with print background
 - Save as PDF from the preview
 - Dedicated print routes: `/print/cash-bill/:id`, `/print/tax-invoice/:id`, `/print/pledge/:id`, `/print/pledge-release/:id`, `/print/metal-day/:date/:metal`, `/print/stock-closing/:date`, `/print/purchase/:id`, `/print/gs-receipt/:id`, `/print/gs-passbook/:id`, `/print/sample/:kind`, `/print/test/:role`
+- Print routes are served by a separate lightweight document (`print.html` → `src/print/`) instead of the application shell, so opening a preview loads only that route's own chunk — not the dashboard, auth, or shop-branding bundles
 - Labels are driven by **bill template** settings; shop identity prints on every template
 
 ### Adagu / Pledge (invoices side)
@@ -471,6 +472,7 @@ Tabs: **Invoice Settings | Printers | Backup | Data**.
 ### Data
 
 - App version and database file path
+- Log folder, where the `logs/crash.log` quoted by `JTP-ERR-…` reports is written
 - Product / customer record counts
 
 ### Backup defaults (server)
@@ -484,14 +486,15 @@ Tabs: **Invoice Settings | Printers | Backup | Data**.
 | Area | Capability |
 |------|------------|
 | **Local-first** | All data stored in a server-side SQLite file; no third-party cloud required |
-| **Desktop** | Tauri 2 shell starts the Node sidecar, injects `desktopAPI`, and stops the sidecar on exit |
+| **Desktop** | Tauri 2 shell starts the Node sidecar, injects `desktopAPI`, and stops the sidecar on exit; a WebView2 renderer crash or blank window is caught, logged, and reported with a `JTP-ERR-…` reference ID |
 | **Database** | SQLite (`jeweltrackerpro.db`); WAL; foreign keys; versioned migrations `001`–`045` |
 | **Unified stock ledger** | `stock_movements` is the single source of truth for opening, purchase, and sale |
 | **Money ledger** | `customer_dues` holds due and payment rows synced from invoices, pledges, and manual entries |
 | **Stack** | Express, Vite, React 19, TypeScript, better-sqlite3, Zod validation on REST, react-router (browser) |
 | **Security** | Session auth, role-based access, feature permissions, validated Express handlers |
-| **Printing** | Browser print dialog; A5 / A4 / thermal; PDF export built from the preview |
-| **Testing** | Vitest (HTTP/SQLite integration) and Playwright web E2E; a Tauri Playwright config is also present |
+| **Printing** | Browser print dialog; A5 / A4 / thermal; PDF export built from the preview; print routes render in a dedicated lightweight `print.html` document, not the app shell |
+| **Asset delivery** | Hashed assets and shop images are served immutable with a one-year cache; uploaded images are downscaled to 1200px in the browser before upload |
+| **Testing** | Vitest (HTTP/SQLite integration) and Playwright web E2E; a Tauri Playwright config is also present; an E2E guard asserts a print route loads the print document and never the app bundle |
 | **Build scripts** | Sidecar build/package/verify, Tauri resource preparation, Windows/macOS packaging |
 
 ---

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -52,6 +52,18 @@ export function getAppRoot(): string {
   }
 
   return join(here, '..')
+}
+
+/** Version reported by `/api/version` and attached to crash reports. */
+export function getAppVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(join(getAppRoot(), 'package.json'), 'utf8')) as {
+      version?: string
+    }
+    return typeof pkg.version === 'string' && pkg.version ? pkg.version : '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
 }
 
 export function getMigrationsDir(): string {

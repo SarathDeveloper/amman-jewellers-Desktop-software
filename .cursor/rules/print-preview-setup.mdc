@@ -1,0 +1,36 @@
+---
+description: Protected fast print preview setup. Do not change without an explicit request
+alwaysApply: true
+---
+
+# Print preview setup (protected)
+
+**Do not change this setup unless the user explicitly asks to change print preview architecture.** If a task seems to require a change here, stop and ask first. These invariants exist because undoing them silently re-introduces a multi-second preview on low-end machines.
+
+## How it works
+
+Preview iframe → `/print/*` → `print.html` → [src/print/main.tsx](src/print/main.tsx) (print routes only) → `print-ready`. The frame deliberately does not boot the application shell.
+
+## Protected files and invariants
+
+- [print.html](print.html) and [src/print/main.tsx](src/print/main.tsx): render only `ErrorBoundary`, `Suspense` and `RouterProvider`. Never add `AuthProvider`, `ShopBrandingProvider`, `ToastProvider` or `FatalErrorGate`. Without `FatalErrorGate`, a print frame can never consume the pending-crash ack.
+- [src/print/printRoutes.tsx](src/print/printRoutes.tsx) and [src/print/lazyPrintPages.ts](src/print/lazyPrintPages.ts): every `/print/*` route lives here and nowhere in [src/app/routes.tsx](src/app/routes.tsx). The `*` fallback must not link into the app.
+- Print templates (`src/features/**/*Print*.tsx`, `printPageUtils.ts`): must not import `useAuth`, `useShopBranding`, `useToast`, layouts or app-shell modules. They read shop data through `api.*` directly.
+- [vite.config.ts](vite.config.ts): keep `rollupOptions.input: { main, print }` and the `printDocumentPlugin` dev rewrite. Do not add `manualChunks`. Measured: it split React across two chunks and grew the frame from 322 kB to 353 kB.
+- [server/app.ts](server/app.ts): the fallback serves `dist/print.html` for `/print` and `/print/*`. `/uploads` is `maxAge: '365d', immutable`; `/assets/*` is immutable; `.html` is `no-cache`.
+- Uploads stay named `randomUUID()` and are never overwritten. The immutable cache above depends on this.
+- [src/app/routes.tsx](src/app/routes.tsx), [src/app/lazyPages.ts](src/app/lazyPages.ts), [src/app/layout/AppLayout.tsx](src/app/layout/AppLayout.tsx): pages stay `lazy()`. Only layouts, `LoginPage`, `RequireAuth` and redirects are static. Keep `<Suspense>` around `<Outlet />` and the idle `warmPrintPreview()` call.
+- [src/features/print/PrintPreviewModal.tsx](src/features/print/PrintPreviewModal.tsx): one rAF-coalesced `scheduleSize()`, measured only after `print-ready`. Observers re-measure only on a width change. The iframe is sized in px. Do not re-add the `setTimeout` or pre-ready `onLoad` sizing.
+- `api.uploadShopImage` goes through `downscaleImageFile` (1200 px). `waitForDocumentImages` awaits `img.decode()`.
+
+## Do / don't
+
+- **Do** add a new print template as a lazy entry in `lazyPrintPages.ts` plus a route in `printRoutes.tsx`.
+- **Don't** add print routes to [src/app/routes.tsx](src/app/routes.tsx) or mount app providers in the print entry.
+- **Don't** make `/print/*` fall back to `index.html`.
+
+## Before changing any protected file
+
+- `npx vitest run` covers `downscaleImage`, `warmPrint` and `printAssets`.
+- `npm run test:e2e`. `print-routes.spec.ts` › "a print route loads the print document, not the application" must pass. It fails if `/assets/main-*.js` or `/api/auth/me` is requested from a print frame.
+- Check the build: `dist/print.html` must reference `/assets/print-*.js` and not `main-*.js`.

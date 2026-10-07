@@ -22,7 +22,7 @@ Jewellery shop inventory, billing, gold/silver weight tracking, and customer due
 
 ### Cross-compile the Windows installer from macOS
 
-Tauri does not cross-compile Windows as cleanly as the old Electron packager. On the macOS build machine:
+Cross-compiling the Windows installer from macOS needs a few extra tools. On the macOS build machine:
 
 ```bash
 rustup target add x86_64-pc-windows-msvc
@@ -48,7 +48,7 @@ This starts the Vite frontend at `http://localhost:5173` and the Express API at 
 npm run tauri:dev
 ```
 
-This opens a Tauri window on the same Vite + Express process as `npm run dev`. WebView2 GPU is disabled on Windows for older Intel HD graphics.
+This opens a Tauri window on the same Vite + Express process as `npm run dev`. WebView2 keeps GPU acceleration enabled on Windows; set `JEWELTRACKERPRO_SAFE_GRAPHICS=1` to fall back to software rendering on a machine whose graphics driver misbehaves.
 
 ## Packaged desktop app
 
@@ -62,6 +62,8 @@ Installers land in `src-tauri/target/release/bundle/` (or `src-tauri/target/<tri
 
 - Windows: `%APPDATA%\JewelTrackerPro\`
 - macOS: `~/Library/Application Support/JewelTrackerPro/`
+
+If the window ever goes blank, what happened is written to `logs/crash.log` in that folder and reported with a `JTP-ERR-…` reference ID the user can quote. The log folder is also shown under **Settings → Data**.
 
 ## Production (localhost web)
 

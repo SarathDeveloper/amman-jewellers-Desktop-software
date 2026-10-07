@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ZodError } from 'zod'
 import { classifyFailure, isExpectedError } from '../../server/lib/diagnostics'
+import { clearPendingFatal, readPendingFatal, writePendingFatal } from '../../server/lib/pendingFatal'
 import { formatErrorReport, isTransientFatal } from '../../src/lib/diagnostics'
 import {
   categoryLogFile,
@@ -124,5 +125,53 @@ describe('diagnostic logger', () => {
   it('treats renderer-gone messages as transient only for clean exits', () => {
     expect(isTransientFatal({ message: 'Renderer process gone (killed)' })).toBe(true)
     expect(isTransientFatal({ message: 'Renderer process gone (crashed)' })).toBe(false)
+    expect(isTransientFatal({ message: 'Renderer process gone: terminated (exit 0)' })).toBe(true)
+    expect(isTransientFatal({ message: 'Renderer process gone: exited (exit 0)' })).toBe(true)
+    expect(isTransientFatal({ message: 'Renderer process gone: crashed (exit -36861)' })).toBe(false)
+    expect(isTransientFatal({ message: 'WebView2 browser process exited (exit 1)' })).toBe(false)
+    expect(isTransientFatal({ message: 'Renderer became unresponsive' })).toBe(false)
+  })
+})
+
+describe('pending fatal marker', () => {
+  let tempDir = ''
+
+  beforeEach(() => {
+    tempDir = setTempUserData()
+  })
+
+  afterEach(() => {
+    resetLoggerStateForTests()
+    rmSync(tempDir, { recursive: true, force: true })
+    delete process.env.JEWELTRACKERPRO_E2E_USER_DATA
+  })
+
+  it('keeps an unrecovered crash until it is acknowledged', () => {
+    expect(readPendingFatal()).toBeNull()
+
+    writePendingFatal({
+      referenceId: 'JTP-ERR-20261007-001',
+      timestamp: '2026-10-07T10:51:46.650Z',
+      version: '1.0.0',
+      category: 'crash',
+      message: 'Renderer process gone: crashed (exit -36861)',
+    })
+
+    expect(readPendingFatal()).toEqual({
+      referenceId: 'JTP-ERR-20261007-001',
+      timestamp: '2026-10-07T10:51:46.650Z',
+      version: '1.0.0',
+      category: 'crash',
+      message: 'Renderer process gone: crashed (exit -36861)',
+    })
+
+    clearPendingFatal()
+    expect(readPendingFatal()).toBeNull()
+  })
+
+  it('ignores a damaged marker instead of failing the launch', () => {
+    mkdirSync(join(tempDir, 'logs'), { recursive: true })
+    writeFileSync(join(tempDir, 'pending-fatal.json'), 'not json at all', 'utf8')
+    expect(readPendingFatal()).toBeNull()
   })
 })

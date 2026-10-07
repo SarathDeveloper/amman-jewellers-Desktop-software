@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import {
   BarChart3,
@@ -22,6 +22,8 @@ import { useAuth } from '../../features/auth/authContext'
 import { canAccessInventory } from '../../features/inventory/inventoryTabs'
 import { useShopBranding } from '../../features/settings/shopBrandingContext'
 import { localImageSrc } from '../../features/invoices/mapShopDisplay'
+import { LoadingState } from '../../components/LoadingState'
+import { warmPrintPreview } from '../../print/warmPrint'
 
 const APP_VERSION = '1.0.0'
 
@@ -96,6 +98,18 @@ export function AppLayout() {
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [navOpen])
+
+  // Print previews load a separate document. Fetch and preload its modules once
+  // the app is idle, so opening the first preview does not wait on the network.
+  useEffect(() => {
+    const idle = window.requestIdleCallback
+    if (typeof idle === 'function') {
+      const handle = idle(() => warmPrintPreview())
+      return () => window.cancelIdleCallback?.(handle)
+    }
+    const timer = window.setTimeout(() => warmPrintPreview(), 2000)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   if (denied) {
     return <Navigate to={visibleLinks[0]?.to ?? '/login'} replace />
@@ -178,7 +192,11 @@ export function AppLayout() {
         </div>
       </aside>
       <main className="content">
-        <Outlet />
+        {/* Pages load on demand, so keep the sidebar and the module tabs in
+            place while a page chunk arrives instead of blanking the shell. */}
+        <Suspense fallback={<LoadingState />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   )

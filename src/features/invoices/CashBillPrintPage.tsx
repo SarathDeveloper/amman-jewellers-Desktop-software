@@ -26,12 +26,19 @@ export function CashBillPrintPage() {
         if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
           throw new Error('Invalid invoice id')
         }
-        const [invoice, settings, rates] = await Promise.all([
-          api.getInvoice(invoiceId),
+        // Everything except the customer can start immediately; the customer id
+        // only becomes known once the invoice arrives, so that request is
+        // chained off it rather than awaited in sequence.
+        const invoicePromise = api.getInvoice(invoiceId)
+        const customerPromise = invoicePromise.then((invoice) =>
+          api.getCustomer(invoice.customerId).catch(() => undefined),
+        )
+        const [invoice, customer, settings, rates] = await Promise.all([
+          invoicePromise,
+          customerPromise,
           api.getShopSettings(),
           api.getLatestMetalRates(),
         ])
-        const customer = await api.getCustomer(invoice.customerId).catch(() => undefined)
         if (!active) return
         setShop(shopSettingsToDisplay(settings))
         setPaperSize(settings.paperSizeCash)

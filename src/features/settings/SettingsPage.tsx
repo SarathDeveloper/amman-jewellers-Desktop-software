@@ -790,6 +790,14 @@ export function SettingsPage() {
                 <strong>App version</strong>
                 {info?.version ?? '—'}
               </p>
+              {info && (
+                <p className="settings-row">
+                  <strong>Log folder</strong>
+                  <span className="muted" title={info.logsPath}>
+                    {info.logsPath}
+                  </span>
+                </p>
+              )}
               {counts && (
                 <p className="settings-row">
                   <strong>Records</strong>

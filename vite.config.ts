@@ -1,9 +1,38 @@
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
+
+/**
+ * Serves `print.html` for `/print/*` during development.
+ *
+ * In production the Express fallback picks the document, but the Vite dev
+ * server (and `npm run tauri:dev`, which runs Vite) has to do the same thing or
+ * a print URL would load the whole application shell.
+ *
+ * Runs before Vite's own middlewares, so the rewrite happens before the SPA
+ * fallback would have sent `index.html`. Vite still transforms and serves
+ * `print.html` itself.
+ */
+function printDocumentPlugin(): Plugin {
+  return {
+    name: 'jeweltrackerpro-print-document',
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        const url = req.url ?? ''
+        const queryAt = url.indexOf('?')
+        const pathname = queryAt === -1 ? url : url.slice(0, queryAt)
+        if (pathname === '/print' || pathname.startsWith('/print/')) {
+          // Keep the query so the document loads exactly as requested.
+          req.url = `/print.html${queryAt === -1 ? '' : url.slice(queryAt)}`
+        }
+        next()
+      })
+    },
+  }
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), printDocumentPlugin()],
   resolve: {
     alias: {
       '@shared': resolve(__dirname, 'shared'),
@@ -12,10 +41,11 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom', 'zod', 'lucide-react'],
-        },
+      // Two documents: the application, and the lighter print preview that
+      // loads in the preview iframe.
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        print: resolve(__dirname, 'print.html'),
       },
     },
   },
