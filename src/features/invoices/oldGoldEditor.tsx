@@ -90,7 +90,7 @@ export function OldGoldEditor({
           <p className="bill-empty-hint">{emptyHint}</p>
         )
       ) : (
-        <div className="adagu-jewellery-table-wrap">
+        <div className="adagu-jewellery-table-wrap old-gold-table-wrap">
           <table className={`adagu-jewellery-table old-gold-table${isPurchase ? ' old-gold-table--purchase' : ''}`}>
             <thead>
               <tr>
@@ -123,7 +123,7 @@ export function OldGoldEditor({
                 const purityOptions = oldGoldPurityOptions(row.purity)
                 return (
                   <tr key={row.key}>
-                    <td className="old-gold-col-desc">
+                    <td className="old-gold-col-desc" data-label={isPurchase ? 'Item name' : 'Description'}>
                       <input
                         disabled={disabled}
                         value={row.description}
@@ -131,7 +131,7 @@ export function OldGoldEditor({
                         placeholder={isPurchase ? 'Item name' : 'Old gold'}
                       />
                     </td>
-                    <td className="old-gold-col-num">
+                    <td className="old-gold-col-num" data-label="Gross weight">
                       <input
                         type="number"
                         step="0.001"
@@ -140,7 +140,7 @@ export function OldGoldEditor({
                         onChange={(event) => update(row.key, { grossWeight: parseNumericField(event.target.value) })}
                       />
                     </td>
-                    <td className="old-gold-col-num">
+                    <td className="old-gold-col-num" data-label="Stone / deduction weight">
                       <input
                         type="number"
                         step="0.001"
@@ -149,7 +149,7 @@ export function OldGoldEditor({
                         onChange={(event) => update(row.key, { stoneWeight: parseNumericField(event.target.value) })}
                       />
                     </td>
-                    <td className="old-gold-col-num">
+                    <td className="old-gold-col-num" data-label="Net weight">
                       <input
                         type="number"
                         step="0.001"
@@ -158,7 +158,7 @@ export function OldGoldEditor({
                         onChange={(event) => update(row.key, { netWeight: parseNumericField(event.target.value) })}
                       />
                     </td>
-                    <td className="old-gold-col-purity">
+                    <td className="old-gold-col-purity" data-label="Purity">
                       <select
                         disabled={disabled}
                         value={purityOptions.includes(row.purity) ? row.purity : '22K'}
@@ -174,7 +174,7 @@ export function OldGoldEditor({
                         ))}
                       </select>
                     </td>
-                    <td className="old-gold-col-num">
+                    <td className="old-gold-col-num" data-label="Rate per gram">
                       <input
                         type="number"
                         step="0.01"
@@ -183,7 +183,7 @@ export function OldGoldEditor({
                         onChange={(event) => update(row.key, { ratePerGram: parseNumericField(event.target.value) })}
                       />
                     </td>
-                    <td className="old-gold-col-num">
+                    <td className="old-gold-col-num" data-label="Deduction %">
                       <input
                         type="number"
                         step="0.01"
@@ -194,11 +194,16 @@ export function OldGoldEditor({
                     </td>
                     {isPurchase ? null : (
                       <>
-                        <td className="old-gold-col-amount num">{formatCurrency(values.grossValue)}</td>
-                        <td className="old-gold-col-amount num">{formatCurrency(values.deductionAmount)}</td>
+                        <td className="old-gold-col-amount num" data-label="Gross value">{formatCurrency(values.grossValue)}</td>
+                        <td className="old-gold-col-amount num" data-label="Deduction">{formatCurrency(values.deductionAmount)}</td>
                       </>
                     )}
-                    <td className="old-gold-col-amount num">{formatCurrency(values.finalValue)}</td>
+                    <td
+                      className="old-gold-col-amount num"
+                      data-label={isPurchase ? 'Amount' : 'Final value'}
+                    >
+                      {formatCurrency(values.finalValue)}
+                    </td>
                     <td className="adagu-col-action">
                       <button
                         type="button"

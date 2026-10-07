@@ -1,0 +1,770 @@
+/* ==========================================================================
+   Mobile + tablet responsive layer.
+
+   Loaded after index.css in main.tsx. Every rule lives inside a width or
+   pointer media query, so desktop (>1024px) and the /print/* paper templates
+   are untouched.
+
+   Breakpoints
+     max-width: 1024px (tablet)  off-canvas nav drawer, tighter content padding
+     max-width: 640px  (phone)   single column, full-screen modals, card rows
+     pointer: coarse             larger tap targets
+   ========================================================================== */
+
+/* Only rendered as a bar inside the tablet/phone media query. */
+.mobile-topbar,
+.sidebar-backdrop {
+  display: none;
+}
+
+/* Running total shown next to the sticky editor action bar on phones. */
+.sale-bill-mobile-total {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ Tablet */
+
+@media (max-width: 1024px) {
+  html,
+  body,
+  #root {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .app-shell {
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    padding-left: 0;
+  }
+
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    min-height: 3.25rem;
+    padding: 0.4rem 0.6rem;
+    padding-top: calc(0.4rem + env(safe-area-inset-top, 0px));
+    background: var(--sidebar-bg);
+    color: var(--sidebar-text);
+    border-bottom: 1px solid var(--sidebar-border);
+    z-index: 150;
+  }
+
+  .mobile-topbar-start {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+  }
+
+  .mobile-topbar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+  }
+
+  .mobile-topbar-toggle:hover {
+    background: rgba(126, 58, 242, 0.22);
+  }
+
+  .mobile-topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+  }
+
+  .mobile-topbar-brand-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.625rem;
+    overflow: hidden;
+    background: rgba(126, 58, 242, 0.18);
+    color: var(--accent);
+  }
+
+  .mobile-topbar-brand-icon.has-logo {
+    background: var(--surface);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .mobile-topbar-brand-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .mobile-topbar-brand-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.2;
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+
+  .mobile-topbar-brand-text strong,
+  .mobile-topbar-brand-text span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-topbar-brand-text span {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--sidebar-muted);
+  }
+
+  .mobile-topbar-user {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--sidebar-muted);
+  }
+
+  /* Off-canvas navigation drawer */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 16rem;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 200;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+      visibility 0.22s ease;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.24);
+    padding-top: calc(1.25rem + env(safe-area-inset-top, 0px));
+  }
+
+  /* Disable the hover width expansion in drawer mode. */
+  .sidebar:hover {
+    width: 16rem;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.24);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .sidebar .brand-text,
+  .sidebar .sidebar-user,
+  .sidebar .sidebar-logout-label {
+    opacity: 1;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 190;
+    padding: 0;
+    border: 0;
+    background: rgba(17, 24, 39, 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+
+  .sidebar-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .content {
+    padding: 1rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .content:has(.billing-shell),
+  .content:has(.inventory-shell),
+  .content:has(.dues-shell) {
+    padding: 0.85rem;
+  }
+
+  .content:has(.sale-bill-editor) {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .drawer,
+  .drawer--wide,
+  .drawer--page {
+    width: min(36rem, 100%);
+  }
+}
+
+/* ------------------------------------------------------------------- Phone */
+
+@media (max-width: 640px) {
+  .content {
+    padding: 0.75rem;
+  }
+
+  .content:has(.billing-shell),
+  .content:has(.inventory-shell),
+  .content:has(.dues-shell) {
+    padding: 0.6rem;
+  }
+
+  .content:has(.sale-bill-editor) {
+    padding: 0.5rem;
+  }
+
+  /* --- Page header ------------------------------------------------------ */
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.25rem;
+  }
+
+  .page-header-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .stock-page .page-header {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .stock-page-header-wrap {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .stock-page .page-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  /* --- Let full-height pages scroll as one document --------------------- */
+
+  .content:has(.app-page-fill) {
+    display: block;
+    overflow: auto;
+  }
+
+  .app-page-fill {
+    display: block;
+    flex: none;
+    overflow: visible;
+  }
+
+  .app-page-fill > .data-table,
+  .app-page-fill > .card.table-wrap,
+  .app-page-fill > .billing-workspace {
+    display: block;
+    flex: none;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  /* --- Tables (list pages keep sideways scroll) ------------------------- */
+
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-footer {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+  }
+
+  .table-footer-actions {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* --- Forms ------------------------------------------------------------ */
+
+  .form-grid,
+  .product-form-grid-2,
+  .product-form-grid-3,
+  .product-form-grid-4,
+  .adagu-form-fields.two-col,
+  .settings-identity-grid,
+  .settings-identity-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-schedule-grid {
+    grid-template-columns: 1fr;
+    max-width: none;
+  }
+
+  /* --- Modals become full-height sheets --------------------------------- */
+
+  .modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal,
+  .modal.modal-wide,
+  .modal.modal-print {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: var(--radius) var(--radius) 0 0;
+    border-bottom: 0;
+  }
+
+  .modal.modal-print {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .modal {
+    padding: 1rem 1rem 0.85rem;
+  }
+
+  .product-form-header {
+    padding: 0.75rem 0.9rem 0.6rem;
+  }
+
+  .product-form-layout {
+    padding: 0.75rem 0.9rem 0.35rem;
+  }
+
+  .print-preview-frame {
+    padding: 0.5rem;
+  }
+
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    margin-top: 1rem;
+    padding-bottom: calc(0.25rem + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    flex-wrap: wrap;
+  }
+
+  .product-form-footer {
+    flex-wrap: wrap;
+    justify-content: stretch;
+    gap: 0.6rem;
+    padding: 0.7rem 1rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .product-form-footer-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .drawer,
+  .drawer--wide,
+  .drawer--page {
+    width: 100%;
+    max-width: 100%;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .print-preview-frame {
+    max-width: 100%;
+  }
+  /* --- Fixed widths in toolbars, searches and filters ------------------- */
+
+  .input-search,
+  .users-search,
+  .billing-search,
+  .billing-search .input,
+  .billing-date-field {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .users-search {
+    flex-shrink: 1;
+  }
+
+  .products-toolbar-filters .select {
+    flex: 1 1 8.5rem;
+    min-width: 0;
+  }
+
+  .toolbar,
+  .filter-bar,
+  .page-header-actions,
+  .billing-toolbar {
+    row-gap: 0.5rem;
+  }
+
+  /* --- Module chrome tab rows ------------------------------------------- */
+
+  .billing-chrome-tabs:not(.reports-tabs) {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .billing-chrome-tabs:not(.reports-tabs)::-webkit-scrollbar {
+    display: none;
+  }
+
+  .billing-chrome-tab {
+    flex: 0 0 auto;
+  }
+
+  /* Reports keeps wrapping because its submenu is absolutely positioned. */
+  .reports-tabs {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .reports-tab {
+    position: static;
+  }
+
+  .reports-tabs .reports-submenu {
+    left: 0.35rem;
+    right: 0.35rem;
+    min-width: 0;
+    width: auto;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  /* --- Phone-sized inputs (prevents iOS Safari zoom on focus) ----------- */
+
+  input:not([type='checkbox']):not([type='radio']),
+  textarea,
+  select,
+  .sale-bill-editor select {
+    font-size: 16px;
+  }
+
+  /* --- Dashboard -------------------------------------------------------- */
+
+  .dashboard-quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-profile-name {
+    display: none;
+  }
+
+  /* --- Products --------------------------------------------------------- */
+
+  .products-page-header {
+    grid-template-columns: 1fr;
+  }
+
+  .products-page table th:nth-child(3),
+  .products-page table td:nth-child(3) {
+    min-width: 8rem;
+  }
+
+  /* --- Rates ------------------------------------------------------------ */
+
+  .rates-summary-ticker {
+    white-space: normal;
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 0.25rem;
+  }
+
+  .rates-trend-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rates-silver-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* --- Gold savings ----------------------------------------------------- */
+
+  .inventory-shell .dashboard-lower-grid,
+  .dashboard-lower-grid,
+  .dashboard-lifecycle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* --- Settings --------------------------------------------------------- */
+
+  .settings-header-chip {
+    max-width: 100%;
+  }
+
+  .settings-shop-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  /* --- Dues board ------------------------------------------------------- */
+
+  .dues-column {
+    flex: 0 0 80vw;
+  }
+
+  /* --- Bill / pledge / old gold line items as cards --------------------- */
+
+  .sale-bill-editor .sale-bill-grid {
+    gap: 0.5rem;
+  }
+
+  .sale-bill-editor .sale-bill-items-wrap,
+  .old-gold-table-wrap {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .sale-bill-items-table,
+  .adagu-jewellery-table--pledge,
+  .old-gold-table:not(.old-gold-table--links),
+  .old-gold-table:not(.old-gold-table--links):has(.old-gold-col-desc),
+  .old-gold-table--purchase:not(.old-gold-table--links):has(.old-gold-col-desc) {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+    table-layout: auto;
+  }
+
+  .sale-bill-items-table thead,
+  .adagu-jewellery-table--pledge thead,
+  .old-gold-table:not(.old-gold-table--links) thead {
+    display: none;
+  }
+
+  .sale-bill-items-table tbody,
+  .adagu-jewellery-table--pledge tbody,
+  .old-gold-table:not(.old-gold-table--links) tbody {
+    display: block;
+  }
+
+  .sale-bill-items-table tbody tr,
+  .adagu-jewellery-table--pledge tbody tr,
+  .old-gold-table:not(.old-gold-table--links) tbody tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem 0.6rem;
+    margin-bottom: 0.6rem;
+    padding: 1.75rem 0.6rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+
+  .sale-bill-items-table tbody tr[data-item]::before,
+  .adagu-jewellery-table--pledge tbody tr[data-item]::before {
+    content: 'Item ' attr(data-item);
+    position: absolute;
+    top: 0.6rem;
+    left: 0.65rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .sale-bill-items-table td,
+  .adagu-jewellery-table--pledge td,
+  .old-gold-table:not(.old-gold-table--links) td {
+    display: block;
+    width: auto !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    text-align: left;
+  }
+
+  .sale-bill-items-table td::before,
+  .adagu-jewellery-table--pledge td::before,
+  .old-gold-table:not(.old-gold-table--links) td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.15rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .sale-bill-items-table .adagu-col-index,
+  .adagu-jewellery-table--pledge .adagu-col-index {
+    display: none;
+  }
+
+  .sale-bill-items-table .adagu-col-particular,
+  .adagu-jewellery-table--pledge .adagu-item-description-cell,
+  .old-gold-table:not(.old-gold-table--links) .old-gold-col-desc,
+  .sale-bill-items-table .adagu-col-amount {
+    grid-column: 1 / -1;
+  }
+
+  /* The pledge description row glues onto the item card above it. */
+  .adagu-jewellery-table--pledge tbody tr:has(.adagu-item-description-cell) {
+    margin-top: -0.6rem;
+    border-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    box-shadow: none;
+  }
+
+  .sale-bill-items-table .adagu-col-action,
+  .adagu-jewellery-table--pledge .adagu-col-action,
+  .old-gold-table:not(.old-gold-table--links) .adagu-col-action {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.5rem;
+    grid-column: auto;
+  }
+
+  .sale-bill-items-table .adagu-col-action::before,
+  .adagu-jewellery-table--pledge .adagu-col-action::before,
+  .old-gold-table:not(.old-gold-table--links) .adagu-col-action::before {
+    display: none;
+  }
+
+  .old-gold-table:not(.old-gold-table--links) tbody tr {
+    padding-top: 0.6rem;
+  }
+
+  .sale-bill-product-cell {
+    align-items: flex-start;
+  }
+
+  .sale-bill-items-table .adagu-input-with-icon,
+  .adagu-jewellery-table--pledge .adagu-input-with-icon,
+  .old-gold-table:not(.old-gold-table--links) input,
+  .old-gold-table:not(.old-gold-table--links) select {
+    width: 100%;
+  }
+
+  .sale-bill-summary-stats--weights {
+    grid-template-columns: 1fr;
+  }
+
+  .billing-customer-dropdown {
+    max-height: 50vh;
+    max-height: 50dvh;
+  }
+
+  /* --- Sticky bill / pledge action bar ---------------------------------- */
+
+  .content:has(.sale-bill-editor) {
+    padding-bottom: 5.75rem;
+  }
+
+  .sale-bill-editor .sale-bill-toolbar {
+    align-items: flex-start;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .sale-bill-editor .adagu-header-left {
+    min-width: 0;
+  }
+
+  .sale-bill-editor .adagu-header-titles h1 {
+    white-space: normal;
+  }
+
+  .sale-bill-meta {
+    min-width: 0;
+    flex-wrap: wrap;
+    margin-left: 0;
+    row-gap: 0.3rem;
+  }
+
+  .sale-bill-editor .adagu-header-actions {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 120;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0.35rem;
+    max-height: 50vh;
+    max-height: 50dvh;
+    overflow-y: auto;
+    padding: 0.5rem 0.6rem;
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 12px rgba(17, 24, 39, 0.1);
+  }
+
+  .sale-bill-editor .adagu-header-actions .btn {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.55rem;
+  }
+
+  .sale-bill-mobile-total {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    margin-right: auto;
+    padding-left: 0.15rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .sale-bill-mobile-total strong {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+}
+
+/* --------------------------------------------------------------- Touch UI */
+
+@media (pointer: coarse) {
+  .btn,
+  .adagu-btn-add-item,
+  .adagu-action-btn-red,
+  .table-page-btn,
+  .dashboard-icon-btn,
+  .mobile-topbar-toggle {
+    min-height: 2.5rem;
+  }
+
+  .btn {
+    padding-block: 0.45rem;
+  }
+
+  .sale-bill-chip-clear {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}

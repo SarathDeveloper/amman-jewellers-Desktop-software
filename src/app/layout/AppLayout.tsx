@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import {
   BarChart3,
@@ -5,6 +6,7 @@ import {
   Gem,
   House,
   LogOut,
+  Menu,
   Package,
   PiggyBank,
   Receipt,
@@ -12,6 +14,7 @@ import {
   Users,
   UserCog,
   Wallet,
+  X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { FeatureKey } from '@shared/types'
@@ -83,16 +86,62 @@ export function AppLayout() {
       !can(required) &&
       !(onInventory && inventoryAllowed))
 
+  const [navOpen, setNavOpen] = useState(false)
+
+  useEffect(() => {
+    if (!navOpen) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setNavOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [navOpen])
+
   if (denied) {
     return <Navigate to={visibleLinks[0]?.to ?? '/login'} replace />
   }
 
+  const brandIcon = logoSrc ? (
+    <img src={logoSrc} alt="" />
+  ) : (
+    <Gem size={20} strokeWidth={1.75} />
+  )
+
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <header className="mobile-topbar">
+        <div className="mobile-topbar-start">
+          <button
+            type="button"
+            className="mobile-topbar-toggle"
+            aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
+            aria-expanded={navOpen}
+            aria-controls="app-sidebar"
+            onClick={() => setNavOpen((open) => !open)}
+          >
+            {navOpen ? <X size={20} strokeWidth={1.75} /> : <Menu size={20} strokeWidth={1.75} />}
+          </button>
+          <div className="mobile-topbar-brand">
+            <span className={`mobile-topbar-brand-icon${logoSrc ? ' has-logo' : ''}`} aria-hidden="true">
+              {brandIcon}
+            </span>
+            <span className="mobile-topbar-brand-text">
+              <strong>{shopName}</strong>
+              <span>{appSubtitle}</span>
+            </span>
+          </div>
+        </div>
+        <span className="mobile-topbar-user">{user?.username}</span>
+      </header>
+      <div
+        className={`sidebar-backdrop${navOpen ? ' open' : ''}`}
+        role="presentation"
+        onClick={() => setNavOpen(false)}
+      />
+      <aside id="app-sidebar" className={`sidebar${navOpen ? ' open' : ''}`}>
         <div className="brand">
           <span className={`brand-icon${logoSrc ? ' has-logo' : ''}`} aria-hidden="true">
-            {logoSrc ? <img src={logoSrc} alt="" /> : <Gem size={20} strokeWidth={1.75} />}
+            {brandIcon}
           </span>
           <div className="brand-text">
             {shopName}
@@ -106,6 +155,7 @@ export function AppLayout() {
                 <NavLink
                   to={link.to}
                   className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                  onClick={() => setNavOpen(false)}
                 >
                   <link.icon className="nav-link-icon" size={20} strokeWidth={1.75} aria-hidden />
                   {link.label}

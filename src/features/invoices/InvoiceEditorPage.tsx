@@ -709,6 +709,10 @@ export function InvoiceEditorPage() {
           </div>
         </div>
         <div className="adagu-header-actions">
+          <span className="sale-bill-mobile-total">
+            <span>Total</span>
+            <strong>{formatInr(totals.amountPayable)}</strong>
+          </span>
           <Link to={listPath} className="btn ghost">
             <ArrowLeft size={16} strokeWidth={1.75} aria-hidden /> Back
           </Link>
@@ -873,9 +877,13 @@ export function InvoiceEditorPage() {
                     const empty = isEmptyEditorLine(line)
                     const purity = line.purity || inferSalePurity(line.metal)
                     return (
-                      <tr key={line.key} className={empty ? 'sale-bill-empty-row' : undefined}>
+                      <tr
+                        key={line.key}
+                        data-item={index + 1}
+                        className={empty ? 'sale-bill-empty-row' : undefined}
+                      >
                         <td className="adagu-col-index">{index + 1}</td>
-                        <td className="adagu-col-particular">
+                        <td className="adagu-col-particular" data-label={DEFAULT_BILL_TEMPLATE.taxColParticulars}>
                           <div className="sale-bill-product-cell">
                               <span className="sale-bill-product-icon" aria-hidden>
                                 <LineProductIcon name={line.description} category={line.category} metal={line.metal} />
@@ -894,7 +902,7 @@ export function InvoiceEditorPage() {
                               </div>
                             </div>
                         </td>
-                        <td className="adagu-col-purity">
+                        <td className="adagu-col-purity" data-label="Purity">
                           <select
                             className="sale-bill-purity"
                             disabled={!canEdit || busy}
@@ -917,7 +925,10 @@ export function InvoiceEditorPage() {
                             ))}
                           </select>
                         </td>
-                        <td className="adagu-col-net-weight">
+                        <td
+                          className="adagu-col-net-weight"
+                          data-label={DEFAULT_BILL_TEMPLATE.taxColTotWgt}
+                        >
                           <div className="adagu-input-with-icon">
                             <input
                               type="number"
@@ -930,7 +941,7 @@ export function InvoiceEditorPage() {
                             />
                           </div>
                         </td>
-                        <td className="adagu-col-weight">
+                        <td className="adagu-col-weight" data-label={DEFAULT_BILL_TEMPLATE.taxColGrsWgt}>
                           <div className="adagu-input-with-icon">
                             <input
                               type="number"
@@ -944,7 +955,10 @@ export function InvoiceEditorPage() {
                             />
                           </div>
                         </td>
-                        <td className="adagu-col-stone-weight">
+                        <td
+                          className="adagu-col-stone-weight"
+                          data-label={DEFAULT_BILL_TEMPLATE.taxColStnWgt}
+                        >
                           <div className="adagu-input-with-icon">
                             <input
                               type="number"
@@ -958,7 +972,7 @@ export function InvoiceEditorPage() {
                             />
                           </div>
                         </td>
-                        <td className="adagu-col-wastage">
+                        <td className="adagu-col-wastage" data-label={DEFAULT_BILL_TEMPLATE.taxColVamc}>
                           <div className="adagu-input-with-icon sale-bill-vamc">
                             <input
                               type="number"
@@ -994,7 +1008,7 @@ export function InvoiceEditorPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="adagu-col-stone-rate">
+                        <td className="adagu-col-stone-rate" data-label={DEFAULT_BILL_TEMPLATE.taxColStoneRate}>
                           <div className="adagu-input-with-icon">
                             <input
                               type="number"
@@ -1009,7 +1023,7 @@ export function InvoiceEditorPage() {
                             />
                           </div>
                         </td>
-                        <td className="adagu-col-rate">
+                        <td className="adagu-col-rate" data-label={DEFAULT_BILL_TEMPLATE.taxColMetalRate}>
                           <div className="adagu-input-with-icon">
                             <input
                               type="number"
@@ -1026,7 +1040,7 @@ export function InvoiceEditorPage() {
                             />
                           </div>
                         </td>
-                        <td className="adagu-col-amount">
+                        <td className="adagu-col-amount" data-label={DEFAULT_BILL_TEMPLATE.taxColAmount}>
                           {formatInr(computeEditorLineTotal(line))}
                         </td>
                         <td className="adagu-col-action">

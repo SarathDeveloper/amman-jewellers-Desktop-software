@@ -646,6 +646,10 @@ export function PledgeEditorPage() {
           </div>
         </div>
         <div className="adagu-header-actions">
+          <span className="sale-bill-mobile-total">
+            <span>Loan</span>
+            <strong>{formatCurrency(numericFieldToNumber(loanAmount))}</strong>
+          </span>
           <Link to="/billing" className="btn ghost">
             <ArrowLeft size={16} strokeWidth={1.75} aria-hidden /> Back
           </Link>
@@ -903,9 +907,9 @@ export function PledgeEditorPage() {
                     rowMetal === "Silver" ? SILVER_PURITIES : GOLD_PURITIES;
                   return (
                     <Fragment key={item.key}>
-                      <tr>
+                      <tr data-item={index + 1}>
                         <td className="adagu-col-index">{index + 1}</td>
-                        <td className="adagu-col-metal">
+                        <td className="adagu-col-metal" data-label="Metal">
                           <div className="adagu-metal-switch">
                             <button
                               type="button"
@@ -925,7 +929,7 @@ export function PledgeEditorPage() {
                             </button>
                           </div>
                         </td>
-                        <td className="adagu-col-purity">
+                        <td className="adagu-col-purity" data-label="Purity">
                           <div className="adagu-input-with-icon adagu-purity-wrap">
                             <select
                               className="adagu-purity-select"
@@ -943,7 +947,7 @@ export function PledgeEditorPage() {
                             </select>
                           </div>
                         </td>
-                        <td className="adagu-col-weight">
+                        <td className="adagu-col-weight" data-label="Gross Wt. (gms)">
                           <div className="adagu-input-with-icon">
                             <input
                               type="number"
@@ -958,7 +962,7 @@ export function PledgeEditorPage() {
                             />
                           </div>
                         </td>
-                        <td className="adagu-col-weight">
+                        <td className="adagu-col-weight" data-label="Deductions (gms)">
                           <div className="adagu-input-with-icon">
                             <input
                               type="number"
@@ -973,7 +977,7 @@ export function PledgeEditorPage() {
                             />
                           </div>
                         </td>
-                        <td className="adagu-col-weight">
+                        <td className="adagu-col-weight" data-label="Net Wt. (gms)">
                           <div className="adagu-input-with-icon adagu-net-weight-input">
                             <input
                               type="number"
