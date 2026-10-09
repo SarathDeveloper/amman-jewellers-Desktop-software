@@ -2,12 +2,18 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Calendar, Coins, Phone, StickyNote, User, X } from 'lucide-react'
 import { computeOldGoldValue } from '@shared/billing/billSummary'
 import { localTodayIso } from '@shared/localDate'
-import type { Customer, MetalRates, OldGoldPurchase } from '@shared/types'
+import type {
+  Customer,
+  MetalRates,
+  OldGoldPayoutMode,
+  OldGoldPurchase,
+  OldGoldPurchasePayout,
+} from '@shared/types'
 import { DateInput } from '../../components/DateInput'
 import { Modal } from '../../components/Modal'
 import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
-import { formatCurrency } from '../../lib/format'
+import { formatCurrency, formatDisplayDate } from '../../lib/format'
 import { BillCustomerSearch } from '../invoices/BillCustomerSearch'
 import {
   newOldGoldRow,
@@ -15,6 +21,8 @@ import {
   type OldGoldEditorRow,
 } from '../invoices/invoiceEditorHelpers'
 import { OldGoldEditor } from '../invoices/oldGoldEditor'
+import { PrintPreviewModal } from '../print/PrintPreviewModal'
+import { printPreviewPaths } from '../print/printPreviewPaths'
 
 function Field({
   label,
@@ -67,23 +75,33 @@ function Control({
 export function OldGoldPurchaseEditorModal({
   purchase,
   readOnly,
+  initialCustomer,
   onClose,
   onSaved,
+  onFinalized,
+  onVoidPayout,
 }: {
   purchase: OldGoldPurchase | null
   readOnly: boolean
+  /** Prefills the customer when a purchase is started from a sale bill. */
+  initialCustomer?: { id: number; name: string; phone: string } | null
   onClose: () => void
   onSaved: () => Promise<void> | void
+  onFinalized?: (purchase: OldGoldPurchase) => void
+  onVoidPayout?: (purchase: OldGoldPurchase, payout: OldGoldPurchasePayout) => void
 }) {
   const { showToast } = useToast()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [metalRates, setMetalRates] = useState<MetalRates | null>(null)
   const [previewNo, setPreviewNo] = useState('')
-  const [customerId, setCustomerId] = useState(purchase?.customerId ?? 0)
-  const [customerName, setCustomerName] = useState(purchase?.customerName ?? '')
-  const [customerPhone, setCustomerPhone] = useState(purchase?.customerPhone ?? '')
+  const [customerId, setCustomerId] = useState(purchase?.customerId ?? initialCustomer?.id ?? 0)
+  const [customerName, setCustomerName] = useState(purchase?.customerName ?? initialCustomer?.name ?? '')
+  const [customerPhone, setCustomerPhone] = useState(purchase?.customerPhone ?? initialCustomer?.phone ?? '')
   const [purchaseDate, setPurchaseDate] = useState(purchase?.purchaseDate ?? localTodayIso())
   const [notes, setNotes] = useState(purchase?.notes ?? '')
+  const [payoutNow, setPayoutNow] = useState(false)
+  const [payoutMode, setPayoutMode] = useState<OldGoldPayoutMode>('cash')
+  const [payoutAmount, setPayoutAmount] = useState('')
   const [rows, setRows] = useState<OldGoldEditorRow[]>(() =>
     purchase && purchase.items.length > 0
       ? purchase.items.map((item) => ({
@@ -95,13 +113,15 @@ export function OldGoldPurchaseEditorModal({
           purity: item.purity || '22K',
           ratePerGram: item.ratePerGram || '',
           deductionPct: item.deductionPct || '',
+          touchPct: item.touchPct || '',
         }))
-      : [newOldGoldRow(null)],
+      : [newOldGoldRow(null, 'Old gold')],
   )
   const [purchaseId, setPurchaseId] = useState<number | null>(purchase?.id ?? null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmFinalize, setConfirmFinalize] = useState(false)
+  const [printOpen, setPrintOpen] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -191,8 +211,20 @@ export function OldGoldPurchaseEditorModal({
           : await api.updateOldGoldPurchase({ ...payload, id: purchaseId })
       setPurchaseId(saved.id)
       if (finalize) {
-        await api.finalizeOldGoldPurchase(saved.id)
-        showToast('Old gold purchase finalized', 'success')
+        const finalized = await api.finalizeOldGoldPurchase(saved.id)
+        const payoutValue = Number.parseFloat(payoutAmount)
+        if (payoutNow && Number.isFinite(payoutValue) && payoutValue > 0) {
+          await api.createOldGoldPayout(finalized.id, {
+            payoutDate: purchaseDate,
+            amount: payoutValue,
+            mode: payoutMode,
+            note: 'Paid at finalize',
+          })
+          showToast('Old gold purchase finalized and paid out', 'success')
+        } else {
+          showToast('Old gold purchase finalized', 'success')
+        }
+        onFinalized?.(finalized)
       } else {
         showToast(purchaseId == null ? 'Draft saved' : 'Draft updated', 'success')
       }
@@ -328,6 +360,117 @@ export function OldGoldPurchaseEditorModal({
                 onChange={setRows}
               />
             </section>
+
+            {purchase && (purchase.status === 'final' || purchase.status === 'cancelled') ? (
+              <section className="product-section">
+                <div className="product-section-head">
+                  <span className="product-section-step" aria-hidden>
+                    3
+                  </span>
+                  <div>
+                    <h3>Settlement</h3>
+                    <p>Balance is drawn down by payouts and bill links</p>
+                  </div>
+                </div>
+                <div className="old-gold-settlement-summary">
+                  <div>
+                    <span>Purchase amount</span>
+                    <strong>{formatCurrency(purchase.totalAmount)}</strong>
+                  </div>
+                  <div>
+                    <span>Paid out</span>
+                    <strong>{formatCurrency(purchase.paidOut)}</strong>
+                  </div>
+                  <div>
+                    <span>Applied to bills</span>
+                    <strong>{formatCurrency(purchase.applied)}</strong>
+                  </div>
+                  <div>
+                    <span>Balance</span>
+                    <strong>{purchase.status === 'cancelled' ? '—' : formatCurrency(purchase.balance)}</strong>
+                  </div>
+                </div>
+                {purchase.status === 'cancelled' ? (
+                  <p className="bill-empty-hint">
+                    Cancelled{purchase.cancelReason ? `: ${purchase.cancelReason}` : ''}
+                    {purchase.cancelledAt ? ` · ${formatDisplayDate(purchase.cancelledAt.slice(0, 10))}` : ''}
+                  </p>
+                ) : null}
+                <div className="old-gold-history">
+                  {purchase.links.length > 0 ? (
+                    <>
+                      <h4>Applied to bills</h4>
+                      <div className="adagu-jewellery-table-wrap">
+                        <table className="adagu-jewellery-table old-gold-table">
+                          <thead>
+                            <tr>
+                              <th>Bill no</th>
+                              <th>Date</th>
+                              <th className="num">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {purchase.links.map((link) => (
+                              <tr key={link.invoiceId}>
+                                <td>{link.invoiceStatus === 'final' ? link.invoiceNo : 'Draft bill'}</td>
+                                <td>{formatDisplayDate(link.invoiceDate)}</td>
+                                <td className="num">{formatCurrency(link.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  ) : null}
+                  {purchase.payouts.length > 0 ? (
+                    <>
+                      <h4>Payouts</h4>
+                      <div className="adagu-jewellery-table-wrap">
+                        <table className="adagu-jewellery-table old-gold-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Mode</th>
+                              <th className="num">Amount</th>
+                              <th>Note</th>
+                              {onVoidPayout ? <th aria-label="Void" /> : null}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {purchase.payouts.map((payout) => (
+                              <tr key={payout.id}>
+                                <td>{formatDisplayDate(payout.payoutDate)}</td>
+                                <td>{payout.mode.toUpperCase()}</td>
+                                <td className="num">{formatCurrency(payout.amount)}</td>
+                                <td>{payout.voidedAt ? `Voided: ${payout.voidReason}` : payout.note || '—'}</td>
+                                {onVoidPayout ? (
+                                  <td className="adagu-col-action">
+                                    {payout.voidedAt == null ? (
+                                      <button
+                                        type="button"
+                                        className="btn ghost"
+                                        onClick={() => onVoidPayout(purchase, payout)}
+                                      >
+                                        Void
+                                      </button>
+                                    ) : null}
+                                  </td>
+                                ) : null}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  ) : null}
+                  {purchase.links.length === 0 && purchase.payouts.length === 0 ? (
+                    <p className="bill-empty-hint">
+                      Not applied to a bill and not paid out yet. Balance {formatCurrency(purchase.balance)}.
+                    </p>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
           </div>
 
           <footer className="product-form-footer">
@@ -335,6 +478,11 @@ export function OldGoldPurchaseEditorModal({
               Total {formatCurrency(liveTotal)}. Finalize does not add stock to Purchase.
             </p>
             <div className="product-form-footer-actions">
+              {purchase && purchase.status !== 'draft' ? (
+                <button type="button" className="btn ghost" onClick={() => setPrintOpen(true)}>
+                  Print
+                </button>
+              ) : null}
               <button type="button" className="btn secondary" onClick={onClose}>
                 {readOnly ? 'Close' : 'Cancel'}
               </button>
@@ -384,10 +532,60 @@ export function OldGoldPurchaseEditorModal({
           }
         >
           <p className="confirm-dialog-copy">
-            Finalizing records this purchase so it can be applied to a sale bill. It does not add stock to
-            Purchase. A finalized purchase cannot be edited.
+            Finalizing records this purchase so it can be applied to a sale bill or paid out. It does not add
+            stock to Purchase. A finalized purchase cannot be edited.
           </p>
+          <label className="old-gold-payout-now">
+            <input
+              type="checkbox"
+              checked={payoutNow}
+              disabled={saving}
+              onChange={(event) => {
+                const next = event.target.checked
+                setPayoutNow(next)
+                if (next && !payoutAmount) setPayoutAmount(String(liveTotal))
+              }}
+            />
+            <span>Pay the balance out to the customer now</span>
+          </label>
+          {payoutNow ? (
+            <div className="adagu-form-fields">
+              <div className="adagu-field">
+                <label>Mode</label>
+                <select
+                  className="input"
+                  value={payoutMode}
+                  disabled={saving}
+                  onChange={(event) => setPayoutMode(event.target.value as OldGoldPayoutMode)}
+                >
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank">Bank / cheque</option>
+                </select>
+              </div>
+              <div className="adagu-field">
+                <label>Amount</label>
+                <input
+                  className="input"
+                  type="number"
+                  step="0.01"
+                  value={payoutAmount}
+                  disabled={saving}
+                  onChange={(event) => setPayoutAmount(event.target.value)}
+                />
+              </div>
+            </div>
+          ) : null}
         </Modal>
+      ) : null}
+
+      {printOpen && purchase ? (
+        <PrintPreviewModal
+          title="Print preview"
+          path={printPreviewPaths.oldGoldPurchase(purchase.id)}
+          pdfFilename="old-gold-purchase.pdf"
+          onClose={() => setPrintOpen(false)}
+        />
       ) : null}
     </>
   )

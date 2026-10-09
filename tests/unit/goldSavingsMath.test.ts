@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { addCalendarMonths, eligibleBonusGoldWeight, goldWeightFromAmount, roundMoney } from '../../shared/goldSavings/math'
+import {
+  addCalendarMonths,
+  computeLateFee,
+  eligibleBonusGoldWeight,
+  goldWeightFromAmount,
+  roundMoney,
+} from '../../shared/goldSavings/math'
 
 describe('goldWeightFromAmount', () => {
   it('credits 0.200 g for ₹2000 at ₹10000 per gram using integer milligrams', () => {
@@ -71,5 +77,67 @@ describe('addCalendarMonths', () => {
 describe('roundMoney', () => {
   it('rounds to paise', () => {
     expect(roundMoney(10.005)).toBe(10.01)
+  })
+})
+
+describe('computeLateFee', () => {
+  it('charges nothing inside the grace window', () => {
+    expect(
+      computeLateFee({
+        dueDate: '2026-09-01',
+        paymentDate: '2026-09-10',
+        graceDays: 9,
+        type: 'per_day',
+        value: 10,
+      }),
+    ).toBe(0)
+  })
+
+  it('charges one day the day after grace ends', () => {
+    expect(
+      computeLateFee({
+        dueDate: '2026-09-01',
+        paymentDate: '2026-09-11',
+        graceDays: 9,
+        type: 'per_day',
+        value: 10,
+      }),
+    ).toBe(10)
+  })
+
+  it('multiplies per-day fees by the late days', () => {
+    expect(
+      computeLateFee({
+        dueDate: '2026-09-01',
+        paymentDate: '2026-09-21',
+        graceDays: 5,
+        type: 'per_day',
+        value: 25,
+      }),
+    ).toBe(375)
+  })
+
+  it('charges a fixed fee once, however late', () => {
+    expect(
+      computeLateFee({
+        dueDate: '2026-09-01',
+        paymentDate: '2026-09-21',
+        graceDays: 5,
+        type: 'fixed',
+        value: 250,
+      }),
+    ).toBe(250)
+  })
+
+  it('never charges when the scheme has no late fee', () => {
+    expect(
+      computeLateFee({
+        dueDate: '2026-09-01',
+        paymentDate: '2026-12-31',
+        graceDays: 0,
+        type: 'none',
+        value: 100,
+      }),
+    ).toBe(0)
   })
 })

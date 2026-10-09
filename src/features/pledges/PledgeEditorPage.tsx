@@ -7,9 +7,12 @@ import {
   Check,
   Eye,
   FileDown,
+  Gavel,
   Gem,
+  IdCard,
   IndianRupee,
   MapPin,
+  Megaphone,
   MinusCircle,
   Percent,
   Phone,
@@ -29,14 +32,30 @@ import {
   pledgeAmountDueWithTopups,
   totalPayableAfterOneYear,
 } from "@shared/billing/pledgeMath";
+import {
+  isAboveLtv,
+  itemValue,
+  maxLoanForValue,
+  ratePerGram,
+} from "@shared/billing/pledgeValuation";
 import { localTodayIso } from "@shared/localDate";
-import type { Customer, Pledge, PledgeItemInput } from "@shared/types";
+import type {
+  Customer,
+  MetalRates,
+  Pledge,
+  PledgeAuctionInput,
+  PledgeItemInput,
+  PledgePaymentMode,
+  PledgePayoff,
+  PledgePhoto,
+} from "@shared/types";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DateInput } from "../../components/DateInput";
+import { LoadingState } from "../../components/LoadingState";
 import { Modal } from "../../components/Modal";
 import { useToast } from "../../components/toastContext";
 import { api } from "../../lib/api";
-import { formatCurrency, formatDisplayDate } from "../../lib/format";
+import { formatCurrency, formatDisplayDate, formatWeight } from "../../lib/format";
 import {
   numericFieldToNumber,
   parseNumericField,
@@ -47,6 +66,10 @@ import { setBillingType } from "../invoices/billingType";
 import { PledgePreviewModal } from "./PledgePreviewModal";
 import { printPreviewPaths } from "../print/printPreviewPaths";
 import { downloadPrintPdf } from "../print/downloadPrintPdf";
+import { PLEDGE_PAYMENT_MODES } from "../dues/pledgePaymentModes";
+import { RenewModal } from "../dues/RenewModal";
+import { AuctionModal } from "../dues/AuctionModal";
+import { PledgePhotosStrip } from "./PledgePhotosStrip";
 
 type EditorItem = PledgeItemInput & { key: string };
 
@@ -100,7 +123,16 @@ export function PledgeEditorPage() {
   const [pledgeType, setPledgeType] = useState(DEFAULT_PLEDGE_TYPE);
   const [guardianName, setGuardianName] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
+  const [idProofType, setIdProofType] = useState("");
+  const [aadhaar, setAadhaar] = useState("");
+  const [pan, setPan] = useState("");
+  const [requireKyc, setRequireKyc] = useState(false);
+  const [photos, setPhotos] = useState<PledgePhoto[]>([]);
   const [assessedValue, setAssessedValue] = useState<NumericField>(0);
+  const [assessedOverridden, setAssessedOverridden] = useState(false);
+  const [metalRates, setMetalRates] = useState<MetalRates | null>(null);
+  const [ltvPct, setLtvPct] = useState(75);
+  const [allowAboveLtv, setAllowAboveLtv] = useState(false);
   const [loanAmount, setLoanAmount] = useState<NumericField>(0);
   const [charges, setCharges] = useState<NumericField>(0);
   const [interestPct, setInterestPct] =
@@ -109,7 +141,11 @@ export function PledgeEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [redeemOpen, setRedeemOpen] = useState(false);
-  const [forfeitOpen, setForfeitOpen] = useState(false);
+  const [renewLoanOpen, setRenewLoanOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [auctionOpen, setAuctionOpen] = useState(false);
+  const [auctionMode, setAuctionMode] = useState<"notice" | "auction">("notice");
   const [sanctionOpen, setSanctionOpen] = useState(false);
   const [afterSanction, setAfterSanction] = useState<"preview" | "pdf" | null>(
     null,
@@ -119,14 +155,18 @@ export function PledgeEditorPage() {
   const [savingPdf, setSavingPdf] = useState(false);
   const [redeemDate, setRedeemDate] = useState(todayIso());
   const [amountCollected, setAmountCollected] = useState<NumericField>(0);
+  const [redeemDiscount, setRedeemDiscount] = useState<NumericField>(0);
+  const [redeemMode, setRedeemMode] = useState<PledgePaymentMode>("cash");
+  const [payoff, setPayoff] = useState<PledgePayoff | null>(null);
   const [redeeming, setRedeeming] = useState(false);
-  const [forfeiting, setForfeiting] = useState(false);
+  const [auctioning, setAuctioning] = useState(false);
   const [previewReceiptNo, setPreviewReceiptNo] = useState("");
+  const [pledgeLoading, setPledgeLoading] = useState(!isNew);
 
   const isDraft = !pledge || pledge.status === "draft";
   const isActiveLoan = pledge?.status === "active";
-  const canEdit = isDraft || isActiveLoan;
-  const busy = saving || redeeming || forfeiting || savingPdf;
+  const canEdit = isDraft;
+  const busy = saving || redeeming || auctioning || savingPdf || deleting;
   const jewelleryItems = items.length > 0 ? items : [newItem()];
   const selectedCustomer = customers.find((c) => c.id === customerId);
   const totalGrossWeight = jewelleryItems.reduce(
@@ -195,7 +235,11 @@ export function PledgeEditorPage() {
   }, [isNew]);
 
   useEffect(() => {
-    if (isNew || !id) return;
+    if (isNew || !id) {
+      setPledgeLoading(false);
+      return;
+    }
+    setPledgeLoading(true);
     let active = true;
     void (async () => {
       try {
@@ -209,7 +253,9 @@ export function PledgeEditorPage() {
         setPledgeType(data.pledgeType || DEFAULT_PLEDGE_TYPE);
         setGuardianName(data.guardianName ?? "");
         setCustomerAddress(data.customerAddress ?? "");
+        setPhotos(data.photos ?? []);
         setAssessedValue(data.assessedValue);
+        setAssessedOverridden(true);
         setLoanAmount(data.loanAmount);
         setCharges(data.charges ?? 0);
         setInterestPct(data.interestPct);
@@ -235,12 +281,35 @@ export function PledgeEditorPage() {
             err instanceof Error ? err.message : "Failed to load pledge",
           );
         }
+      } finally {
+        if (active) setPledgeLoading(false);
       }
     })();
     return () => {
       active = false;
     };
   }, [isNew, id]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const [rates, shop] = await Promise.all([
+          api.getLatestMetalRates(),
+          api.getShopSettings(),
+        ]);
+        if (!active) return;
+        setMetalRates(rates);
+        setLtvPct(shop.pledgeLtvPct);
+        setRequireKyc(shop.adaguRequireKyc);
+      } catch {
+        // Rates are optional; the loan can still be saved manually.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const netPaid = useMemo(
     () =>
@@ -250,6 +319,32 @@ export function PledgeEditorPage() {
       ),
     [loanAmount, charges],
   );
+
+  // KYC lives on the customer; keep the borrower card in step with the selection.
+  useEffect(() => {
+    if (!customerId) return;
+    const customer = customers.find((row) => row.id === customerId);
+    if (!customer) return;
+    setIdProofType(customer.idProofType ?? "");
+    setAadhaar(customer.aadhaar ?? "");
+    setPan(customer.pan ?? "");
+  }, [customerId, customers]);
+
+  useEffect(() => {
+    if (!redeemOpen || isNew || !id) return;
+    let active = true;
+    void (async () => {
+      try {
+        const data = await api.getPledgePayoff(Number(id), redeemDate || todayIso());
+        if (active) setPayoff(data);
+      } catch {
+        if (active) setPayoff(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [redeemOpen, isNew, id, redeemDate]);
 
   const duePreview = useMemo(() => {
     const principal = numericFieldToNumber(loanAmount);
@@ -277,6 +372,40 @@ export function PledgeEditorPage() {
     pledge?.topups,
   ]);
 
+  const itemValuations = useMemo(
+    () =>
+      jewelleryItems.map((item) => ({
+        rate: ratePerGram(metalRates, item.metal, item.purity),
+        value: itemValue(
+          metalRates,
+          item.metal,
+          item.purity,
+          Number(item.netWeight || 0),
+        ),
+      })),
+    [jewelleryItems, metalRates],
+  );
+
+  const computedAssessedValue = useMemo(
+    () =>
+      Math.round(
+        itemValuations.reduce((sum, row) => sum + row.value, 0) * 100,
+      ) / 100,
+    [itemValuations],
+  );
+
+  const effectiveAssessedValue = assessedOverridden
+    ? numericFieldToNumber(assessedValue)
+    : computedAssessedValue;
+
+  const hasRates = metalRates != null && (metalRates.gold24k > 0 || metalRates.silverFine > 0);
+  const maxLoan = maxLoanForValue(effectiveAssessedValue, ltvPct);
+  const aboveLtv = isAboveLtv(
+    numericFieldToNumber(loanAmount),
+    effectiveAssessedValue,
+    ltvPct,
+  );
+
   const loanSummaryPreview = useMemo(() => {
     const principal = numericFieldToNumber(loanAmount);
     const rate = numericFieldToNumber(interestPct);
@@ -292,6 +421,9 @@ export function PledgeEditorPage() {
     setCustomerPhone(customer.phone ?? "");
     setGuardianName(customer.guardianName ?? "");
     setCustomerAddress(customer.address ?? "");
+    setIdProofType(customer.idProofType ?? "");
+    setAadhaar(customer.aadhaar ?? "");
+    setPan(customer.pan ?? "");
   }
 
   function clearBorrower() {
@@ -300,6 +432,9 @@ export function PledgeEditorPage() {
     setCustomerPhone("");
     setGuardianName("");
     setCustomerAddress("");
+    setIdProofType("");
+    setAadhaar("");
+    setPan("");
   }
 
   function setPaidAmount(value: number) {
@@ -365,8 +500,9 @@ export function PledgeEditorPage() {
         guardianName: guardianName.trim(),
         notes: "",
         gstin: existing.gstin ?? "",
-        aadhaar: existing.aadhaar ?? "",
-        pan: existing.pan ?? "",
+        aadhaar: aadhaar.replace(/\D/g, "").slice(0, 12),
+        pan: pan.trim().toUpperCase(),
+        idProofType: idProofType.trim(),
       });
       setCustomers((current) =>
         current.map((row) => (row.id === updated.id ? updated : row)),
@@ -382,8 +518,9 @@ export function PledgeEditorPage() {
       guardianName: guardianName.trim(),
       notes: "",
       gstin: "",
-      aadhaar: "",
-      pan: "",
+      aadhaar: aadhaar.replace(/\D/g, "").slice(0, 12),
+      pan: pan.trim().toUpperCase(),
+      idProofType: idProofType.trim(),
     });
     setCustomers((current) => [created, ...current]);
     setCustomerId(created.id);
@@ -398,20 +535,29 @@ export function PledgeEditorPage() {
       pledgeType: pledgeType.trim() || DEFAULT_PLEDGE_TYPE,
       guardianName: guardianName.trim(),
       customerAddress: customerAddress.trim(),
-      assessedValue: numericFieldToNumber(assessedValue),
+      assessedValue: effectiveAssessedValue,
       loanAmount: numericFieldToNumber(loanAmount),
       charges: numericFieldToNumber(charges),
       interestPct: numericFieldToNumber(interestPct),
       repaymentDueDate,
       notes: "",
-      items: list.map(({ key: _key, ...item }) => ({
-        ...item,
-        metal: item.metal || "Gold",
+      allowAboveLtv: aboveLtv ? allowAboveLtv : false,
+      items: list.map((item) => ({
+        description: item.description,
         identification: item.identification ?? "",
+        metal: item.metal || "Gold",
+        purity: item.purity,
         grossWeight: Number(item.grossWeight) || 0,
         stoneWeight: Number(item.stoneWeight) || 0,
         netWeight: Number(item.netWeight) || 0,
         pieces: Number(item.pieces) || 1,
+        ratePerGram: ratePerGram(metalRates, item.metal, item.purity),
+        itemValue: itemValue(
+          metalRates,
+          item.metal,
+          item.purity,
+          Number(item.netWeight) || 0,
+        ),
       })),
     };
   }
@@ -454,15 +600,16 @@ export function PledgeEditorPage() {
     if (saved) showToast("Draft saved", "success");
   }
 
-  function openPrintPreview(targetId: number) {
-    setPreviewTargetId(targetId);
-    setPreviewOpen(true);
-  }
-
   async function sanctionLoan() {
     setSanctionOpen(false);
     const pending = afterSanction;
     setAfterSanction(null);
+    if (requireKyc && !aadhaar.trim() && !pan.trim()) {
+      setError(
+        "KYC is required: enter the borrower Aadhaar or PAN before sanctioning",
+      );
+      return;
+    }
     const saved = await persistDraft();
     if (!saved) return;
     let result = saved;
@@ -470,7 +617,9 @@ export function PledgeEditorPage() {
       try {
         setSaving(true);
         setError(null);
-        result = await api.sanctionPledge(saved.id);
+        result = await api.sanctionPledge(saved.id, {
+          allowAboveLtv: aboveLtv ? allowAboveLtv : false,
+        });
         setPledge(result);
         showToast("Loan sanctioned", "success");
       } catch (err) {
@@ -541,6 +690,8 @@ export function PledgeEditorPage() {
         id: targetId,
         redeemedDate: redeemDate,
         amountCollected: numericFieldToNumber(amountCollected),
+        discount: numericFieldToNumber(redeemDiscount),
+        mode: redeemMode,
       });
       setPledge(updated);
       setRedeemOpen(false);
@@ -562,6 +713,7 @@ export function PledgeEditorPage() {
         id: targetId,
         collectedDate: redeemDate,
         amount: numericFieldToNumber(amountCollected),
+        mode: redeemMode,
       });
       setPledge(updated);
       setRedeemOpen(false);
@@ -580,23 +732,85 @@ export function PledgeEditorPage() {
     }
   }
 
-  async function forfeitPledge() {
+  async function sendAuctionNotice(input: { noticeDate: string }) {
     try {
-      setForfeiting(true);
+      setAuctioning(true);
       setError(null);
       const targetId = pledge?.id ?? Number(id);
-      if (!targetId) throw new Error("Sanction the loan before forfeiting");
-      const updated = await api.forfeitPledge({
+      if (!targetId) throw new Error("Sanction the loan before sending a notice");
+      await api.sendPledgeAuctionNotice({
         id: targetId,
-        forfeitedDate: todayIso(),
+        noticeDate: input.noticeDate,
       });
-      setPledge(updated);
-      setForfeitOpen(false);
-      showToast("Pledge forfeited / closed", "success");
+      setAuctionOpen(false);
+      showToast("Auction notice saved", "success");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to forfeit pledge");
+      setError(err instanceof Error ? err.message : "Failed to save auction notice");
     } finally {
-      setForfeiting(false);
+      setAuctioning(false);
+    }
+  }
+
+  async function recordAuction(input: Omit<PledgeAuctionInput, "id">) {
+    try {
+      setAuctioning(true);
+      setError(null);
+      const targetId = pledge?.id ?? Number(id);
+      if (!targetId) throw new Error("Sanction the loan before recording an auction");
+      const updated = await api.recordPledgeAuction({ id: targetId, ...input });
+      setPledge(updated);
+      setAuctionOpen(false);
+      showToast("Auction recorded", "success");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to record auction");
+    } finally {
+      setAuctioning(false);
+    }
+  }
+
+  async function renewLoan(input: {
+    renewDate: string;
+    mode: PledgePaymentMode;
+    newLoanAmount: number;
+    note: string;
+  }) {
+    try {
+      setRedeeming(true);
+      setError(null);
+      const targetId = pledge?.id ?? Number(id);
+      if (!targetId) throw new Error("Sanction the loan before renewing");
+      const created = await api.renewPledge({
+        id: targetId,
+        renewDate: input.renewDate,
+        mode: input.mode,
+        newLoanAmount: input.newLoanAmount,
+        note: input.note,
+      });
+      setRenewLoanOpen(false);
+      showToast(`Loan renewed as ${created.receiptNo}`, "success");
+      setPreviewTargetId(created.id);
+      setPreviewOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to renew loan");
+    } finally {
+      setRedeeming(false);
+    }
+  }
+
+  async function deleteDraft() {
+    try {
+      setDeleting(true);
+      setError(null);
+      const targetId = pledge?.id ?? Number(id);
+      if (!targetId) throw new Error("Nothing to delete");
+      await api.deletePledge(targetId);
+      setDeleteOpen(false);
+      showToast("Draft deleted", "success");
+      navigate("/billing");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete draft");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -605,9 +819,24 @@ export function PledgeEditorPage() {
       ? "Redeemed"
       : pledge?.status === "forfeited"
         ? "Forfeited"
-        : pledge?.status === "active"
-          ? "Active"
-          : "Draft";
+        : pledge?.status === "renewed"
+          ? "Renewed"
+          : pledge?.status === "active"
+            ? "Active"
+            : "Draft";
+
+  if (pledgeLoading) {
+    return (
+      <div className="adagu-editor-container sale-bill-editor">
+        <div className="adagu-page-header sale-bill-toolbar">
+          <div className="adagu-header-titles">
+            <h1>Loading pledge…</h1>
+          </div>
+        </div>
+        <LoadingState rows={6} />
+      </div>
+    );
+  }
 
   return (
     <div className="adagu-editor-container sale-bill-editor">
@@ -618,6 +847,22 @@ export function PledgeEditorPage() {
           </div>
           <div className="adagu-header-titles">
             <h1>Adagu Bill</h1>
+            {pledge?.renewedFromId ? (
+              <Link
+                className="adagu-header-renew-link"
+                to={`/billing/adagu/${pledge.renewedFromId}`}
+              >
+                Renewed from {pledge.renewedFromReceiptNo || `ADG #${pledge.renewedFromId}`}
+              </Link>
+            ) : null}
+            {pledge?.renewedToId ? (
+              <Link
+                className="adagu-header-renew-link"
+                to={`/billing/adagu/${pledge.renewedToId}`}
+              >
+                Renewed to {pledge.renewedToReceiptNo || `ADG #${pledge.renewedToId}`}
+              </Link>
+            ) : null}
           </div>
           <div className="sale-bill-meta">
             <label className="sale-bill-meta-field">
@@ -700,6 +945,16 @@ export function PledgeEditorPage() {
                 <FileDown size={16} strokeWidth={1.75} aria-hidden />
                 {saving ? "Generating…" : "Generate"}
               </button>
+              {!isNew ? (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={busy}
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 size={16} strokeWidth={1.75} aria-hidden /> Delete
+                </button>
+              ) : null}
             </>
           ) : null}
           {isActiveLoan ? (
@@ -708,37 +963,34 @@ export function PledgeEditorPage() {
                 type="button"
                 className="btn secondary"
                 disabled={busy}
-                onClick={() => {
-                  setAfterSanction(null);
-                  setSanctionOpen(true);
-                }}
+                onClick={() => setRenewLoanOpen(true)}
               >
-                <Save size={16} strokeWidth={1.75} aria-hidden />
-                {saving ? "Saving…" : "Update Loan"}
+                <RotateCcw size={16} strokeWidth={1.75} aria-hidden />
+                Renew
               </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() => {
-                  setAfterSanction("pdf");
-                  setSanctionOpen(true);
-                }}
-              >
-                <FileDown size={16} strokeWidth={1.75} aria-hidden />
-                {saving ? "Generating…" : "Update & Generate"}
-              </button>
-            </>
-          ) : null}
-          {isActiveLoan ? (
-            <>
               <button
                 type="button"
                 className="btn secondary"
                 disabled={busy}
-                onClick={() => setForfeitOpen(true)}
+                onClick={() => {
+                  setAuctionMode("notice");
+                  setAuctionOpen(true);
+                }}
               >
-                Close / Forfeit
+                <Megaphone size={16} strokeWidth={1.75} aria-hidden />
+                Auction notice
+              </button>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={busy}
+                onClick={() => {
+                  setAuctionMode("auction");
+                  setAuctionOpen(true);
+                }}
+              >
+                <Gavel size={16} strokeWidth={1.75} aria-hidden />
+                Record auction
               </button>
               <button
                 type="button"
@@ -748,6 +1000,8 @@ export function PledgeEditorPage() {
                   setAmountCollected(
                     duePreview.remaining || numericFieldToNumber(loanAmount),
                   );
+                  setRedeemDiscount(0);
+                  setRedeemMode("cash");
                   setRedeemDate(todayIso());
                   setRedeemOpen(true);
                 }}
@@ -862,6 +1116,90 @@ export function PledgeEditorPage() {
                   />
                 </div>
               </div>
+              <div className="adagu-field">
+                <label>ID Proof Type</label>
+                <div className="adagu-input-with-icon">
+                  <IdCard size={16} className="input-icon" />
+                  <select
+                    className="adagu-purity-select"
+                    disabled={!canEdit || busy}
+                    value={idProofType}
+                    onChange={(event) => setIdProofType(event.target.value)}
+                  >
+                    <option value="">Not recorded</option>
+                    <option value="Aadhaar">Aadhaar</option>
+                    <option value="PAN">PAN</option>
+                    <option value="Voter ID">Voter ID</option>
+                    <option value="Driving Licence">Driving Licence</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+              <div className="adagu-field">
+                <label>Aadhaar</label>
+                <div className="adagu-input-with-icon">
+                  <IdCard size={16} className="input-icon" />
+                  <input
+                    disabled={!canEdit || busy}
+                    inputMode="numeric"
+                    maxLength={12}
+                    value={aadhaar}
+                    onChange={(event) =>
+                      setAadhaar(event.target.value.replace(/\D/g, "").slice(0, 12))
+                    }
+                    placeholder="12 digits"
+                  />
+                </div>
+              </div>
+              <div className="adagu-field">
+                <label>PAN</label>
+                <div className="adagu-input-with-icon">
+                  <IdCard size={16} className="input-icon" />
+                  <input
+                    disabled={!canEdit || busy}
+                    maxLength={10}
+                    value={pan}
+                    onChange={(event) =>
+                      setPan(
+                        event.target.value
+                          .replace(/[^a-zA-Z0-9]/g, "")
+                          .toUpperCase()
+                          .slice(0, 10),
+                      )
+                    }
+                    placeholder="AAAAA9999A"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {requireKyc && !aadhaar.trim() && !pan.trim() ? (
+              <div className="adagu-banner adagu-banner--warning">
+                KYC is required by settings. Enter the borrower Aadhaar or PAN before sanctioning.
+              </div>
+            ) : null}
+
+            <div className="adagu-borrower-photos">
+              <PledgePhotosStrip
+                pledgeId={pledge?.id ?? 0}
+                photos={photos}
+                kind="customer"
+                label="Borrower photo"
+                editable={canEdit}
+                busy={busy}
+                onChanged={setPhotos}
+                onError={setError}
+              />
+              <PledgePhotosStrip
+                pledgeId={pledge?.id ?? 0}
+                photos={photos}
+                kind="id_proof"
+                label="ID proof photo"
+                editable={canEdit}
+                busy={busy}
+                onChanged={setPhotos}
+                onError={setError}
+              />
             </div>
           </div>
 
@@ -895,6 +1233,8 @@ export function PledgeEditorPage() {
                   <th className="adagu-col-weight">Gross Wt. (gms)</th>
                   <th className="adagu-col-weight">Deductions (gms)</th>
                   <th className="adagu-col-weight">Net Wt. (gms)</th>
+                  <th className="adagu-col-weight">Rate / gm</th>
+                  <th className="adagu-col-weight">Value</th>
                   <th className="adagu-col-action">
                     <span className="adagu-sr-only">Remove item</span>
                   </th>
@@ -992,6 +1332,16 @@ export function PledgeEditorPage() {
                             />
                           </div>
                         </td>
+                        <td className="adagu-col-value" data-label="Rate / gm">
+                          <span className="adagu-item-rate">
+                            {formatCurrency(itemValuations[index]?.rate ?? 0)}
+                          </span>
+                        </td>
+                        <td className="adagu-col-value" data-label="Value">
+                          <span className="adagu-item-value">
+                            {formatCurrency(itemValuations[index]?.value ?? 0)}
+                          </span>
+                        </td>
                         <td className="adagu-col-action">
                           <button
                             type="button"
@@ -1004,7 +1354,7 @@ export function PledgeEditorPage() {
                         </td>
                       </tr>
                       <tr>
-                        <td colSpan={7} className="adagu-item-description-cell">
+                        <td colSpan={9} className="adagu-item-description-cell">
                           <div className="adagu-input-with-icon adagu-item-description">
                             <textarea
                               rows={1}
@@ -1034,7 +1384,7 @@ export function PledgeEditorPage() {
                 </div>
                 <div>
                   <span>Gross Weight</span>
-                  <strong>{totalGrossWeight.toFixed(3)} g</strong>
+                  <strong>{formatWeight(totalGrossWeight, 3)}</strong>
                 </div>
               </div>
               <div className="sale-bill-summary-stat">
@@ -1043,7 +1393,7 @@ export function PledgeEditorPage() {
                 </div>
                 <div>
                   <span>Deductions</span>
-                  <strong>{totalStoneWeight.toFixed(3)} g</strong>
+                  <strong>{formatWeight(totalStoneWeight, 3)}</strong>
                 </div>
               </div>
               <div className="sale-bill-summary-stat">
@@ -1052,10 +1402,21 @@ export function PledgeEditorPage() {
                 </div>
                 <div>
                   <span>Net Weight</span>
-                  <strong>{totalNetWeight.toFixed(3)} g</strong>
+                  <strong>{formatWeight(totalNetWeight, 3)}</strong>
                 </div>
               </div>
             </div>
+
+            <PledgePhotosStrip
+              pledgeId={pledge?.id ?? 0}
+              photos={photos}
+              kind="item"
+              label="Item photos"
+              editable={canEdit}
+              busy={busy}
+              onChanged={setPhotos}
+              onError={setError}
+            />
           </div>
         </div>
 
@@ -1144,6 +1505,77 @@ export function PledgeEditorPage() {
                   />
                 </div>
               </div>
+              <div className="adagu-field">
+                <label>Assessed Value</label>
+                <div className="adagu-input-with-icon">
+                  <IndianRupee size={14} className="input-icon" />
+                  <input
+                    type="number"
+                    step="0.01"
+                    disabled={!canEdit || busy}
+                    value={weightInputValue(assessedValue)}
+                    onChange={(event) => {
+                      setAssessedOverridden(true);
+                      setAssessedValue(parseNumericField(event.target.value));
+                    }}
+                  />
+                </div>
+                {assessedOverridden ? (
+                  <button
+                    type="button"
+                    className="adagu-link-button"
+                    disabled={!canEdit || busy}
+                    onClick={() => {
+                      setAssessedOverridden(false);
+                      setAssessedValue(0);
+                    }}
+                  >
+                    <RotateCcw size={12} /> Auto from items (
+                    {formatCurrency(computedAssessedValue)})
+                  </button>
+                ) : (
+                  <span className="adagu-field-hint">
+                    Auto-summed from item rates
+                  </span>
+                )}
+              </div>
+              <div className="adagu-field" style={{ gridColumn: "1 / -1" }}>
+                <span className="adagu-ltv-line">
+                  Max loan ({ltvPct}% LTV):{" "}
+                  <strong>{formatCurrency(maxLoan)}</strong>
+                  <button
+                    type="button"
+                    className="adagu-link-button"
+                    disabled={!canEdit || busy || maxLoan <= 0}
+                    onClick={() => setLoanAmount(maxLoan)}
+                  >
+                    Use max
+                  </button>
+                </span>
+                {!hasRates ? (
+                  <div className="adagu-banner adagu-banner--warning">
+                    No metal rates for today.{" "}
+                    <Link to="/rates">Update Rates</Link> to assess value
+                    automatically.
+                  </div>
+                ) : null}
+                {aboveLtv ? (
+                  <div className="adagu-banner adagu-banner--warning">
+                    Loan is above the {ltvPct}% LTV limit.
+                    <label className="adagu-banner-check">
+                      <input
+                        type="checkbox"
+                        checked={allowAboveLtv}
+                        disabled={!canEdit || busy}
+                        onChange={(event) =>
+                          setAllowAboveLtv(event.target.checked)
+                        }
+                      />
+                      Admin override (allow above LTV)
+                    </label>
+                  </div>
+                ) : null}
+              </div>
               <div className="adagu-field" style={{ gridColumn: "1 / -1" }}>
                 <label>
                   Due Date <span className="req">*</span>
@@ -1182,7 +1614,7 @@ export function PledgeEditorPage() {
                     <ShoppingBag size={14} /> Net Weight
                   </span>
                   <span className="value">
-                    {totalNetWeight.toFixed(3)} gms
+                    {formatWeight(totalNetWeight, 3)}
                   </span>
                 </div>
                 <div className="adagu-calculated-row">
@@ -1254,12 +1686,36 @@ export function PledgeEditorPage() {
             </div>
           }
         >
-          <p className="muted">
-            Principal {formatCurrency(numericFieldToNumber(loanAmount))} +
-            interest {formatCurrency(duePreview.interest)} − collected{" "}
-            {formatCurrency(pledge?.amountCollected ?? 0)} ={" "}
-            <strong>{formatCurrency(duePreview.remaining)}</strong> remaining.
-          </p>
+          <dl className="dues-detail-totals">
+            <div>
+              <dt>Principal outstanding</dt>
+              <dd className="num">
+                {formatCurrency(payoff?.principalOutstanding ?? numericFieldToNumber(loanAmount))}
+              </dd>
+            </div>
+            <div>
+              <dt>Interest due</dt>
+              <dd className="num">
+                {formatCurrency(payoff?.interestDue ?? duePreview.interest)}
+              </dd>
+            </div>
+            <div>
+              <dt>Interest paid up to</dt>
+              <dd>
+                {payoff?.interestPaidUpto
+                  ? formatDisplayDate(payoff.interestPaidUpto)
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt>Payoff</dt>
+              <dd className="num">
+                <strong>
+                  {formatCurrency(payoff?.payoff ?? duePreview.remaining)}
+                </strong>
+              </dd>
+            </div>
+          </dl>
           <div className="form-grid">
             <label>
               Date
@@ -1270,7 +1726,7 @@ export function PledgeEditorPage() {
               />
             </label>
             <label>
-              Amount
+              Amount collected
               <input
                 className="input"
                 type="number"
@@ -1281,16 +1737,84 @@ export function PledgeEditorPage() {
                 }
               />
             </label>
+            <label>
+              Discount
+              <input
+                className="input"
+                type="number"
+                step="0.01"
+                value={redeemDiscount}
+                onChange={(event) => {
+                  const discount = numericFieldToNumber(
+                    parseNumericField(event.target.value),
+                  );
+                  setRedeemDiscount(parseNumericField(event.target.value));
+                  const total = payoff?.payoff ?? duePreview.remaining;
+                  setAmountCollected(Math.max(0, total - discount));
+                }}
+              />
+            </label>
+            <label>
+              Mode
+              <select
+                className="input"
+                value={redeemMode}
+                onChange={(event) =>
+                  setRedeemMode(event.target.value as PledgePaymentMode)
+                }
+              >
+                {PLEDGE_PAYMENT_MODES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
+          <p className="muted">
+            Collect {formatCurrency(numericFieldToNumber(amountCollected))} and write
+            off {formatCurrency(numericFieldToNumber(redeemDiscount))} to close.
+            Discount applies to full redeem only.
+          </p>
           <button
             type="button"
             className="btn ghost"
             style={{ marginTop: "0.5rem" }}
-            onClick={() => setAmountCollected(duePreview.remaining)}
+            onClick={() => {
+              setRedeemDiscount(0);
+              setAmountCollected(payoff?.payoff ?? duePreview.remaining);
+            }}
           >
-            Fill remaining due
+            Fill payoff
           </button>
         </Modal>
+      ) : null}
+
+      {renewLoanOpen ? (
+        <RenewModal
+          summary={{
+            receiptNo: displayBillNo,
+            interestDue: payoff?.interestDue ?? duePreview.interest,
+            principalOutstanding:
+              payoff?.principalOutstanding ?? numericFieldToNumber(loanAmount),
+            interestPaidUpto: payoff?.interestPaidUpto ?? pledgeDate,
+            remaining: payoff?.payoff ?? duePreview.remaining,
+          }}
+          busy={busy}
+          onClose={() => setRenewLoanOpen(false)}
+          onSubmit={(input) => void renewLoan(input)}
+        />
+      ) : null}
+
+      {deleteOpen ? (
+        <ConfirmDialog
+          title="Delete draft"
+          message={`Delete draft ${displayBillNo}? This cannot be undone.`}
+          confirmLabel="Delete"
+          danger
+          onCancel={() => setDeleteOpen(false)}
+          onConfirm={() => void deleteDraft()}
+        />
       ) : null}
 
       {sanctionOpen ? (
@@ -1307,14 +1831,19 @@ export function PledgeEditorPage() {
         />
       ) : null}
 
-      {forfeitOpen ? (
-        <ConfirmDialog
-          title="Close / forfeit pledge"
-          message="Mark this pledge as forfeited? It cannot be edited afterward."
-          confirmLabel="Forfeit"
-          danger
-          onCancel={() => setForfeitOpen(false)}
-          onConfirm={() => void forfeitPledge()}
+      {auctionOpen && pledge ? (
+        <AuctionModal
+          summary={{
+            pledgeId: pledge.id,
+            receiptNo: pledge.receiptNo,
+            customerName: pledge.customerName,
+            remaining: payoff?.payoff ?? duePreview.remaining,
+          }}
+          mode={auctionMode}
+          busy={busy}
+          onClose={() => setAuctionOpen(false)}
+          onNotice={(input) => void sendAuctionNotice(input)}
+          onAuction={(input) => void recordAuction(input)}
         />
       ) : null}
 

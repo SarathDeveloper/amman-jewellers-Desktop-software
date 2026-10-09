@@ -12,6 +12,7 @@ describe('customerFormModal prefill', () => {
       gstin: '',
       aadhaar: '',
       pan: '',
+      idProofType: '',
     })
   })
 
@@ -25,6 +26,7 @@ describe('customerFormModal prefill', () => {
       gstin: '',
       aadhaar: '',
       pan: '',
+      idProofType: '',
     })
   })
 

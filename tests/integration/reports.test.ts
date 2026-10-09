@@ -48,7 +48,7 @@ describe('reports', () => {
       tax: 0,
       autoTax: false,
       billFormat: 'cash_bill',
-      items: [{ productId: product.id, qty: 1, rate: 1000, metalRate: 1000, netWeight: 2 }],
+      items: [{ productId: product.id, qty: 1, rate: 1000, metalRate: 1000, netWeight: 2, huid: product.huids[0] }],
     })
     const finalized = await ipc<{ amountPayable: number; invoiceNo: string }>(
       IPC_CHANNELS.INVOICES_FINALIZE,

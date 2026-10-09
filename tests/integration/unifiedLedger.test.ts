@@ -12,7 +12,7 @@ describe('unified stock ledger', () => {
       address: 'Salem',
       notes: '',
     })
-    const product = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
+    const product = await ipc<{ id: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
       name: 'Gold chain',
       category: 'Chain',
       metal: 'Gold',
@@ -44,6 +44,7 @@ describe('unified stock ledger', () => {
           rate: 5000,
           metalRate: 5000,
           netWeight: 8,
+          huid: product.huids[0],
         },
         {
           lineKind: 'exchange',

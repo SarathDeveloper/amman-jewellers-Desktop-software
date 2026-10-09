@@ -2,6 +2,7 @@ import { netPaidAmount } from '@shared/billing/pledgeMath'
 import type { Pledge } from '@shared/types'
 import { formatDisplayDate } from '../../lib/format'
 import { defaultShopLogoUrl, EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from '../invoices/mapShopDisplay'
+import { pledgePaymentModeLabel } from '../dues/pledgePaymentModes'
 import './PledgePrint.css'
 
 function formatWeight(value: number): string {
@@ -12,11 +13,6 @@ function formatWeight(value: number): string {
 function formatAmount(value: number): string {
   if (!value && value !== 0) return ''
   return value.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-}
-
-function formatDate(isoDate: string | null | undefined): string {
-  if (!isoDate) return ''
-  return formatDisplayDate(isoDate)
 }
 
 export function PledgeReleasePrint({
@@ -37,11 +33,16 @@ export function PledgeReleasePrint({
   ].filter(Boolean)
   const netPaid = netPaidAmount(pledge.loanAmount, pledge.charges ?? 0)
   const extraLoan = (pledge.topups ?? []).reduce((sum, topup) => sum + topup.amount, 0)
+  const paymentRows = pledge.payments ?? []
+  const interestCollected = paymentRows.reduce((sum, payment) => sum + (payment.interestPart ?? 0), 0)
+  const principalCollected = paymentRows.reduce((sum, payment) => sum + (payment.principalPart ?? 0), 0)
+  const totalDiscount = paymentRows.reduce((sum, payment) => sum + (payment.discount ?? 0), 0)
+  const redeemMode = paymentRows.find((payment) => payment.kind === 'redeem')?.mode
   const totalGross = pledge.items.reduce((sum, item) => sum + item.grossWeight, 0)
   const totalStone = pledge.items.reduce((sum, item) => sum + (item.stoneWeight ?? 0), 0)
   const totalNet = pledge.items.reduce((sum, item) => sum + item.netWeight, 0)
   const totalQty = pledge.items.reduce((sum, item) => sum + item.pieces, 0)
-  const releaseDate = pledge.redeemedDate || formatDate(null)
+  const releaseDate = pledge.redeemedDate ? formatDisplayDate(pledge.redeemedDate) : ''
 
   return (
     <div className="pledge-print-root" data-print-root>
@@ -89,11 +90,11 @@ export function PledgeReleasePrint({
           </div>
           <div>
             <span>PLEDGE DATE:</span>
-            <strong>{formatDate(pledge.pledgeDate)}</strong>
+            <strong>{formatDisplayDate(pledge.pledgeDate)}</strong>
           </div>
           <div>
             <span>RELEASE DATE:</span>
-            <strong>{formatDate(pledge.redeemedDate) || '—'}</strong>
+            <strong>{pledge.redeemedDate ? formatDisplayDate(pledge.redeemedDate) : '—'}</strong>
           </div>
         </div>
 
@@ -178,6 +179,26 @@ export function PledgeReleasePrint({
               <span>Total collected</span>
               <strong>₹ {formatAmount(pledge.amountCollected)}</strong>
             </div>
+            <div>
+              <span>Interest collected</span>
+              <strong>₹ {formatAmount(interestCollected)}</strong>
+            </div>
+            <div>
+              <span>Principal repaid</span>
+              <strong>₹ {formatAmount(principalCollected)}</strong>
+            </div>
+            {totalDiscount > 0 ? (
+              <div>
+                <span>Discount given</span>
+                <strong>₹ {formatAmount(totalDiscount)}</strong>
+              </div>
+            ) : null}
+            {redeemMode ? (
+              <div>
+                <span>Settlement mode</span>
+                <strong>{pledgePaymentModeLabel(redeemMode)}</strong>
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -186,7 +207,7 @@ export function PledgeReleasePrint({
           <p>
             I/We confirm that the jewellery listed above has been received in full and in the same
             condition as pledged under Adagu {pledge.receiptNo}. All dues against this loan have been
-            settled on {formatDate(pledge.redeemedDate) || releaseDate || 'this date'}.
+            settled on {pledge.redeemedDate ? formatDisplayDate(pledge.redeemedDate) : releaseDate || 'this date'}.
           </p>
         </section>
 

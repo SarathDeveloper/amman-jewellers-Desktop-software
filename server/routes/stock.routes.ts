@@ -30,6 +30,7 @@ import type {
 } from '@shared/types'
 import { STOCK_METALS } from '@shared/itemTypes'
 import { getDatabase } from '../db'
+import { runDayCloseBackup } from '../db/backup'
 import { assertMetalDayOpen, isMetalDayClosed } from '../db/metalDayClosing'
 import {
   findCategoryByName,
@@ -82,12 +83,14 @@ function getSavedRow(stockDate: string, metal: string, itemName: string): StockD
 
 function getAutoSales(stockDate: string, metal: string, itemName: string): number {
   const db = getDatabase()
+  // A cancelled bill writes a sales_return on the day it is cancelled, so the
+  // day's net sales must subtract that weight back out.
   const row = db
     .prepare(
       `SELECT COALESCE(-SUM(weight_delta), 0) AS total
        FROM stock_movements
        WHERE movement_date = ?
-         AND movement_type = 'sale'
+         AND movement_type IN ('sale', 'sales_return')
          AND lower(trim(metal)) = lower(trim(?))
          AND lower(trim(category)) = lower(trim(?))`,
     )
@@ -758,7 +761,7 @@ router.get(
 
 router.post(
   '/day-closings/close',
-  asyncHandler((req, res) => {
+  asyncHandler(async (req, res) => {
     const input = parseBody(metalDayCloseSchema, req.body) as MetalDayCloseInput
     const db = getDatabase()
     if (isMetalDayClosed(db, input.businessDate, input.metal)) {
@@ -806,7 +809,8 @@ router.post(
       }
     })
     tx()
-    res.json(buildDaySheet(input.businessDate, input.metal))
+    const backupSaved = await runDayCloseBackup(input.businessDate, input.metal)
+    res.json({ ...buildDaySheet(input.businessDate, input.metal), backupSaved })
   }),
 )
 

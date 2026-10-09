@@ -122,7 +122,34 @@ export function runGoldSavingReport(
   }
 
   if (id === 'active-schemes' || id === 'matured-schemes' || id === 'cancelled-schemes') {
-    const status = id === 'active-schemes' ? 'active' : id === 'matured-schemes' ? 'matured' : 'cancelled'
+    if (id === 'cancelled-schemes') {
+      const rows = db
+        .prepare(
+          `SELECT a.account_no AS account, c.name AS customer, s.name AS scheme,
+                  a.enrollment_date AS enrolled, a.maturity_date AS maturity,
+                  COALESCE((SELECT SUM(p.amount) FROM gold_saving_payments p
+                            WHERE p.account_id = a.id AND p.status = 'posted'), 0) AS paid,
+                  COALESCE(rf.gold_forfeited, 0) AS gold,
+                  COALESCE(rf.voucher_no, '') AS voucher,
+                  COALESCE(rf.deduction, 0) AS deduction,
+                  COALESCE(rf.refund_amount, 0) AS refund,
+                  a.status AS status
+           FROM gold_saving_accounts a
+           JOIN customers c ON c.id = a.customer_id
+           JOIN gold_saving_schemes s ON s.id = a.scheme_id
+           LEFT JOIN gold_saving_refunds rf ON rf.account_id = a.id
+           WHERE a.status = 'cancelled'
+           ORDER BY a.created_at DESC`,
+        )
+        .all() as Array<Record<string, string | number>>
+      return pack(
+        id,
+        ['Account', 'Customer', 'Scheme', 'Enrolled', 'Maturity', 'Paid', 'Gold', 'Voucher', 'Deduction', 'Refund', 'Status'],
+        rows,
+        generatedAt,
+      )
+    }
+    const status = id === 'active-schemes' ? 'active' : 'matured'
     const accounts = (
       db.prepare(`${ACCOUNT_SELECT} WHERE a.status = ? ORDER BY a.created_at DESC`).all(status) as AccountRow[]
     ).map(mapAccount)
@@ -163,7 +190,8 @@ export function runGoldSavingReport(
   if (id === 'overdue-aging') {
     const raw = db
       .prepare(
-        `SELECT a.account_no AS account, c.name AS customer, s.name AS scheme, i.installment_no AS installment,
+        `SELECT a.account_no AS account, c.name AS customer, c.phone AS mobile, s.name AS scheme,
+                i.installment_no AS installment,
                 i.due_date AS due, i.amount AS amount,
                 CAST(julianday(?) - julianday(i.due_date) AS INTEGER) AS days,
                 CASE
@@ -171,7 +199,9 @@ export function runGoldSavingReport(
                   WHEN CAST(julianday(?) - julianday(i.due_date) AS INTEGER) <= 15 THEN '8-15 days'
                   WHEN CAST(julianday(?) - julianday(i.due_date) AS INTEGER) <= 30 THEN '16-30 days'
                   ELSE '30+ days'
-                END AS bucket
+                END AS bucket,
+                (SELECT COUNT(*) FROM gold_saving_installments oi
+                 WHERE oi.account_id = a.id AND oi.status NOT IN ('paid', 'waived') AND oi.due_date < ?) AS overdue_count
          FROM gold_saving_installments i
          JOIN gold_saving_accounts a ON a.id = i.account_id
          JOIN customers c ON c.id = a.customer_id
@@ -187,6 +217,7 @@ export function runGoldSavingReport(
         today,
         today,
         today,
+        today,
         query.schemeId ?? null,
         query.schemeId ?? null,
         query.q ? `%${query.q}%` : null,
@@ -196,26 +227,41 @@ export function runGoldSavingReport(
       ) as Array<{
         account: string
         customer: string
+        mobile: string
         scheme: string
         installment: number
         due: string
         amount: number
         days: number
         bucket: string
+        overdue_count: number
       }>
     const rows = raw.map((row) => ({
       account: row.account,
       customer: row.customer,
+      mobile: row.mobile,
       scheme: row.scheme,
       installment: row.installment,
       due: row.due,
       'days overdue': row.days,
       amount: row.amount,
+      'overdue count': row.overdue_count,
       bucket: row.bucket,
     }))
     return pack(
       id,
-      ['Account', 'Customer', 'Scheme', 'Installment', 'Due', 'Days overdue', 'Amount', 'Bucket'],
+      [
+        'Account',
+        'Customer',
+        'Mobile',
+        'Scheme',
+        'Installment',
+        'Due',
+        'Days overdue',
+        'Amount',
+        'Overdue count',
+        'Bucket',
+      ],
       rows,
       generatedAt,
     )

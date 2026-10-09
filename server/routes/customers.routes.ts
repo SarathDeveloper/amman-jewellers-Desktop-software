@@ -16,6 +16,7 @@ type CustomerRow = {
   gstin: string
   aadhaar: string
   pan: string
+  id_proof_type: string
   created_at: string
 }
 
@@ -30,6 +31,7 @@ function mapCustomer(row: CustomerRow & { last_bill_date?: string | null }): Cus
     gstin: row.gstin ?? '',
     aadhaar: row.aadhaar ?? '',
     pan: row.pan ?? '',
+    idProofType: row.id_proof_type ?? '',
     createdAt: row.created_at,
     lastBillDate: row.last_bill_date ?? null,
   }
@@ -90,8 +92,8 @@ router.post(
     const db = getDatabase()
     const result = db
       .prepare(
-        `INSERT INTO customers (name, phone, address, guardian_name, notes, gstin, aadhaar, pan, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        `INSERT INTO customers (name, phone, address, guardian_name, notes, gstin, aadhaar, pan, id_proof_type, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       )
       .run(
         input.name,
@@ -102,6 +104,7 @@ router.post(
         input.gstin ?? '',
         input.aadhaar ?? '',
         input.pan ?? '',
+        input.idProofType ?? '',
       )
     const row = db.prepare('SELECT * FROM customers WHERE id = ?').get(result.lastInsertRowid) as CustomerRow
     res.status(201).json(mapCustomer(row))
@@ -121,7 +124,7 @@ router.put(
       throw new Error('Customer not found')
     }
     db.prepare(
-      `UPDATE customers SET name = ?, phone = ?, address = ?, guardian_name = ?, notes = ?, gstin = ?, aadhaar = ?, pan = ? WHERE id = ?`,
+      `UPDATE customers SET name = ?, phone = ?, address = ?, guardian_name = ?, notes = ?, gstin = ?, aadhaar = ?, pan = ?, id_proof_type = ? WHERE id = ?`,
     ).run(
       input.name,
       input.phone,
@@ -131,6 +134,7 @@ router.put(
       input.gstin ?? '',
       input.aadhaar ?? '',
       input.pan ?? '',
+      input.idProofType ?? '',
       id,
     )
     const row = db.prepare('SELECT * FROM customers WHERE id = ?').get(id) as CustomerRow

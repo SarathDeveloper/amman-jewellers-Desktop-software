@@ -1,4 +1,19 @@
-import type { DueEntry, DuesLedger, Invoice, InvoiceListStats, ItemStockRow } from '@shared/types'
+import type {
+  DueEntry,
+  DuesLedger,
+  GoldSavingDashboard,
+  Invoice,
+  InvoiceListStats,
+  ItemStockRow,
+  StockReconciliationRow,
+} from '@shared/types'
+import {
+  formatCurrency,
+  formatDisplayDayMonth,
+  formatDisplayHour,
+  formatDisplayMonthShort,
+  formatDisplayWeekday,
+} from '../../lib/format'
 import { dateInRange, monthRange } from '../invoices/billingInsights'
 
 export const RECENT_BILLS_LIMIT = 3
@@ -25,6 +40,7 @@ export interface SalesChartBucket {
 
 export interface SalesOverview {
   hourlyTotals: number[]
+  collectionTotals: number[]
   chartBuckets: SalesChartBucket[]
   chartGranularity: ChartGranularity
   billsGenerated: number
@@ -32,6 +48,19 @@ export interface SalesOverview {
   customersBilled: number
   totalItemsSold: number
 }
+
+export type DashboardAlertTone = 'danger' | 'info' | 'brand' | 'success'
+
+export interface DashboardAlert {
+  id: string
+  tone: DashboardAlertTone
+  title: string
+  detail: string
+  to: string
+}
+
+/** A customer due older than this many days is surfaced as a dashboard alert. */
+export const DUE_OVERDUE_DAYS = 30
 
 export interface MetalStockSummary {
   opening: number
@@ -45,6 +74,22 @@ export interface DueCollectionRow {
   customerName: string
   balance: number
   daysOverdue: number
+}
+
+export interface OldGoldTodayStats {
+  count: number
+  netWeight: number
+  amount: number
+  paidOut: number
+  openBalance: number
+}
+
+export const EMPTY_OLD_GOLD_TODAY: OldGoldTodayStats = {
+  count: 0,
+  netWeight: 0,
+  amount: 0,
+  paidOut: 0,
+  openBalance: 0,
 }
 
 export interface DashboardStats {
@@ -62,10 +107,8 @@ export interface DashboardStats {
   }
   dueCollections: DueCollectionRow[]
   outstandingCustomerCount: number
+  oldGoldToday: OldGoldTodayStats
 }
-
-const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function toDateKey(value: string | null | undefined): string {
   return (value ?? '').slice(0, 10)
@@ -117,24 +160,10 @@ function eachMonth(from: string, to: string): string[] {
   return months
 }
 
-function formatHourLabel(hour: number): string {
-  if (hour === 12) return '12 PM'
-  if (hour < 12) return `${hour} AM`
-  return `${hour - 12} PM`
-}
-
 function formatDayLabel(iso: string, style: 'weekday' | 'day' | 'short'): string {
-  const date = parseLocalDate(iso)
-  if (style === 'weekday') return WEEKDAY_LABELS[date.getDay()]
-  if (style === 'day') return String(date.getDate())
-  return `${date.getDate()} ${MONTH_LABELS[date.getMonth()]}`
-}
-
-function formatMonthLabel(yearMonth: string, showYear: boolean): string {
-  const month = Number(yearMonth.slice(5, 7))
-  const year = yearMonth.slice(0, 4)
-  const name = MONTH_LABELS[month - 1] ?? yearMonth
-  return showYear ? `${name} ${year.slice(2)}` : name
+  if (style === 'weekday') return formatDisplayWeekday(iso)
+  if (style === 'day') return String(parseLocalDate(iso).getDate())
+  return formatDisplayDayMonth(iso)
 }
 
 function isFinalSale(invoice: Invoice): boolean {
@@ -208,7 +237,7 @@ function buildChartBuckets(
     )
     return hours.map((hour) => ({
       key: String(hour),
-      label: formatHourLabel(hour),
+      label: formatDisplayHour(hour),
       total: 0,
     }))
   }
@@ -218,7 +247,7 @@ function buildChartBuckets(
     const showYear = months[0]?.slice(0, 4) !== months[months.length - 1]?.slice(0, 4)
     return months.map((yearMonth) => ({
       key: yearMonth,
-      label: formatMonthLabel(yearMonth, showYear),
+      label: formatDisplayMonthShort(yearMonth, showYear),
       total: 0,
     }))
   }
@@ -314,6 +343,7 @@ function computeSalesOverview(
 ): SalesOverview {
   const granularity = periodGranularity(period, range)
   const chartBuckets = buildChartBuckets(period, range, granularity, today)
+  const collectionBuckets = chartBuckets.map((bucket) => ({ ...bucket, total: 0 }))
   const indexByKey = new Map(chartBuckets.map((bucket, index) => [bucket.key, index]))
 
   const inRange: Invoice[] = []
@@ -339,6 +369,7 @@ function computeSalesOverview(
     const index = indexByKey.get(key)
     if (index !== undefined) {
       chartBuckets[index].total += invoice.total
+      collectionBuckets[index].total += invoice.amountPaid
     }
   }
 
@@ -353,6 +384,7 @@ function computeSalesOverview(
 
   return {
     hourlyTotals: chartBuckets.map((bucket) => bucket.total),
+    collectionTotals: collectionBuckets.map((bucket) => bucket.total),
     chartBuckets,
     chartGranularity: granularity,
     billsGenerated,
@@ -409,13 +441,82 @@ function computeDueCollections(
   }
 }
 
+/** Builds the dashboard notification list from dues, stock reconciliation and Gold Savings. */
+export function buildDashboardAlerts(
+  ledger: DuesLedger | null | undefined,
+  reconciliation: StockReconciliationRow[] | null | undefined,
+  goldSavings: GoldSavingDashboard | null | undefined,
+  today: string,
+): DashboardAlert[] {
+  const alerts: DashboardAlert[] = []
+
+  const overdueDues = (ledger?.columns ?? [])
+    .filter((column) => column.balance > 0)
+    .map((column) => ({ column, oldest: oldestDueDate(column.entries ?? []) }))
+    .filter((row) => row.oldest !== null && daysBetween(row.oldest, today) > DUE_OVERDUE_DAYS)
+    .sort((a, b) => b.column.balance - a.column.balance)
+  if (overdueDues.length > 0) {
+    const count = overdueDues.length
+    alerts.push({
+      id: 'dues-overdue',
+      tone: 'danger',
+      title: `${count} due${count === 1 ? '' : 's'} over ${DUE_OVERDUE_DAYS} days`,
+      detail: `${overdueDues[0].column.customerName} · ${formatCurrency(overdueDues[0].column.balance)}`,
+      to: '/dues',
+    })
+  }
+
+  const flagged = (reconciliation ?? []).filter((row) => row.flagged)
+  if (flagged.length > 0) {
+    alerts.push({
+      id: 'stock-reconciliation',
+      tone: 'danger',
+      title:
+        flagged.length === 1
+          ? '1 stock category does not reconcile'
+          : `${flagged.length} stock categories do not reconcile`,
+      detail: flagged
+        .slice(0, 3)
+        .map((row) => `${row.metal} · ${row.category}`)
+        .join(', '),
+      to: '/inventory/stock',
+    })
+  }
+
+  if (goldSavings) {
+    if (goldSavings.overdueInstallments > 0) {
+      const count = goldSavings.overdueInstallments
+      alerts.push({
+        id: 'gs-overdue',
+        tone: 'danger',
+        title: `${count} Gold Savings installment${count === 1 ? '' : 's'} overdue`,
+        detail: 'Collect overdue installments',
+        to: '/gold-savings/overdue',
+      })
+    }
+    if (goldSavings.upcomingMaturities > 0) {
+      const count = goldSavings.upcomingMaturities
+      alerts.push({
+        id: 'gs-maturity',
+        tone: 'info',
+        title: `${count} Gold Savings maturit${count === 1 ? 'y' : 'ies'} upcoming`,
+        detail: 'Review the maturity plan',
+        to: '/gold-savings/maturity',
+      })
+    }
+  }
+
+  return alerts
+}
+
 export function computeDashboardStats(
   invoices: Invoice[] | null | undefined,
   ledger: DuesLedger | null | undefined,
   goldStock: ItemStockRow[] | null | undefined,
   silverStock: ItemStockRow[] | null | undefined,
   today: string,
-  options: DashboardStatsOptions = {}
+  options: DashboardStatsOptions = {},
+  oldGoldStats: OldGoldTodayStats | null | undefined = null,
 ): DashboardStats {
   const invoiceList = invoices ?? []
   const period = options.period ?? 'today'
@@ -445,6 +546,7 @@ export function computeDashboardStats(
     },
     dueCollections,
     outstandingCustomerCount,
+    oldGoldToday: oldGoldStats ?? EMPTY_OLD_GOLD_TODAY,
   }
 }
 
@@ -456,6 +558,7 @@ export function applyInvoiceStats(
   silverStock: ItemStockRow[] | null | undefined,
   today: string,
   options: DashboardStatsOptions = {},
+  oldGoldStats: OldGoldTodayStats | null | undefined = null,
 ): DashboardStats {
   const period = options.period ?? 'today'
   const range = resolvePeriodRange(period, today, options.customFrom, options.customTo)
@@ -464,6 +567,13 @@ export function applyInvoiceStats(
   const byKey = new Map((invoiceStats.chart ?? []).map((row) => [row.key, row.total]))
   for (const bucket of chartBuckets) {
     bucket.total = byKey.get(bucket.key) ?? 0
+  }
+  const collectionBuckets = buildChartBuckets(period, range, granularity, today)
+  const collectionsByKey = new Map(
+    (invoiceStats.collectionsChart ?? []).map((row) => [row.key, row.total]),
+  )
+  for (const bucket of collectionBuckets) {
+    bucket.total = collectionsByKey.get(bucket.key) ?? 0
   }
   const { dueCollections, outstandingCustomerCount } = computeDueCollections(ledger, today)
 
@@ -477,6 +587,7 @@ export function applyInvoiceStats(
     recentBills: (recentBills ?? []).slice(0, RECENT_BILLS_LIMIT),
     salesOverview: {
       hourlyTotals: chartBuckets.map((bucket) => bucket.total),
+      collectionTotals: collectionBuckets.map((bucket) => bucket.total),
       chartBuckets,
       chartGranularity: granularity,
       billsGenerated: invoiceStats.billsGenerated ?? 0,
@@ -493,5 +604,6 @@ export function applyInvoiceStats(
     },
     dueCollections,
     outstandingCustomerCount,
+    oldGoldToday: oldGoldStats ?? EMPTY_OLD_GOLD_TODAY,
   }
 }

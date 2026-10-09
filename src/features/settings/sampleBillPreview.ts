@@ -13,6 +13,8 @@ export const SAMPLE_CASH_BILL: CashBillData = {
   discountBreakdown: [{ label: "Discount", amount: 250 }],
   oldGoldTotal: 0,
   oldGoldLines: [],
+  schemeCreditTotal: 0,
+  schemeCreditLines: [],
   roundOff: 0,
   amountPayable: 42250,
   amountPaid: 40000,
@@ -22,6 +24,7 @@ export const SAMPLE_CASH_BILL: CashBillData = {
   paymentMode: "cash",
   balanceDue: 2250,
   payments: [],
+  watermark: null,
   lines: [
     {
       sno: 1,
@@ -71,6 +74,8 @@ export const SAMPLE_TAX_INVOICE: TaxInvoiceData = {
   total: 42500,
   oldGoldTotal: 0,
   oldGoldLines: [],
+  schemeCreditTotal: 0,
+  schemeCreditLines: [],
   roundOff: 0,
   amountPayable: 42500,
   amountPaid: 42500,
@@ -80,6 +85,7 @@ export const SAMPLE_TAX_INVOICE: TaxInvoiceData = {
   paymentMode: "cash",
   balanceDue: 0,
   payments: [],
+  watermark: null,
   lines: [
     {
       particulars: "Gold Chain",
@@ -107,7 +113,7 @@ export const SAMPLE_ADAGU_PLEDGE: Pledge = {
   customerPhone: "9876543210",
   customerAddress: "Salem, Tamil Nadu",
   guardianName: "Kumar",
-  receiptNo: "AD-2026-0001",
+  receiptNo: "ADG0001",
   pledgeDate: "2026-09-25",
   pledgeType: "GOLD JEWELLERY",
   assessedValue: 50000,
@@ -119,6 +125,8 @@ export const SAMPLE_ADAGU_PLEDGE: Pledge = {
   redeemedDate: null,
   amountCollected: 0,
   notes: "",
+  renewedFromId: null,
+  renewedToId: null,
   createdAt: "2026-09-25T10:30:00.000Z",
   items: [
     {
@@ -132,6 +140,8 @@ export const SAMPLE_ADAGU_PLEDGE: Pledge = {
       stoneWeight: 0.1,
       netWeight: 8.15,
       pieces: 1,
+      ratePerGram: 6000,
+      itemValue: 48900,
     },
     {
       id: 2,
@@ -144,7 +154,11 @@ export const SAMPLE_ADAGU_PLEDGE: Pledge = {
       stoneWeight: 0.05,
       netWeight: 2.05,
       pieces: 1,
+      ratePerGram: 6000,
+      itemValue: 12300,
     },
   ],
   topups: [],
+  payments: [],
+  photos: [],
 };

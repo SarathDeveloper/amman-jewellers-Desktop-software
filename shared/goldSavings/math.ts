@@ -61,6 +61,31 @@ export function addCalendarMonths(isoDate: string, months: number): string {
   return `${y}-${m}-${d}`
 }
 
+const MS_PER_DAY = 86_400_000
+
+/**
+ * Late fee for a payment, counted in calendar days after the due date and the
+ * scheme grace period. `fixed` charges once, `per_day` multiplies the value by
+ * the late days. Never negative; a payment inside the grace window is free.
+ */
+export function computeLateFee(input: {
+  dueDate: string
+  paymentDate: string
+  graceDays: number
+  type: string
+  value: number
+}): number {
+  if (input.type === 'none' || input.value <= 0) return 0
+  const due = Date.parse(`${input.dueDate}T00:00:00Z`)
+  const paid = Date.parse(`${input.paymentDate}T00:00:00Z`)
+  if (Number.isNaN(due) || Number.isNaN(paid)) return 0
+  const rawDays = Math.floor((paid - due) / MS_PER_DAY)
+  const daysLate = rawDays - Math.max(0, input.graceDays)
+  if (daysLate <= 0) return 0
+  if (input.type === 'fixed') return roundMoney(input.value)
+  return roundMoney(input.value * daysLate)
+}
+
 export function rateForPurity(
   rates: { gold22k: number; gold24k: number; gold18k: number },
   purity: string,

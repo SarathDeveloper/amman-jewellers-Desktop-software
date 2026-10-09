@@ -19,6 +19,7 @@ function rowValues(row: OldGoldEditorRow) {
     netWeight,
     ratePerGram: numericFieldToNumber(row.ratePerGram),
     deductionPct: numericFieldToNumber(row.deductionPct),
+    touchPct: numericFieldToNumber(row.touchPct),
   })
 }
 
@@ -103,7 +104,12 @@ export function OldGoldEditor({
                 <th className="old-gold-col-purity" title="Purity">Purity</th>
                 <th className="old-gold-col-num" title="Rate per gram">Rate/g</th>
                 <th className="old-gold-col-num" title="Deduction %">Ded %</th>
-                {isPurchase ? null : (
+                {isPurchase ? (
+                  <>
+                    <th className="old-gold-col-num" title="Touch / assay %">Touch %</th>
+                    <th className="old-gold-col-num" title="Fine weight">Fine wt</th>
+                  </>
+                ) : (
                   <>
                     <th className="old-gold-col-amount" title="Gross value">G.Val</th>
                     <th className="old-gold-col-amount" title="Deduction">Ded</th>
@@ -192,7 +198,22 @@ export function OldGoldEditor({
                         onChange={(event) => update(row.key, { deductionPct: parseNumericField(event.target.value) })}
                       />
                     </td>
-                    {isPurchase ? null : (
+                    {isPurchase ? (
+                      <>
+                        <td className="old-gold-col-num" data-label="Touch %">
+                          <input
+                            type="number"
+                            step="0.01"
+                            disabled={disabled}
+                            value={row.touchPct}
+                            onChange={(event) => update(row.key, { touchPct: parseNumericField(event.target.value) })}
+                          />
+                        </td>
+                        <td className="old-gold-col-num num" data-label="Fine weight">
+                          {values.fineWeight ? values.fineWeight.toFixed(3) : ''}
+                        </td>
+                      </>
+                    ) : (
                       <>
                         <td className="old-gold-col-amount num" data-label="Gross value">{formatCurrency(values.grossValue)}</td>
                         <td className="old-gold-col-amount num" data-label="Deduction">{formatCurrency(values.deductionAmount)}</td>

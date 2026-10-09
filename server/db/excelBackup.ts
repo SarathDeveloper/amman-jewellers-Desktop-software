@@ -55,10 +55,49 @@ export function writeExcelBackupFromDatabase(db: Database.Database, destinationP
   writeXlsxFile(destinationPath, buildExcelSheets(db))
 }
 
-export function writeExcelBackupFromSqliteFile(dbPath: string, destinationPath = excelPathFor(dbPath)): string {
+const yieldToEventLoop = (): Promise<void> =>
+  new Promise((resolve) => {
+    setImmediate(resolve)
+  })
+
+/**
+ * Same sheets as {@link buildExcelSheets}, but yields to the event loop between
+ * tables. Reading every table is CPU work in the same process that serves the
+ * UI, so on a large database the plain version can freeze the window.
+ */
+export async function buildExcelSheetsYielding(db: Database.Database): Promise<ExcelSheet[]> {
+  const tables = listUserTables(db)
+  const sheets: ExcelSheet[] = [
+    {
+      name: '_tables',
+      columns: ['table', 'rows'],
+      rows: tables.map((table) => {
+        const count = db.prepare(`SELECT COUNT(*) AS n FROM ${quoteIdent(table)}`).get() as { n: number }
+        return [table, count.n]
+      }),
+    },
+  ]
+  for (const table of tables) {
+    sheets.push(readTableSheet(db, table))
+    await yieldToEventLoop()
+  }
+  return sheets
+}
+
+export async function writeExcelBackupFromDatabaseYielding(
+  db: Database.Database,
+  destinationPath: string,
+): Promise<void> {
+  writeXlsxFile(destinationPath, await buildExcelSheetsYielding(db))
+}
+
+export async function writeExcelBackupFromSqliteFile(
+  dbPath: string,
+  destinationPath = excelPathFor(dbPath),
+): Promise<string> {
   const db = new Database(dbPath, sqliteNativeOptions({ readonly: true, fileMustExist: true }))
   try {
-    writeExcelBackupFromDatabase(db, destinationPath)
+    await writeExcelBackupFromDatabaseYielding(db, destinationPath)
   } finally {
     db.close()
   }

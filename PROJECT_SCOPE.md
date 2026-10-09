@@ -171,7 +171,7 @@ Daily weight ledger for gold and silver by stock category, backed by a single `s
 
 ### Note on exchange
 
-- **Old-gold exchange is not tracked in weight stock.** Exchange lines on a bill still affect the bill amount (₹ credit) but do **not** add to gold/silver weight stock. Separately purchased old gold is tracked under Inventory → Old Gold Purchase.
+- **Old-gold exchange is not tracked in weight stock.** Exchange lines on a bill still affect the bill amount (₹ credit) but do **not** add to gold/silver weight stock. Separately purchased old gold is tracked under Inventory → Old Gold Purchase, with a running balance that payouts and bill applications draw down, and an Old Gold Lot → refiner batch flow for melting and settlement.
 
 ---
 
@@ -206,13 +206,26 @@ Buying old gold from a customer as a standalone document (separate from exchange
 ### Capabilities
 
 - List, create, edit, finalize, delete
-- Lines with description, gross / stone / net weight, purity, rate per gram, deduction %
-- Per-line gross value, deduction amount, and final value, plus a document total
+- Lines with description, gross / stone / net weight, purity, rate per gram, deduction %, and an optional **touch %**
+- Per-line gross value, deduction amount, fine weight, and final value, plus a document total
+- Purity uses the **old gold buying rate** from Metal Rates, falling back to the selling rate when unset
 - Optional customer link, name, phone, and notes
-- **Draft** is editable; **final** is read-only
-- Purchase number: `OGP-{YYYY}-{####}`
-- A finalized purchase can be **linked to a sale bill** as a ₹ credit (via the bill's old-gold linker)
-- Used by the Old Gold Purchase tab under Inventory (`inward` permission)
+- **Draft** is editable; **final** is read-only; **cancelled** keeps the number but is void
+- Purchase number: `OGP-{YYYY}-{####}`, taken from the purchase date's year
+- **Running balance.** A finalized purchase is worth `totalAmount`; cash / UPI / bank **payouts** and **applications to sale bills** both draw it down. The balance is computed on read as `total - active payouts - applied`, so it is never stale.
+- A finalized purchase can be **partly applied to one or more sale bills** as a ₹ credit (via the bill's old-gold linker). The bill applies only what it needs; the remainder stays as balance for a later payout.
+- Payouts are dated, always ≤ the balance, and can be voided with a reason; bill cancellation restores the linked amount.
+- Cancel is blocked while the purchase is applied to a bill, has an active payout, or has an item in a refiner batch
+- A printable **A4 purchase voucher** (shop header, customer KYC and ID, items, payouts, bills applied, signatures)
+- Purchases can be recorded inline from a sale bill and auto-linked
+- Used by the Old Gold Purchase tab under Inventory (`inward` or `billing` to create / finalize / pay out; `inward` to void, cancel or delete)
+
+### Old gold lot and refiner settlement
+
+- Every item of a finalized, non-cancelled purchase that is not claimed by a sale bill is in the **Old Gold Lot**, grouped by metal (Inventory → Old Gold Lot, `inward`).
+- Items are gathered into a **refiner batch** (`OGB-{YYYY}-{####}`) of a single metal and moved through **open → melted → sent → settled**; a batch can be cancelled before settlement, which releases its items back to the lot.
+- The batch records melt weight, sent weight, and the settlement: fine weight received, fine rate and cash received. **Gain / loss = cash received + fine weight received × fine rate − cost.**
+- Received fine weight is **settlement only** and never adds to the Gold & Silver weight stock; the lot is separate from `stock_movements`.
 
 ---
 
@@ -236,9 +249,12 @@ Customer master for billing and dues.
 | Address | Optional |
 | Guardian name | Optional |
 | GSTIN | Optional, for tax invoices |
-| Aadhaar | Optional, 12 digits |
+| Aadhaar | Optional, 12 digits (prints masked on pledges) |
 | PAN | Optional, format `AAAAA9999A` |
+| ID proof type | Optional: not recorded / Aadhaar / PAN / Voter ID / Driving Licence / Other |
 | Notes | Optional |
+
+Customers with an Aadhaar or PAN satisfy the Adagu *Require KYC* rule before a loan can be sanctioned.
 
 Note: the earlier system walk-in customer has been removed.
 
@@ -254,7 +270,7 @@ Create, edit, finalize, print, and export bills. Legacy `/invoices` routes redir
 |------|-----|
 | **Quotation** (cash bill, `cash_bill`) | Everyday counter bill without GST, prefix `CB-{YYYY}-{####}` |
 | **Tax invoice** | GST tax invoice, prefix `TI-{YYYY}-{####}` |
-| **Adagu (pledge)** | Pledge loan against gold, prefix `PG-{YYYY}-{####}` |
+| **Adagu (pledge)** | Pledge loan against gold, receipt `ADG0001`, `ADG0002`, … (four digits, wider past 9999) |
 
 The Billing landing page shows large mode tiles; the editor shows compact tabs. Switching modes with unsaved changes prompts to confirm.
 
@@ -329,7 +345,7 @@ Historical bills use a **user-entered** bill number and are saved as `final` + `
 - Preview and print via the browser print dialog
 - A5 / A4 / thermal 80mm layouts with print background
 - Save as PDF from the preview
-- Dedicated print routes: `/print/cash-bill/:id`, `/print/tax-invoice/:id`, `/print/pledge/:id`, `/print/pledge-release/:id`, `/print/metal-day/:date/:metal`, `/print/stock-closing/:date`, `/print/purchase/:id`, `/print/gs-receipt/:id`, `/print/gs-passbook/:id`, `/print/sample/:kind`, `/print/test/:role`
+- Dedicated print routes: `/print/cash-bill/:id`, `/print/tax-invoice/:id`, `/print/pledge/:id`, `/print/pledge-release/:id`, `/print/pledge-notice/:id`, `/print/metal-day/:date/:metal`, `/print/stock-closing/:date`, `/print/purchase/:id`, `/print/gs-receipt/:id`, `/print/gs-passbook/:id`, `/print/sample/:kind`, `/print/test/:role`
 - Print routes are served by a separate lightweight document (`print.html` → `src/print/`) instead of the application shell, so opening a preview loads only that route's own chunk — not the dashboard, auth, or shop-branding bundles
 - Labels are driven by **bill template** settings; shop identity prints on every template
 
@@ -341,23 +357,49 @@ Pledges are created from the Billing **Adagu** tab but tracked as their own docu
 
 ## 10. Pledges (Adagu)
 
-Loan against gold, with interest, top-ups, and repayment tracking.
+Loan against gold or silver, with period interest, top-ups, renewal, a real auction flow, KYC, photos, and reminders.
+
+### Interest (period engine)
+
+Interest is charged per 30-day period, not per day, by the pure engine in `shared/billing/pledgeLedger.ts`:
+
+- the first 30 days of a loan always cost one month, including a same-day charge (the minimum month applies from day 0, so a loan closed the same day still pays one month);
+- after that, part-periods of 1–15 days cost half a month and 16–29 days cost a full month;
+- the original loan and every top-up are separate **tranches**, each with its own "interest paid up to" date, so a top-up accrues its own minimum month from its own date;
+- payments are replayed in order, so the state can be rebuilt from the stored rows at any time.
+
+Each payment splits into interest and principal: it pays the accrued interest first (a **discount** is applied to interest first), and only the remainder reduces principal. Interest paid before its period completes is held as **interest credit**.
 
 ### Capabilities
 
 - Create a pledge for a customer with one or more pledged items (description, identification, metal, purity, gross/net weight, stones, pieces)
 - Loan amount, assessed value, interest %, repayment due date, charges, notes
-- **Sanction** (activate) a draft pledge; sanctioning creates the customer due
-- **Collect** partial payments; auto-redeems when the total due is reached
-- **Redeem** in full
-- **Forfeit** uncollected pledges
-- **Top-ups**: additional amounts against an active pledge with their own date, amount, interest, and note
-- Pledge number: `PG-{YYYY}-{####}`
-- Printable pledge receipt (`/print/pledge/:id`) and release receipt (`/print/pledge-release/:id`)
-- Status: `draft` → `active` → `redeemed` / `forfeited`
-- Adagu **LTV %** and **monthly interest %** defaults are configurable in Settings → Invoice Settings → Adagu Bill
+- **Assessed value** from the latest Rates (rate per gram for the item's metal and purity, with the item rate and value stored for audit), an editable override, a **max loan (LTV %)** line and a **Use max** helper
+- **Sanction** (activate) a draft pledge; sanctioning creates the customer due. It is rejected above the LTV max unless an admin sets the override, and rejected without a borrower Aadhaar or PAN when *Require KYC* is on
+- Sanctioned loans are **locked**: only drafts can be edited or deleted
+- **Collect** interest or part payments with a date and a mode (cash / UPI / card / bank transfer / transfer / auction)
+- **Redeem** with an amount collected, a **discount** that applies to interest first, and a mode; the payoff is `principal + interest − discount`
+- **Top-ups** (extra loan) are their own tranche with their own date, amount, rate, and note
+- **Renewal** (`/renew`) collects the interest due, moves the outstanding principal to a new linked ticket, and marks the old one `renewed`; both tickets link to each other
+- **Auction** flow: send an auction **notice** (date plus the shop notice period), print the notice letter, then record the auction with the buyer (`outside` or `shop`), the sale amount, a surplus to refund, or a shortfall kept as a due or written off. A shop buyback writes the pledged weights into weight stock as a `purchase` for the category chosen per item
+- **Payment history** in the dues drawer and the interest/principal/discount split on the release receipt
+- Pledge number: `ADG0001`, `ADG0002`, … (four digits, wider past 9999)
+- Printable pledge receipt (`/print/pledge/:id`), release receipt (`/print/pledge-release/:id`) and auction notice (`/print/pledge-notice/:id`)
+- Status: `draft` → `active` → `redeemed` / `forfeited` / `renewed`
+- **Photos**: item, borrower and ID-proof uploads (PNG/JPEG, 2 MB, never overwritten) shown in the editor, the dues drawer and the print; Aadhaar prints masked as `XXXX XXXX 1234`
+- **Reminders**: the Adagu Dues **Reminders** view lists loans whose interest is due within 3 days or overdue, loans maturing within 30 days, and loans eligible for an auction notice or auction; the WhatsApp button opens a `wa.me` link built from the reminder template through the API and logs the reminder
+- Adagu **LTV %**, **monthly interest %**, **auction notice period (days)**, **Require KYC** and the **WhatsApp reminder message** are configurable in Settings → Invoice Settings → Adagu Bill
 
-Note: pledge write endpoints are not currently wrapped in a single database transaction; a failure mid-write can leave a pledge partially updated.
+### Money ledger
+
+- `pledge_payments` is the single source of truth for pledge money (`kind`, `mode`, `amount`, `interest_part`, `principal_part`, `discount`, `note`); the linked `customer_dues` row carries the same amount
+- `recordPledgePayment` (`server/pledges/payments.ts`) is the only write path: it replays the engine, inserts both rows in one transaction, refreshes the `pledges.amount_collected` cache, and closes the loan when the principal reaches zero
+- A linked payment can only be deleted when it is the latest one; deleting it rebuilds the pledge state
+- The due row amount is `principal + interest charged − discount`, so an auctioned or discounted loan shows a zero balance
+
+### Adagu routes
+
+`GET /api/pledges` (list), `GET /next-receipt-no`, `GET /reminders`, `GET|POST /`, `PUT /:id`, `DELETE /:id` (draft only), `POST /:id/sanction`, `/:id/collect`, `/:id/redeem`, `/:id/topup`, `/:id/renew`, `GET /:id/payments`, `GET /:id/payoff?date=`, `GET|POST /:id/photos`, `DELETE /:id/photos/:photoId`, `GET /:id/auction`, `POST /:id/auction-notice`, `POST /:id/auction`, `POST /:id/auction-surplus-paid`, and `POST /api/system/open-whatsapp` (validates a `https://wa.me/…` link, opens it in the default browser, and logs a reminder).
 
 ---
 
@@ -401,6 +443,14 @@ Customer-wise outstanding ledger with payments.
 - Edit/remove rules: invoice-linked due lines are protected; payments stay in sync with invoice `amount_paid` / `balance_due`
 - Pledge collections and redemptions also sync here
 
+### Adagu dues tab
+
+- Adagu tickets with principal, monthly interest, next due, days active, total due and remaining
+- Filters: all / interest due / active / notice sent / auctioned / reminders / closed
+- Quick actions on the detail drawer: open loan, collect interest, extra loan, redeem, renew, auction notice, print notice, record auction, release receipt
+- The drawer shows the due summary (interest paid up to, next due), payment history with the interest/principal/discount split, top-ups, and the pledge/Borrower/ID-proof photos
+- The **Reminders** view lists loans needing a nudge with the reason, due date, interest due and last reminded time, plus WhatsApp and collect-interest buttons
+
 ### Entry details
 
 - Date, kind (due / payment), amount, note
@@ -423,7 +473,7 @@ A standalone Reports module with grouped, parameterised reports.
 
 Sales, Purchase, Stock, Customer, Payment, Gold & Silver, Adagu / Pledge, Tax, Business Summary.
 
-Examples: Daily Sales, Date-wise Sales, Cash / Tax Invoice Sales, Product-wise and Customer-wise Sales, Purchase Register, Supplier-wise Purchases, Current / Gold / Silver / Product Stock, Stock Movement, Stock Inward, Stock Outward, Low Stock, Customer Transactions / Outstanding / Purchase History, Daily Collection, Cash / UPI / Card Collection, Credit Outstanding, Payment History, Gold / Silver Stock Summary, Purity-wise Stock, Metal-wise Inward / Outward, Weight Movement, Active / Closed / Due Pledges, Customer-wise Pledges, Pledge Transactions, GST Sales, GST Purchase, Tax Summary, Invoice Register, Sales Summary, Purchase Summary, Outstanding Summary, Daily Business Summary.
+Examples: Daily Sales, Date-wise Sales, Cash / Tax Invoice Sales, Product-wise and Customer-wise Sales, Purchase Register, Supplier-wise Purchases, Current / Gold / Silver / Product Stock, Stock Movement, Stock Inward, Stock Outward, Low Stock, Customer Transactions / Outstanding / Purchase History, Daily Collection, Cash / UPI / Card Collection, Credit Outstanding, Payment History, Gold / Silver Stock Summary, Purity-wise Stock, Metal-wise Inward / Outward, Weight Movement, Active / Closed / Due Pledges, Customer-wise Pledges, Pledge Transactions, Adagu Interest Income, Adagu Collections by Mode, Adagu Discounts, Adagu Auctions, GST Sales, GST Purchase, Tax Summary, Invoice Register, Sales Summary, Purchase Summary, Outstanding Summary, Daily Business Summary.
 
 A few reports are intentionally unavailable and show the reason, e.g. Adagu Sales (pledges are not sales), Sales Return and Purchase Return (no such documents), Variant/Size Stock, and Gross Profit (sold lines do not store purchase cost).
 
@@ -453,7 +503,7 @@ Tabs: **Invoice Settings | Printers | Backup | Data**.
 - **Proprietor lines** (1–3) and a **promo line**
 - **Gold Savings Passbook** images: banner and side image
 - **Bill template** sections for Cash Bill / Tax Invoice / Adagu with Test Print preview and customizable labels
-- **Adagu POS settings**: LTV % of assessed value and monthly interest %
+- **Adagu POS settings**: LTV % of assessed value, monthly interest %, auction notice period (days), Require KYC, and the WhatsApp reminder message template
 - **GST tax summary** table with CSV export
 
 ### Printers
@@ -465,7 +515,7 @@ Tabs: **Invoice Settings | Printers | Backup | Data**.
 
 - **Back up now**, **Export copy** (`.db`), **Export Excel** (every table), **Restore from file**
 - **Automatic backup**: daily or weekly at a chosen time; catches up on next launch if the app was closed through the slot
-- **Off-machine copy**: after each local backup the newest `.db` and its Excel workbook are copied to a chosen folder (e.g. a USB drive) and the `.db` copy is opened to verify it can restore
+- **Off-machine copy**: after each local backup the newest `.db`, its Excel workbook and the **uploads folder** (shop images, passbook images, pledge photos) are copied to a chosen folder (e.g. a USB drive) and the `.db` copy is opened to verify it can restore; a restore from that folder puts the uploads back
 - **Saved backups** list with restore / delete; the last **14** automatic copies are kept, manual backups are never auto-deleted
 - Health indicator shows how current the backup is
 
@@ -487,9 +537,9 @@ Tabs: **Invoice Settings | Printers | Backup | Data**.
 |------|------------|
 | **Local-first** | All data stored in a server-side SQLite file; no third-party cloud required |
 | **Desktop** | Tauri 2 shell starts the Node sidecar, injects `desktopAPI`, and stops the sidecar on exit; a WebView2 renderer crash or blank window is caught, logged, and reported with a `JTP-ERR-…` reference ID |
-| **Database** | SQLite (`jeweltrackerpro.db`); WAL; foreign keys; versioned migrations `001`–`045` |
+| **Database** | SQLite (`jeweltrackerpro.db`); WAL; foreign keys; versioned migrations `001`–`060` |
 | **Unified stock ledger** | `stock_movements` is the single source of truth for opening, purchase, and sale |
-| **Money ledger** | `customer_dues` holds due and payment rows synced from invoices, pledges, and manual entries |
+| **Money ledger** | `customer_dues` holds due and payment rows synced from invoices, pledges, and manual entries; `pledge_payments` holds every Adagu payment with its interest/principal/discount split |
 | **Stack** | Express, Vite, React 19, TypeScript, better-sqlite3, Zod validation on REST, react-router (browser) |
 | **Security** | Session auth, role-based access, feature permissions, validated Express handlers |
 | **Printing** | Browser print dialog; A5 / A4 / thermal; PDF export built from the preview; print routes render in a dedicated lightweight `print.html` document, not the app shell |
@@ -520,20 +570,20 @@ Tabs: **Invoice Settings | Printers | Backup | Data**.
 |--------|---------------------|
 | **Auth/Users** | Login, change password, admin/staff roles, per-feature permissions, users management |
 | **Dashboard** | Period-based sales/collections, adaptive sales chart, outstanding, drafts, metal cards, due collections, recent bills |
-| **Inventory** | Hub with top tabs for products, gold & silver weight stock, purchase (inwards), old gold purchase, and suppliers |
+| **Inventory** | Hub with top tabs for products, gold & silver weight stock, purchase (inwards), old gold purchase, old gold lot, and suppliers |
 | **Products** | CRUD, variants, HUIDs, search/filters, piece stock badges, metal/purity/weights/making; opening movement on create |
 | **Gold & Silver** | Daily opening/inward/sales/closing by category; editable categories; auto sales from bills; overrides; history; reconciliation; adjustments; day close/reopen |
 | **Inward & Suppliers** | Draft/final inwards; finished + raw metal lines; HUIDs; supplier CRUD; ledger purchase movements |
-| **Old Gold Purchase** | Draft/final old-gold purchase documents; per-line weights, purity, rate, deduction; printable; linkable as ₹ credit on a bill |
-| **Customers** | CRUD, search; GSTIN/Aadhaar/PAN; delete guards; purchase & due history |
+| **Old Gold Purchase** | Draft/final/cancelled old-gold purchase documents; per-line weights, purity, rate, deduction, touch % and fine weight; running balance with payouts and partial bill application; printable voucher; inline purchase from a bill; Old Gold Lot → refiner batch melt/send/settle |
+| **Customers** | CRUD, search; GSTIN/Aadhaar/PAN/ID-proof type; delete guards; purchase & due history |
 | **Billing** | Draft/estimate/final; quotation, tax invoice, Adagu; GST and round-off; mixed payments; print/PDF; stock deduction; record old/historical bills; exchange and linked old-gold credit |
-| **Pledges (Adagu)** | Create, sanction, collect, redeem, forfeit, top-up; interest and LTV settings; printable receipt and release |
+| **Pledges (Adagu)** | Create, sanction, collect, redeem, renew, top-up, auction notice and settlement; period interest ledger with discounts and modes; assessed value and LTV; KYC, photos and WhatsApp reminders; printable receipt, release and notice |
 | **Gold Savings** | Schemes, enrollment, accounts, installment collections (idempotent), reversals, ledger/passbook, maturity/redemption, overdue aging, audit, reports, prints |
 | **Dues** | Table ledger, filters, auto from bills, record/mark paid, balances |
 | **Reports** | Grouped reports across sales, purchase, stock, customer, payment, metal, pledge, tax, and business summary |
-| **Rates** | Daily gold/silver rates (22K/24K/20K/18K, silver fine/925) with history |
+| **Rates** | Daily gold/silver selling rates (22K/24K/20K/18K, silver fine/925) and old-gold buying rates, with history |
 | **Settings** | Shop identity and images, bill templates, Adagu POS defaults, printers, backup/restore/offsite/Excel, GST summary, data info |
 
 ---
 
-*This document describes the features and functionalities implemented in the JewelTrackerPro fullstack desktop application as of the current codebase (version 1.0.0, migrations through 045).*
+*This document describes the features and functionalities implemented in the JewelTrackerPro fullstack desktop application as of the current codebase (version 1.0.0, migrations through 057).*

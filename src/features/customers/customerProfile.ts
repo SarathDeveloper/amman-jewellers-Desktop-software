@@ -1,4 +1,5 @@
-import type { CustomerDuesColumn, DueEntry, Invoice } from '@shared/types'
+import { roundMoney } from '@shared/billing/pricing'
+import type { CustomerDuesColumn, DueEntry, Invoice, OldGoldPurchase } from '@shared/types'
 
 export interface CustomerPurchaseRow {
   invoiceId: number
@@ -23,6 +24,17 @@ export interface CustomerDueRow {
   invoiceNo: string | null
 }
 
+export interface CustomerOldGoldRow {
+  id: number
+  purchaseNo: string
+  date: string
+  netWeight: number
+  amount: number
+  paidOut: number
+  balance: number
+  status: OldGoldPurchase['status']
+}
+
 export interface CustomerProfileSummary {
   totalPurchases: number
   totalPaid: number
@@ -30,6 +42,10 @@ export interface CustomerProfileSummary {
   purchases: CustomerPurchaseRow[]
   payments: CustomerPaymentRow[]
   dues: CustomerDueRow[]
+  oldGold: CustomerOldGoldRow[]
+  oldGoldAmount: number
+  oldGoldNetWeight: number
+  oldGoldOpenBalance: number
 }
 
 function isFinalPurchase(invoice: Invoice): boolean {
@@ -96,16 +112,37 @@ function dueRows(entries: DueEntry[]): CustomerDueRow[] {
     .sort((a, b) => byNewestDateThenId(a, b))
 }
 
+function oldGoldRows(customerId: number, purchases: OldGoldPurchase[]): CustomerOldGoldRow[] {
+  return (purchases ?? [])
+    .filter((purchase) => purchase.customerId === customerId && purchase.status !== 'draft')
+    .map((purchase) => ({
+      id: purchase.id,
+      purchaseNo: purchase.purchaseNo,
+      date: purchase.purchaseDate,
+      netWeight: purchase.items.reduce((sum, item) => sum + item.netWeight, 0),
+      amount: purchase.totalAmount,
+      paidOut: purchase.paidOut,
+      balance: purchase.balance,
+      status: purchase.status,
+    }))
+    .sort(byNewestDateThenId)
+}
+
 export function buildCustomerProfile(
   customerId: number,
   invoices: Invoice[],
   column?: CustomerDuesColumn,
+  oldGoldPurchases: OldGoldPurchase[] = [],
 ): CustomerProfileSummary {
   const customerInvoices = (invoices ?? []).filter((invoice) => invoice.customerId === customerId)
   const purchases = purchaseRows(customerInvoices)
   const entries = column?.entries ?? []
   const payments = paymentRows(customerInvoices, entries)
   const dues = dueRows(entries)
+  const oldGold = oldGoldRows(customerId, oldGoldPurchases)
+  const oldGoldAmount = roundMoney(oldGold.reduce((sum, row) => sum + row.amount, 0))
+  const oldGoldNetWeight = Math.round(oldGold.reduce((sum, row) => sum + row.netWeight, 0) * 1000) / 1000
+  const oldGoldOpenBalance = roundMoney(oldGold.reduce((sum, row) => sum + row.balance, 0))
 
   const totalPurchases = purchases.reduce((sum, row) => sum + row.total, 0)
   const invoicePaid = purchases.reduce((sum, row) => sum + row.amountPaid, 0)
@@ -124,5 +161,9 @@ export function buildCustomerProfile(
     purchases,
     payments,
     dues,
+    oldGold,
+    oldGoldAmount,
+    oldGoldNetWeight,
+    oldGoldOpenBalance,
   }
 }

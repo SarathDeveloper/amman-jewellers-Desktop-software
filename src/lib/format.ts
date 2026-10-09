@@ -64,6 +64,47 @@ export function formatDisplayDateTime(value: string | null | undefined): string 
   return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()} ${formatDisplayTime(date)}`
 }
 
+/** Display a stored `YYYY-MM` month as `Sep 2026`. */
+export function formatDisplayMonth(value: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(value.trim())
+  if (!match) return value.trim() || '—'
+  const month = Number(match[2])
+  if (month < 1 || month > 12) return value.trim()
+  return `${MONTHS[month - 1]} ${match[1]}`
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+
+/** Chart axis label like `22 Sep` — day and 3-letter month, no year. */
+export function formatDisplayDayMonth(value: string): string {
+  const display = formatDisplayDate(value)
+  const parts = display.split(' ')
+  return parts.length >= 3 ? `${parts[0]} ${parts[1]}` : display
+}
+
+/** Weekday name from an ISO date: `Mon`. */
+export function formatDisplayWeekday(isoDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim().slice(0, 10))
+  if (!match) return isoDate.trim() || '—'
+  const weekDay = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))).getUTCDay()
+  return WEEKDAYS[weekDay]
+}
+
+/** Chart axis clock label: `9 AM`, `12 PM`, `3 PM`. */
+export function formatDisplayHour(hour24: number): string {
+  const ampm = hour24 >= 12 ? 'PM' : 'AM'
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12
+  return `${hour12} ${ampm}`
+}
+
+/** Compact chart month label: `Sep 2026`, or `Sep 26` when `shortYear`. */
+export function formatDisplayMonthShort(value: string, shortYear = false): string {
+  const display = formatDisplayMonth(value)
+  if (!shortYear) return display
+  const parts = display.split(' ')
+  return parts.length === 2 ? `${parts[0]} ${parts[1].slice(2)}` : display
+}
+
 export function formatPaymentMode(mode: string): string {
   if (mode === 'upi') return 'UPI'
   return mode.charAt(0).toUpperCase() + mode.slice(1)

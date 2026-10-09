@@ -1,19 +1,17 @@
 import { amountInWords } from "@shared/billing/amountInWords";
-import type { Customer, Invoice, MetalRates } from "@shared/types";
-import { formatDisplayDate } from "../../lib/format";
+import { invoicePrintWatermark } from "@shared/billing/invoiceNumber";
+import type { BillCustomerInfo, Invoice, MetalRates } from "@shared/types";
+import { formatDisplayClock, formatDisplayDate } from "../../lib/format";
 import type { BillDiscountLine } from "./cashBillTypes";
 import { oldGoldPrintLines } from "./oldGoldPrintLines";
+import { schemeCreditPrintLines } from "./schemeCreditPrintLines";
 import type { TaxInvoiceData } from "./taxInvoiceTypes";
 
 function formatBillDateTime(invoiceDate: string, createdAt: string): string {
   const datePart = formatDisplayDate(invoiceDate);
   const timeMatch = /T(\d{2}):(\d{2})/.exec(createdAt);
   if (timeMatch) {
-    const hour = Number.parseInt(timeMatch[1], 10);
-    const minute = timeMatch[2];
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const hour12 = hour % 12 === 0 ? 12 : hour % 12;
-    return `${datePart} ${hour12}:${minute} ${ampm}`;
+    return `${datePart} ${formatDisplayClock(`${timeMatch[1]}:${timeMatch[2]}`)}`;
   }
 
   return datePart;
@@ -37,7 +35,7 @@ function discountBreakdown(invoice: Invoice): BillDiscountLine[] {
 
 export function buildTaxInvoiceData(
   invoice: Invoice,
-  customer: Customer,
+  customer: BillCustomerInfo,
   rates?: MetalRates | null,
 ): TaxInvoiceData {
   const sourceItems =
@@ -61,6 +59,8 @@ export function buildTaxInvoiceData(
               hsnCode: "7113",
               lineKind: "sale" as const,
               description: "",
+              purity: "",
+              huid: "",
             },
           ];
 
@@ -74,8 +74,12 @@ export function buildTaxInvoiceData(
     const otherFromStone = stoneWeight * (item.stoneRate || 0);
     const wastagePct = item.wastagePct || 0;
     const labour = item.makingCharges * qty;
+    const huid = (item.huid ?? "").trim().toUpperCase();
+    const purity = (item.purity ?? "").trim();
+    const baseParticulars = qty > 1 ? `${name} × ${qty}` : name;
+    const withPurity = purity ? `${baseParticulars} (${purity})` : baseParticulars;
     return {
-      particulars: qty > 1 ? `${name} × ${qty}` : name,
+      particulars: huid ? `${withPurity} · HUID ${huid}` : withPurity,
       qty,
       // Tot Wgt on form is net (priced metal) weight; keep print in sync.
       totalWeight: netWeight > 0 ? netWeight : grossWeight > 0 ? grossWeight : netWeight + stoneWeight,
@@ -94,6 +98,7 @@ export function buildTaxInvoiceData(
   });
 
   const oldGoldSource = oldGoldPrintLines(invoice);
+  const schemeCreditSource = schemeCreditPrintLines(invoice);
 
   const itemCount = sourceItems.reduce((sum, item) => sum + item.qty, 0);
   const oldGoldTotal = oldGoldSource.reduce(
@@ -120,6 +125,8 @@ export function buildTaxInvoiceData(
     total: invoice.total,
     oldGoldTotal,
     oldGoldLines: oldGoldSource,
+    schemeCreditTotal: schemeCreditSource.reduce((sum, item) => sum + item.amount, 0),
+    schemeCreditLines: schemeCreditSource,
     roundOff: invoice.roundOff ?? 0,
     amountPayable,
     amountPaid: invoice.amountPaid,
@@ -134,5 +141,6 @@ export function buildTaxInvoiceData(
       amount: payment.amount,
       note: payment.note,
     })),
+    watermark: invoicePrintWatermark(invoice),
   };
 }

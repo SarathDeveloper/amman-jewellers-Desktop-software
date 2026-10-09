@@ -1,0 +1,123 @@
+.gs-call-list-root {
+  --gs-magenta: #9b1b6f;
+  --gs-gold: #c9a227;
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 148mm;
+  margin: 0 auto;
+  padding: 0;
+  color: #111;
+  background: #fff;
+  font-family: Arial, "Noto Sans Tamil", sans-serif;
+  font-size: 9.5pt;
+}
+.gs-call-list-root.paper-a5 { width: 148mm; font-size: 8pt; }
+.gs-call-list-root *,
+.gs-call-list-root *::before,
+.gs-call-list-root *::after { box-sizing: border-box; }
+
+.gs-call-list {
+  padding: 8mm 8mm 10mm;
+  min-height: 148mm;
+}
+
+.gs-call-list-header {
+  border-bottom: 2pt solid var(--gs-gold);
+  padding-bottom: 3mm;
+  margin-bottom: 4mm;
+}
+.gs-call-list-brand {
+  display: grid;
+  grid-template-columns: 16mm 1fr;
+  gap: 4mm;
+  align-items: start;
+}
+.gs-call-list-logo { width: 14mm; height: 14mm; object-fit: contain; }
+.gs-call-list h1 {
+  margin: 0 0 1mm;
+  color: var(--gs-magenta);
+  font-size: 15pt;
+  letter-spacing: 0.04em;
+}
+.gs-call-list-brand p { margin: 0; font-size: 8pt; }
+.gs-call-list h2 {
+  margin: 3mm 0 1mm;
+  text-align: center;
+  color: #111;
+  font-size: 11pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.gs-call-list-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 4mm;
+  font-size: 8pt;
+  color: #555;
+}
+
+.gs-call-list-summary {
+  display: flex;
+  gap: 8mm;
+  margin-bottom: 3mm;
+  font-size: 8.5pt;
+  color: #333;
+}
+.gs-call-list-summary strong { color: #111; }
+
+.gs-call-list-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.gs-call-list-table th,
+.gs-call-list-table td {
+  border: 0.4pt solid #b9a97f;
+  padding: 1.3mm 1.2mm;
+  text-align: left;
+  vertical-align: top;
+  font-size: 8.5pt;
+}
+.gs-call-list-table thead th {
+  background: #f4ecd8;
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.gs-call-list-table .num { text-align: right; white-space: nowrap; }
+.gs-call-list-table tfoot th {
+  background: #faf6ea;
+  text-align: right;
+}
+.gs-call-list-notes { min-width: 42mm; }
+
+.gs-call-list-empty {
+  padding: 12mm 0;
+  text-align: center;
+  color: #555;
+}
+
+.gs-call-list-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10mm;
+  font-size: 8pt;
+  color: #333;
+}
+
+.gs-call-list-status { padding: 1rem; }
+.gs-call-list-error { color: #b91c1c; }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 6mm;
+  }
+  .gs-call-list-root {
+    width: auto;
+    min-height: 0;
+  }
+  .gs-call-list { min-height: 0; padding: 0; }
+  .gs-call-list-status { display: none; }
+  .gs-call-list-table { page-break-inside: auto; }
+  .gs-call-list-table tr { page-break-inside: avoid; }
+}

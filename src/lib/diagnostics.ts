@@ -1,4 +1,5 @@
 import type { DiagnosticReport, DiagnosticSource } from '@shared/types'
+import { formatDisplayDateTime } from './format'
 
 async function postJson<T>(path: string, body: unknown): Promise<T | null> {
   try {
@@ -55,7 +56,7 @@ export async function reportFatal(input: {
 export function formatErrorReport(report: DiagnosticReport): string {
   const lines = [
     `Reference ID: ${report.referenceId}`,
-    `Time: ${report.timestamp}`,
+    `Time: ${formatDisplayDateTime(report.timestamp)}`,
     `App version: ${report.version}`,
     `Category: ${report.category}`,
     `Message: ${report.message}`,

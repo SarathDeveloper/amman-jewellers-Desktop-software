@@ -2,6 +2,7 @@ import { expect, test } from './fixtures/web-app'
 import { localTodayIso } from './helpers/dates'
 import { openInventoryTab, sidebarLink } from './helpers/nav'
 import { fillProductDialog, saveProductDialog } from './helpers/productForm'
+import { pickFirstHuid } from './helpers/inventoryBilling'
 
 test('billing create, finalize, and stock deduction', async ({ window }) => {
   const today = localTodayIso()
@@ -46,6 +47,7 @@ test('billing create, finalize, and stock deduction', async ({ window }) => {
     has: window.locator(`.sale-bill-product-name[value*="${productName}"]`),
   })
   await expect(itemRow).toBeVisible()
+  await pickFirstHuid(itemRow)
   await itemRow.getByLabel('Gold rate').fill('1500')
 
   await window.getByRole('button', { name: 'Save draft' }).first().click()

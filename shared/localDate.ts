@@ -23,3 +23,9 @@ export function localNowStamp(): string {
   const { year, month, day, hour, minute, second } = localParts()
   return `${year}${month}${day}-${hour}${minute}${second}`
 }
+
+/** Local clock for filenames that already carry a date: HHMMSS. */
+export function localTimeStamp(date = new Date()): string {
+  const { hour, minute, second } = localParts(date)
+  return `${hour}${minute}${second}`
+}

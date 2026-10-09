@@ -40,7 +40,7 @@ test('stock opening and auto sales from finalized invoice', async ({ window }) =
         customerId: customer.id,
         invoiceDate: date,
         tax: 0,
-        items: [{ productId: product.id, qty: 1, rate: 500 }],
+        items: [{ productId: product.id, qty: 1, rate: 500, huid: 'ST0001' }],
       }),
     })
     await api(`/api/invoices/${invoice.id}/finalize`, { method: 'POST' })
@@ -166,7 +166,7 @@ test('closing summary hides quiet categories in transacted mode', async ({ windo
           customerId: customer.id,
           invoiceDate: date,
           tax: 0,
-          items: [{ productId: product.id, qty: 1, rate: 500 }],
+          items: [{ productId: product.id, qty: 1, rate: 500, huid: 'ST1001' }],
         }),
       })
       await api(`/api/invoices/${invoice.id}/finalize`, { method: 'POST' })

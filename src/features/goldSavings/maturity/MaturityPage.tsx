@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { eligibleBonusGoldWeight, rateForPurity, roundGoldGrams } from '@shared/goldSavings/math'
 import { localTodayIso } from '@shared/localDate'
-import type { GoldSavingAccount, GoldSavingAccountDetail, GoldSavingRedemptionKind, Invoice, MetalRates } from '@shared/types'
+import type { GoldSavingAccount, GoldSavingAccountDetail, GoldSavingRedemptionKind, MetalRates } from '@shared/types'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { DateInput } from '../../../components/DateInput'
 import { PageHeader } from '../../../components/PageHeader'
@@ -11,44 +11,42 @@ import { useToast } from '../../../components/toastContext'
 import { formatCurrency, formatWeight } from '../../../lib/format'
 import { api } from '../../../lib/api'
 import { GsAccountSearch } from '../GsAccountSearch'
+import { salePathForFormat } from '../../invoices/billingType'
+
+type PlainRedemptionKind = Extract<GoldSavingRedemptionKind, 'gold' | 'jewellery'>
 
 export function MaturityPage() {
   const { showToast } = useToast()
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const presetId = Number(params.get('accountId') ?? 0)
   const [account, setAccount] = useState<GoldSavingAccount | null>(null)
   const [detail, setDetail] = useState<GoldSavingAccountDetail | null>(null)
-  const [invoices, setInvoices] = useState<Invoice[]>([])
   const [rates, setRates] = useState<MetalRates | null>(null)
-  const [kind, setKind] = useState<GoldSavingRedemptionKind>('jewellery')
+  const [kind, setKind] = useState<PlainRedemptionKind>('jewellery')
   const [date, setDate] = useState(localTodayIso())
   const [goldWeight, setGoldWeight] = useState('')
-  const [invoiceId, setInvoiceId] = useState('')
-  const [makingCharges, setMakingCharges] = useState(0)
-  const [wastage, setWastage] = useState(0)
-  const [taxes, setTaxes] = useState(0)
-  const [invoiceValue, setInvoiceValue] = useState(0)
   const [confirm, setConfirm] = useState(false)
 
   useEffect(() => {
     if (!presetId) return
-    void api.listGsAccounts().then((rows) => {
-      const found = (rows ?? []).find((row) => row.id === presetId)
-      if (found) setAccount(found)
-    }).catch(() => undefined)
+    void api
+      .listGsAccounts()
+      .then((rows) => {
+        const found = (rows ?? []).find((row) => row.id === presetId)
+        if (found) setAccount(found)
+      })
+      .catch(() => undefined)
   }, [presetId])
 
   useEffect(() => {
     if (!account) return
-    void Promise.all([
-      api.getGsAccount(account.id),
-      api.listInvoices({ customerId: account.customerId, page: 1, pageSize: 50, status: 'final' }),
-      api.getLatestMetalRates(),
-    ]).then(([next, bills, latest]) => {
-      setDetail(next)
-      setInvoices((bills.items ?? []).filter((bill) => bill.status === 'final'))
-      setRates(latest)
-    }).catch(() => undefined)
+    void Promise.all([api.getGsAccount(account.id), api.getLatestMetalRates()])
+      .then(([next, latest]) => {
+        setDetail(next)
+        setRates(latest)
+      })
+      .catch(() => undefined)
   }, [account])
 
   async function redeem() {
@@ -59,16 +57,12 @@ export function MaturityPage() {
         redemptionDate: date,
         redemptionKind: kind,
         goldWeight: goldWeight ? Number(goldWeight) : undefined,
-        invoiceId: invoiceId ? Number(invoiceId) : null,
-        makingCharges,
-        wastage,
-        taxes,
-        invoiceValue,
       })
       showToast('Redemption recorded', 'success')
       const next = await api.getGsAccount(account.id)
       setDetail(next)
       setAccount(next.account)
+      setGoldWeight('')
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Redemption failed', 'error')
     } finally {
@@ -81,8 +75,9 @@ export function MaturityPage() {
   const paid = detail?.account.paidInstallments ?? 0
   const duration = detail?.account.durationMonths ?? 0
   const rate = scheme && rates && detail ? rateForPurity(rates, detail.account.purity) : 0
+  const bonusAlreadyCredited = Boolean(detail?.ledger.some((entry) => entry.entryType === 'bonus'))
   const bonusGold =
-    scheme
+    scheme && !bonusAlreadyCredited
       ? eligibleBonusGoldWeight({
           bonusType: scheme.bonusType,
           bonusValue: scheme.bonusValue,
@@ -98,7 +93,7 @@ export function MaturityPage() {
     <div className="app-page">
       <PageHeader
         title="Maturity & redemption"
-        subtitle="Redeem accumulated scheme gold. This does not change physical stock."
+        subtitle="Redeem scheme gold as plain gold or jewellery. To redeem against a sale, apply the scheme on the sale bill."
       />
       <section className="card padded card--search">
         <GsAccountSearch
@@ -122,11 +117,28 @@ export function MaturityPage() {
             <StatCard label="Total eligible gold" value={formatWeight(eligibleGold, 3)} tone="brand" />
           </div>
           <section className="card padded">
-            <h2 className="settings-section-title">Process redemption</h2>
+            <h2 className="settings-section-title">Redeem on a sale bill</h2>
+            <p className="muted">
+              The customer’s scheme balance is credited against the bill, at the bill’s gold rate, and the redemption is
+              created when the bill is finalized.
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() =>
+                  navigate(`${salePathForFormat('cash_bill')}?customerId=${detail.account.customerId}`)
+                }
+              >
+                Redeem on a sale bill
+              </button>
+            </div>
+          </section>
+          <section className="card padded">
+            <h2 className="settings-section-title">Process plain redemption</h2>
             <p className="muted">
               Accumulated gold is the customer’s credited weight from the ledger. Bonus gold, if any, is applied only
-              when the configured eligibility is met at redemption. Jewellery redemption links an existing bill; it does
-              not add or deduct stock.
+              when the configured eligibility is met. This does not add or deduct stock.
             </p>
             <div className="form-grid">
               <label>
@@ -135,44 +147,18 @@ export function MaturityPage() {
               </label>
               <label>
                 <span className="field-label">Option</span>
-                <select className="input" value={kind} onChange={(e) => setKind(e.target.value as GoldSavingRedemptionKind)}>
+                <select
+                  className="input"
+                  value={kind}
+                  onChange={(e) => setKind(e.target.value as PlainRedemptionKind)}
+                >
                   <option value="gold">Redeem gold weight</option>
                   <option value="jewellery">Redeem as jewellery</option>
-                  <option value="invoice">Against jewellery invoice</option>
                 </select>
               </label>
               <label>
                 <span className="field-label">Gold weight (blank = full eligible)</span>
                 <input className="input" value={goldWeight} onChange={(e) => setGoldWeight(e.target.value)} />
-              </label>
-              {kind === 'invoice' ? (
-                <label>
-                  <span className="field-label">Jewellery invoice</span>
-                  <select className="input" value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)}>
-                    <option value="">Select bill</option>
-                    {invoices.map((invoice) => (
-                      <option key={invoice.id} value={invoice.id}>
-                        {invoice.invoiceNo} · {formatCurrency(invoice.total)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <label>
-                <span className="field-label">Making charges</span>
-                <input className="input" type="number" value={makingCharges || ''} onChange={(e) => setMakingCharges(Number(e.target.value))} />
-              </label>
-              <label>
-                <span className="field-label">Wastage</span>
-                <input className="input" type="number" value={wastage || ''} onChange={(e) => setWastage(Number(e.target.value))} />
-              </label>
-              <label>
-                <span className="field-label">Taxes</span>
-                <input className="input" type="number" value={taxes || ''} onChange={(e) => setTaxes(Number(e.target.value))} />
-              </label>
-              <label>
-                <span className="field-label">Invoice value</span>
-                <input className="input" type="number" value={invoiceValue || ''} onChange={(e) => setInvoiceValue(Number(e.target.value))} />
               </label>
             </div>
             <div className="modal-actions">

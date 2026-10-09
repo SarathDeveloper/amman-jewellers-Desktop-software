@@ -6,7 +6,7 @@ function loadMigrationSql(filename: string): string {
   return readFileSync(join(getMigrationsDir(), filename), 'utf-8')
 }
 
-export function getMigrations(): { version: number; sql: string }[] {
+export function getMigrations(): { version: number; sql: string; disableForeignKeys?: boolean }[] {
   return [
     { version: 1, sql: loadMigrationSql('001_initial.sql') },
     { version: 2, sql: loadMigrationSql('002_item_stock.sql') },
@@ -41,7 +41,7 @@ export function getMigrations(): { version: number; sql: string }[] {
     { version: 31, sql: loadMigrationSql('031_remove_walk_in.sql') },
     { version: 32, sql: loadMigrationSql('032_delete_walk_in_customer.sql') },
     { version: 33, sql: loadMigrationSql('033_old_gold_purchases.sql') },
-    { version: 34, sql: loadMigrationSql('034_pledge_draft_status.sql') },
+    { version: 34, sql: loadMigrationSql('034_pledge_draft_status.sql'), disableForeignKeys: true },
     { version: 35, sql: loadMigrationSql('035_pledge_topups.sql') },
     { version: 36, sql: loadMigrationSql('036_metal_rate_purities.sql') },
     { version: 37, sql: loadMigrationSql('037_invoice_item_other_charges.sql') },
@@ -53,5 +53,26 @@ export function getMigrations(): { version: number; sql: string }[] {
     { version: 43, sql: loadMigrationSql('043_product_huids.sql') },
     { version: 44, sql: loadMigrationSql('044_inward_item_huids.sql') },
     { version: 45, sql: loadMigrationSql('045_passbook_images.sql') },
+    { version: 46, sql: loadMigrationSql('046_invoice_item_huid.sql') },
+    { version: 47, sql: loadMigrationSql('047_invoice_snapshots.sql') },
+    { version: 48, sql: loadMigrationSql('048_pledge_payments.sql') },
+    { version: 49, sql: loadMigrationSql('049_invoice_gold_saving_links.sql') },
+    { version: 50, sql: loadMigrationSql('050_pledge_renewal.sql'), disableForeignKeys: true },
+    { version: 51, sql: loadMigrationSql('051_gold_saving_refunds.sql') },
+    { version: 52, sql: loadMigrationSql('052_invoice_cancel.sql'), disableForeignKeys: true },
+    { version: 53, sql: loadMigrationSql('053_pledge_item_value.sql') },
+    { version: 54, sql: loadMigrationSql('054_gold_saving_late_fee.sql') },
+    { version: 55, sql: loadMigrationSql('055_pledge_auctions.sql') },
+    { version: 56, sql: loadMigrationSql('056_pledge_media.sql') },
+    { version: 57, sql: loadMigrationSql('057_gold_saving_payment_batch.sql') },
+    { version: 58, sql: loadMigrationSql('058_old_gold_settlement.sql'), disableForeignKeys: true },
+    { version: 59, sql: loadMigrationSql('059_old_gold_buy_rates_touch.sql') },
+    { version: 60, sql: loadMigrationSql('060_old_gold_batches.sql') },
   ]
+}
+
+/** Highest schema version this build knows how to open. */
+export function latestMigrationVersion(): number {
+  const migrations = getMigrations()
+  return migrations.reduce((max, migration) => Math.max(max, migration.version), 0)
 }

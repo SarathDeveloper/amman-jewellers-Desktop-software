@@ -1,18 +1,22 @@
 import type Database from 'better-sqlite3'
-import { addCalendarMonths, goldWeightFromAmount, rateForPurity, roundMoney } from '@shared/goldSavings/math'
+import { addCalendarMonths, computeLateFee, goldWeightFromAmount, roundMoney } from '@shared/goldSavings/math'
 import { localTodayIso } from '@shared/localDate'
 import type {
   GoldSavingAccountDetail,
   GoldSavingAccountInput,
+  GoldSavingCancelInput,
   GoldSavingInitialPaymentInput,
   GoldSavingPaymentMode,
+  GoldSavingRefund,
 } from '@shared/types'
-import { getLatestMetalRates } from '../routes/metalRates.routes'
+import { assertRateDateAccepted, datedRateForPurity } from './rateGuard'
 import {
   ACCOUNT_SELECT,
+  currentGoldBalance,
   insertLedger,
   LEDGER_SELECT,
   loadAccount,
+  loadRefund,
   loadScheme,
   mapAccount,
   mapAudit,
@@ -20,12 +24,14 @@ import {
   mapLedger,
   mapPayment,
   mapRedemption,
+  mapRefund,
   mapScheme,
   nextAccountNo,
   nextReceiptNo,
   paymentReceiptTotals,
   PAYMENT_SELECT,
   REDEMPTION_SELECT,
+  REFUND_SELECT,
   writeAudit,
   type AccountRow,
   type AuditRow,
@@ -33,6 +39,8 @@ import {
   type LedgerRow,
   type PaymentRow,
   type RedemptionRow,
+  type RefundRow,
+  type SchemeRow,
 } from './rows'
 
 export function listAccounts(db: Database.Database, search?: string): ReturnType<typeof mapAccount>[] {
@@ -47,6 +55,10 @@ export function listAccounts(db: Database.Database, search?: string): ReturnType
         .all(`%${term}%`, `%${term}%`, `%${term}%`, `%${term}%`) as AccountRow[])
     : (db.prepare(`${ACCOUNT_SELECT} ORDER BY a.created_at DESC`).all() as AccountRow[])
   return rows.map(mapAccount)
+}
+
+export function getRefund(db: Database.Database, id: number): GoldSavingRefund {
+  return mapRefund(loadRefund(db, id))
 }
 
 export function getAccountDetail(db: Database.Database, id: number): GoldSavingAccountDetail {
@@ -67,6 +79,9 @@ export function getAccountDetail(db: Database.Database, id: number): GoldSavingA
   const redemptions = (
     db.prepare(`${REDEMPTION_SELECT} WHERE r.account_id = ? ORDER BY r.id`).all(id) as RedemptionRow[]
   ).map(mapRedemption)
+  const refundRow = db
+    .prepare(`${REFUND_SELECT} WHERE r.account_id = ? ORDER BY r.id DESC LIMIT 1`)
+    .get(id) as RefundRow | undefined
   const audit = db
     .prepare(
       `SELECT * FROM gold_saving_audit_logs
@@ -76,9 +91,12 @@ export function getAccountDetail(db: Database.Database, id: number): GoldSavingA
             UNION ALL
             SELECT id FROM gold_saving_redemptions WHERE account_id = ?
           ))
+          OR (entity_type = 'installment' AND entity_id IN (
+            SELECT id FROM gold_saving_installments WHERE account_id = ?
+          ))
        ORDER BY id DESC`,
     )
-    .all(id, id, id) as AuditRow[]
+    .all(id, id, id, id) as AuditRow[]
 
   return {
     account: mapAccount(account),
@@ -87,20 +105,9 @@ export function getAccountDetail(db: Database.Database, id: number): GoldSavingA
     payments,
     ledger,
     redemptions,
+    refund: refundRow ? mapRefund(refundRow) : null,
     audit: audit.map(mapAudit),
   }
-}
-
-function resolveConfiguredRate(db: Database.Database, purity: string): number {
-  const rates = getLatestMetalRates(db)
-  if (!rates) {
-    throw new Error('No gold rate is configured. Set today\'s rate before collecting.')
-  }
-  const rate = rateForPurity(rates, purity)
-  if (rate <= 0) {
-    throw new Error('Configured gold rate must be greater than zero')
-  }
-  return rate
 }
 
 export function postPaymentInTx(
@@ -116,17 +123,24 @@ export function postPaymentInTx(
     transactionRef?: string
     goldRate?: number
     goldRateOverrideReason?: string
+    acceptRateDate?: boolean
     remarks?: string
     idempotencyKey?: string
+    batchNo?: string
     createdBy: number | null
     isAdmin: boolean
   },
 ): number {
   if (input.idempotencyKey) {
     const existing = db
-      .prepare('SELECT id FROM gold_saving_payments WHERE idempotency_key = ?')
-      .get(input.idempotencyKey) as { id: number } | undefined
-    if (existing) return existing.id
+      .prepare('SELECT id, status FROM gold_saving_payments WHERE idempotency_key = ?')
+      .get(input.idempotencyKey) as { id: number; status: string } | undefined
+    if (existing) {
+      if (existing.status === 'reversed') {
+        throw new Error('This payment was reversed. Start a new collection instead of retrying it')
+      }
+      return existing.id
+    }
   }
 
   const account = loadAccount(db, input.accountId)
@@ -157,11 +171,13 @@ export function postPaymentInTx(
     }
   }
 
-  const configuredRate = resolveConfiguredRate(db, account.purity)
+  const dated = datedRateForPurity(db, input.paymentDate, account.purity)
+  const configuredRate = dated.rate
   let goldRate = configuredRate
   let goldRateSource = 'configured'
   let overrideBy: number | null = null
   const overrideReason = input.goldRateOverrideReason?.trim() ?? ''
+  let manualOverride = false
   if (input.goldRate != null && roundMoney(input.goldRate) !== roundMoney(configuredRate)) {
     if (scheme.gold_rate_source !== 'manual_allowed') {
       throw new Error('Manual gold rates are not allowed for this scheme')
@@ -175,9 +191,31 @@ export function postPaymentInTx(
     goldRate = input.goldRate
     goldRateSource = 'manual'
     overrideBy = input.createdBy
+    manualOverride = true
+  }
+  if (!manualOverride) {
+    assertRateDateAccepted(dated, input.paymentDate, {
+      acceptRateDate: input.acceptRateDate,
+      isAdmin: input.isAdmin,
+    })
   }
 
-  const lateFee = input.lateFee ?? 0
+  const computedLateFee = computeLateFee({
+    dueDate: installment.due_date,
+    paymentDate: input.paymentDate,
+    graceDays: scheme.grace_period_days,
+    type: scheme.late_fee_type,
+    value: scheme.late_fee_value,
+  })
+  let lateFee = input.lateFee ?? computedLateFee
+  if (input.lateFee != null && input.lateFee < computedLateFee) {
+    if (!input.isAdmin) {
+      throw new Error('Only administrators can reduce the late fee')
+    }
+  }
+  if (lateFee < 0) {
+    lateFee = 0
+  }
   const discount = input.discount ?? 0
   const totalReceived = roundMoney(input.amount + lateFee - discount)
   if (totalReceived <= 0) {
@@ -192,8 +230,8 @@ export function postPaymentInTx(
         account_id, installment_id, receipt_no, installment_no, payment_date, due_date,
         amount, late_fee, discount, total_received, gold_rate, gold_weight,
         gold_rate_source, gold_rate_override_reason, gold_rate_override_by, purity,
-        payment_mode, transaction_ref, remarks, status, idempotency_key, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?, ?)`,
+        payment_mode, transaction_ref, remarks, status, idempotency_key, batch_no, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted', ?, ?, ?)`,
     )
     .run(
       account.id,
@@ -216,6 +254,7 @@ export function postPaymentInTx(
       input.transactionRef ?? '',
       input.remarks ?? '',
       input.idempotencyKey ?? null,
+      input.batchNo ?? null,
       input.createdBy,
     )
   const paymentId = Number(result.lastInsertRowid)
@@ -292,7 +331,7 @@ export function refreshAccountStatus(db: Database.Database, accountId: number): 
   const paid = (
     db
       .prepare(
-        `SELECT COUNT(*) AS count FROM gold_saving_installments WHERE account_id = ? AND status = 'paid'`,
+        `SELECT COUNT(*) AS count FROM gold_saving_installments WHERE account_id = ? AND status IN ('paid', 'waived')`,
       )
       .get(accountId) as { count: number }
   ).count
@@ -302,6 +341,47 @@ export function refreshAccountStatus(db: Database.Database, accountId: number): 
     nextStatus,
     accountId,
   )
+}
+
+export function waiveInstallment(
+  db: Database.Database,
+  installmentId: number,
+  reason: string,
+  user: { id: number; isAdmin: boolean },
+): GoldSavingAccountDetail {
+  if (!user.isAdmin) {
+    throw new Error('Only administrators can waive an installment')
+  }
+  const tx = db.transaction(() => {
+    const installment = db
+      .prepare('SELECT * FROM gold_saving_installments WHERE id = ?')
+      .get(installmentId) as InstallmentRow | undefined
+    if (!installment) throw new Error('Installment not found')
+    const account = loadAccount(db, installment.account_id)
+    if (account.status === 'cancelled' || account.status === 'closed' || account.status === 'redeemed') {
+      throw new Error('This scheme account cannot be modified')
+    }
+    if (installment.status === 'paid') {
+      throw new Error('This installment is already paid')
+    }
+    if (installment.status === 'waived') {
+      throw new Error('This installment is already waived')
+    }
+    db.prepare(`UPDATE gold_saving_installments SET status = 'waived', paid_at = NULL WHERE id = ?`).run(
+      installmentId,
+    )
+    writeAudit(db, {
+      entityType: 'installment',
+      entityId: installmentId,
+      action: 'waive',
+      changedBy: user.id,
+      before: { status: installment.status },
+      after: { status: 'waived', reason },
+    })
+    refreshAccountStatus(db, installment.account_id)
+    return installment.account_id
+  })
+  return getAccountDetail(db, tx())
 }
 
 export function enrollAccount(
@@ -401,7 +481,10 @@ export function enrollAccount(
           `SELECT id FROM gold_saving_installments WHERE account_id = ? AND installment_no = 1`,
         )
         .get(accountId) as { id: number }
-      postInitial(db, accountId, first.id, input.initialPayment, user)
+      postInitial(db, accountId, first.id, {
+        ...input.initialPayment,
+        acceptRateDate: input.initialPayment.acceptRateDate ?? input.acceptRateDate,
+      }, user)
     }
 
     return accountId
@@ -425,6 +508,7 @@ function postInitial(
     transactionRef: payment.transactionRef,
     goldRate: payment.goldRate,
     goldRateOverrideReason: payment.goldRateOverrideReason,
+    acceptRateDate: payment.acceptRateDate,
     remarks: payment.remarks,
     idempotencyKey: payment.idempotencyKey,
     createdBy: user.id,
@@ -432,27 +516,106 @@ function postInitial(
   })
 }
 
+function computeRefundDeduction(
+  scheme: SchemeRow,
+  totalPaid: number,
+  override: number | undefined,
+): number {
+  if (override != null) {
+    return roundMoney(Math.min(Math.max(override, 0), totalPaid))
+  }
+  if (scheme.cancel_deduction_type === 'percentage') {
+    return roundMoney((totalPaid * scheme.cancel_deduction_value) / 100)
+  }
+  if (scheme.cancel_deduction_type === 'fixed') {
+    return roundMoney(Math.min(scheme.cancel_deduction_value, totalPaid))
+  }
+  return 0
+}
+
 export function cancelAccount(
   db: Database.Database,
   id: number,
-  reason: string,
-  userId: number,
+  input: GoldSavingCancelInput,
+  user: { id: number; isAdmin: boolean },
 ): GoldSavingAccountDetail {
   const tx = db.transaction(() => {
     const account = loadAccount(db, id)
     if (account.status === 'cancelled' || account.status === 'closed' || account.status === 'redeemed') {
       throw new Error('This scheme account is already closed')
     }
+    const redemptionCount = (
+      db.prepare('SELECT COUNT(*) AS count FROM gold_saving_redemptions WHERE account_id = ?').get(id) as {
+        count: number
+      }
+    ).count
+    if (redemptionCount > 0) {
+      throw new Error('Cancellation is not allowed after a redemption')
+    }
+    if (input.deductionOverride != null && !user.isAdmin) {
+      throw new Error('Only administrators can override the cancellation deduction')
+    }
+    const scheme = loadScheme(db, account.scheme_id)
+    const totalPaid = roundMoney(
+      (
+        db
+          .prepare(
+            `SELECT COALESCE(SUM(amount), 0) AS paid FROM gold_saving_payments
+             WHERE account_id = ? AND status = 'posted'`,
+          )
+          .get(id) as { paid: number }
+      ).paid,
+    )
+    const deduction = computeRefundDeduction(scheme, totalPaid, input.deductionOverride)
+    const refundAmount = roundMoney(totalPaid - deduction)
+    const goldForfeited = currentGoldBalance(db, id)
+    const refundDate = input.refundDate ?? localTodayIso()
+    const voucherNo = nextReceiptNo(db, 'GSRF')
+
+    db.prepare(
+      `INSERT INTO gold_saving_refunds (
+        account_id, voucher_no, refund_date, total_paid, deduction, refund_amount,
+        payment_mode, transaction_ref, gold_forfeited, reason, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      voucherNo,
+      refundDate,
+      totalPaid,
+      deduction,
+      refundAmount,
+      input.paymentMode ?? 'cash',
+      input.transactionRef ?? '',
+      goldForfeited,
+      input.reason,
+      user.id,
+    )
+
+    if (goldForfeited !== 0 || refundAmount !== 0) {
+      insertLedger(db, {
+        accountId: id,
+        entryDate: refundDate,
+        entryType: 'refund',
+        amount: -refundAmount,
+        goldWeight: -goldForfeited,
+        goldRate: 0,
+        txnRef: voucherNo,
+        notes: input.reason,
+        createdBy: user.id,
+      })
+    }
+
     db.prepare(
       `UPDATE gold_saving_accounts SET status = 'cancelled', closed_at = ?, updated_at = datetime('now') WHERE id = ?`,
-    ).run(localTodayIso(), id)
+    ).run(refundDate, id)
+
     writeAudit(db, {
       entityType: 'account',
       entityId: id,
       action: 'cancel',
-      changedBy: userId,
-      before: { status: account.status },
-      after: { status: 'cancelled', reason },
+      changedBy: user.id,
+      before: { status: account.status, totalPaid, goldForfeited },
+      after: { status: 'cancelled', voucherNo, deduction, refundAmount, reason: input.reason },
     })
   })
   tx()

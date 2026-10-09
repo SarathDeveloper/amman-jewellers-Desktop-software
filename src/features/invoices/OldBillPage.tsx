@@ -7,6 +7,7 @@ import type { BillFormat, Customer, PaymentMode } from '@shared/types'
 import { PageHeader } from '../../components/PageHeader'
 import { DateInput } from '../../components/DateInput'
 import { api } from '../../lib/api'
+import { formatCurrency } from '../../lib/format'
 import { numericFieldToNumber, parseNumericField, type NumericField } from '../../lib/numericField'
 import { BILL_PAYMENT_MODES, PaymentModeSelect } from './PaymentModeSelect'
 
@@ -203,8 +204,8 @@ export function OldBillPage() {
           )}
         </div>
         <p className="muted old-bill-preview">
-          Total {preview.total.toFixed(2)} · Tax {preview.tax.toFixed(2)} · Balance{' '}
-          {Math.max(0, preview.total - numericFieldToNumber(amountPaid)).toFixed(2)}
+          Total {formatCurrency(preview.total)} · Tax {formatCurrency(preview.tax)} · Balance{' '}
+          {formatCurrency(Math.max(0, preview.total - numericFieldToNumber(amountPaid)))}
         </p>
         <button type="button" className="btn" disabled={busy} onClick={() => void save()}>
           {busy ? 'Saving…' : 'Save old bill'}

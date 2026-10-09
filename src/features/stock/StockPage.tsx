@@ -1,8 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Calendar,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -33,6 +31,7 @@ import type {
   Inward,
 } from '@shared/types'
 import { EmptyState } from '../../components/EmptyState'
+import { DateInput } from '../../components/DateInput'
 import { LoadingState } from '../../components/LoadingState'
 import { MetalBarIcon } from '../../components/MetalBarIcon'
 import { Modal } from '../../components/Modal'
@@ -480,7 +479,11 @@ export function StockPage() {
       setCloseOpen(false)
       setCloseNote('')
       setPrecheck(null)
-      showToast(`${metal} day closed`, 'success')
+      if (sheet.backupSaved) {
+        showToast(`${metal} day closed and backed up`, 'success')
+      } else {
+        showToast(`${metal} day closed. Backup failed — check Settings > Backup`, 'error')
+      }
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to close day')
@@ -557,18 +560,13 @@ export function StockPage() {
           subtitle="Track opening, inward, sales and closing stock"
           actions={
             <>
-              <label className="stock-date-field">
-                <Calendar size={16} aria-hidden />
-                <span className="stock-date-label">{formatDisplayDate(stockDate)}</span>
-                <ChevronDown size={14} aria-hidden className="stock-date-chevron" />
-                <input
-                  className="stock-date-input"
-                  type="date"
-                  value={stockDate}
-                  aria-label="Stock date"
-                  onChange={(event) => setStockDate(event.target.value)}
-                />
-              </label>
+              <DateInput
+                showIcon
+                value={stockDate}
+                onChange={setStockDate}
+                ariaLabel="Stock date"
+                className="stock-date-field"
+              />
               <span className={`badge ${dayClosed ? 'final' : 'draft'}`}>
                 {dayClosed ? 'Closed' : 'Open'}
               </span>
@@ -667,67 +665,81 @@ export function StockPage() {
       </div>
 
       <div className="stock-toolbar">
-        <div className="stock-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'category'}
-            className={`stock-tab${tab === 'category' ? ' active' : ''}`}
-            onClick={() => setTab('category')}
-          >
-            <Table2 size={15} aria-hidden />
-            Stock by Category
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'closing'}
-            className={`stock-tab${tab === 'closing' ? ' active' : ''}`}
-            onClick={() => setTab('closing')}
-          >
-            <ClipboardList size={15} aria-hidden />
-            Closing Summary
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'inward'}
-            className={`stock-tab${tab === 'inward' ? ' active' : ''}`}
-            onClick={() => setTab('inward')}
-          >
-            <Download size={15} aria-hidden />
-            Inward Stock
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'pieces'}
-            className={`stock-tab${tab === 'pieces' ? ' active' : ''}`}
-            onClick={() => setTab('pieces')}
-          >
-            <Clock size={15} aria-hidden />
-            Pieces Today
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'history'}
-            className={`stock-tab${tab === 'history' ? ' active' : ''}`}
-            onClick={() => setTab('history')}
-          >
-            <History size={15} aria-hidden />
-            Stock History
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'reconcile'}
-            className={`stock-tab${tab === 'reconcile' ? ' active' : ''}`}
-            onClick={() => setTab('reconcile')}
-          >
-            <Scale size={15} aria-hidden />
-            Reconciliation
-          </button>
+        <div className="billing-chrome stock-chrome">
+          <div className="billing-chrome-tabs" role="tablist" aria-label="Stock">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'category'}
+              className={`billing-chrome-tab${tab === 'category' ? ' active' : ''}`}
+              onClick={() => setTab('category')}
+            >
+              <span className="billing-chrome-tab-icon" aria-hidden>
+                <Table2 size={18} strokeWidth={1.75} />
+              </span>
+              <span className="billing-chrome-tab-label">Stock by Category</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'closing'}
+              className={`billing-chrome-tab${tab === 'closing' ? ' active' : ''}`}
+              onClick={() => setTab('closing')}
+            >
+              <span className="billing-chrome-tab-icon" aria-hidden>
+                <ClipboardList size={18} strokeWidth={1.75} />
+              </span>
+              <span className="billing-chrome-tab-label">Closing Summary</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'inward'}
+              className={`billing-chrome-tab${tab === 'inward' ? ' active' : ''}`}
+              onClick={() => setTab('inward')}
+            >
+              <span className="billing-chrome-tab-icon" aria-hidden>
+                <Download size={18} strokeWidth={1.75} />
+              </span>
+              <span className="billing-chrome-tab-label">Inward Stock</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'pieces'}
+              className={`billing-chrome-tab${tab === 'pieces' ? ' active' : ''}`}
+              onClick={() => setTab('pieces')}
+            >
+              <span className="billing-chrome-tab-icon" aria-hidden>
+                <Clock size={18} strokeWidth={1.75} />
+              </span>
+              <span className="billing-chrome-tab-label">Pieces Today</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'history'}
+              className={`billing-chrome-tab${tab === 'history' ? ' active' : ''}`}
+              onClick={() => setTab('history')}
+            >
+              <span className="billing-chrome-tab-icon" aria-hidden>
+                <History size={18} strokeWidth={1.75} />
+              </span>
+              <span className="billing-chrome-tab-label">Stock History</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'reconcile'}
+              className={`billing-chrome-tab${tab === 'reconcile' ? ' active' : ''}`}
+              onClick={() => setTab('reconcile')}
+            >
+              <span className="billing-chrome-tab-icon" aria-hidden>
+                <Scale size={18} strokeWidth={1.75} />
+              </span>
+              <span className="billing-chrome-tab-label">Reconciliation</span>
+            </button>
+          </div>
         </div>
         <div className="stock-toolbar-actions">
           {tab === 'inward' || tab === 'pieces' || tab === 'history' ? (

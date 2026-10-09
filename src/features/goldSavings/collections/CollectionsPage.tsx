@@ -31,7 +31,7 @@ export function CollectionsPage() {
   const [search, setSearch] = useState('')
   const [account, setAccount] = useState<GoldSavingAccount | null>(null)
   const [collectOpen, setCollectOpen] = useState(false)
-  const [printAccountId, setPrintAccountId] = useState<number | null>(null)
+  const [printPaymentId, setPrintPaymentId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const today = localTodayIso()
@@ -136,8 +136,17 @@ export function CollectionsPage() {
                     tabIndex={0}
                     aria-selected={selected}
                     onClick={() => setAccount(row)}
+                    onDoubleClick={() => {
+                      setAccount(row)
+                      setCollectOpen(true)
+                    }}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        // Enter starts collection straight away; Space only selects.
+                        setAccount(row)
+                        setCollectOpen(true)
+                      } else if (event.key === ' ') {
                         event.preventDefault()
                         setAccount(row)
                       }
@@ -168,21 +177,21 @@ export function CollectionsPage() {
         <CollectPaymentModal
           accountId={account.id}
           onClose={() => setCollectOpen(false)}
-          onCollected={() => {
+          onCollected={(paymentId) => {
             setCollectOpen(false)
-            setPrintAccountId(account.id)
+            setPrintPaymentId(paymentId)
             void Promise.all([api.getGsAccount(account.id), loadAccounts()]).then(([next]) => {
               setAccount(next.account)
             })
           }}
         />
       ) : null}
-      {printAccountId ? (
+      {printPaymentId ? (
         <PrintPreviewModal
           title="Collection receipt"
-          path={`/print/gs-passbook/${printAccountId}`}
-          pdfFilename="gs-passbook.pdf"
-          onClose={() => setPrintAccountId(null)}
+          path={`/print/gs-batch-receipt/${printPaymentId}`}
+          pdfFilename="gs-receipt.pdf"
+          onClose={() => setPrintPaymentId(null)}
         />
       ) : null}
     </div>

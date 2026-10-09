@@ -3,6 +3,7 @@ import { paymentStatusFor, resolveAmountPayable } from '@shared/billing/billSumm
 import type { Invoice } from '@shared/types'
 import { Modal } from '../../components/Modal'
 import { formatCurrency } from '../../lib/format'
+import { whatsappLink } from '../../lib/whatsapp'
 
 function whatsappHref(invoice: Invoice): string {
   const payable = resolveAmountPayable(invoice.amountPayable, invoice.total)
@@ -15,9 +16,7 @@ function whatsappHref(invoice: Invoice): string {
     `Balance: ${formatCurrency(invoice.balanceDue)}`,
     `Status: ${status}`,
   ].join('\n')
-  const phone = invoice.customerPhone.replace(/\D/g, '')
-  const withCountry = phone.length === 10 ? `91${phone}` : phone
-  return `https://wa.me/${withCountry}?text=${encodeURIComponent(text)}`
+  return whatsappLink(invoice.customerPhone, text)
 }
 
 export function InvoiceSuccessModal({

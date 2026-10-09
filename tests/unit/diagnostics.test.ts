@@ -6,6 +6,7 @@ import { ZodError } from 'zod'
 import { classifyFailure, isExpectedError } from '../../server/lib/diagnostics'
 import { clearPendingFatal, readPendingFatal, writePendingFatal } from '../../server/lib/pendingFatal'
 import { formatErrorReport, isTransientFatal } from '../../src/lib/diagnostics'
+import { formatDisplayDateTime } from '../../src/lib/format'
 import {
   categoryLogFile,
   logDiagnostic,
@@ -113,7 +114,7 @@ describe('diagnostic logger', () => {
     ).toBe(
       [
         'Reference ID: JTP-ERR-20260925-001',
-        'Time: 2026-09-25T05:00:00.000Z',
+        `Time: ${formatDisplayDateTime('2026-09-25T05:00:00.000Z')}`,
         'App version: 1.0.0',
         'Category: crash',
         'Message: App render failed',

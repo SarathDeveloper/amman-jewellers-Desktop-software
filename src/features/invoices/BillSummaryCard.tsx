@@ -1,7 +1,7 @@
 import { Calculator, Percent, Scale, ShoppingBag } from 'lucide-react'
 import type { BillSummary } from '@shared/billing/billSummary'
 import { suggestRoundOff } from '@shared/billing/billSummary'
-import { formatCurrency, formatWeight } from '../../lib/format'
+import { formatCurrency, formatInr, formatWeight } from '../../lib/format'
 import { parseNumericField } from '../../lib/numericField'
 
 export function BillSummaryCard({
@@ -119,6 +119,12 @@ export function BillSummaryCard({
               <span className="value">-{formatCurrency(summary.oldGoldTotal)}</span>
             </div>
           )}
+          {summary.schemeCreditTotal > 0 && (
+            <div className="adagu-calculated-row">
+              <span className="label">Gold savings credit (−)</span>
+              <span className="value">-{formatCurrency(summary.schemeCreditTotal)}</span>
+            </div>
+          )}
           {showDiscount && (
             <div className="adagu-calculated-row bill-summary-roundoff sale-bill-summary-adjust">
               <span className="label">Discount</span>
@@ -156,8 +162,7 @@ export function BillSummaryCard({
                 />
                 {!disabled && suggested !== 0 && suggested !== summary.roundOff ? (
                   <button type="button" className="btn ghost bill-summary-suggest" onClick={() => onRoundOffChange(suggested)}>
-                    Use {suggested > 0 ? '+' : ''}
-                    {suggested.toFixed(2)}
+                    Use {suggested > 0 ? '+' : '−'}₹{formatInr(Math.abs(suggested), 2)}
                   </button>
                 ) : null}
               </span>

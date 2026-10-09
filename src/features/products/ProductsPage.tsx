@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Coins,
@@ -20,7 +20,7 @@ import { SearchBar } from '../../components/SearchBar'
 import { useToast } from '../../components/toastContext'
 import { formatCurrency, formatWeight, paginate } from '../../lib/format'
 import { api } from '../../lib/api'
-import { AddInwardStockModal } from './AddInwardStockModal'
+import { InwardEditorModal } from '../inwards/InwardEditorModal'
 import { AdjustStockModal } from './AdjustStockModal'
 import { ProductDetailModal } from './ProductDetailModal'
 import { ProductFormModal } from './ProductFormModal'
@@ -55,6 +55,7 @@ export function ProductsPage() {
   const { showToast } = useToast()
   const [products, setProducts] = useState<Product[]>([])
   const [search, setSearch] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [purity, setPurity] = useState('all')
   const [metal, setMetal] = useState('all')
@@ -62,6 +63,8 @@ export function ProductsPage() {
   const [view, setView] = useState<ViewMode>('table')
   const [selected, setSelected] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const hasLoadedRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<Product | null>(null)
   const [variantParent, setVariantParent] = useState<Product | null>(null)
@@ -74,27 +77,39 @@ export function ProductsPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setSearchQuery(search.trim()), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
+
+  useEffect(() => {
     let active = true
     void (async () => {
       try {
         if (active) {
           setError(null)
-          setLoading(true)
+          if (hasLoadedRef.current) setRefreshing(true)
+          else setLoading(true)
         }
-        const data = await api.listProducts(search)
-        if (active) setProducts(data)
+        const data = await api.listProducts(searchQuery)
+        if (active) {
+          setProducts(data)
+          hasLoadedRef.current = true
+        }
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : 'Failed to load products')
         }
       } finally {
-        if (active) setLoading(false)
+        if (active) {
+          setLoading(false)
+          setRefreshing(false)
+        }
       }
     })()
     return () => {
       active = false
     }
-  }, [search])
+  }, [searchQuery])
 
   useEffect(() => {
     setSelected((current) => current.filter((id) => products.some((product) => product.id === id)))
@@ -514,6 +529,8 @@ export function ProductsPage() {
 
       {error && <div className="error-banner">{error}</div>}
 
+      {refreshing ? <p className="muted list-refreshing-hint">Updating…</p> : null}
+
       {loading ? (
         <LoadingState />
       ) : emptyCatalogue ? (
@@ -801,8 +818,10 @@ export function ProductsPage() {
       )}
 
       {inwardProducts != null && inwardProducts.length > 0 ? (
-        <AddInwardStockModal
-          products={inwardProducts}
+        <InwardEditorModal
+          inward={null}
+          readOnly={false}
+          initialProducts={inwardProducts}
           onClose={() => setInwardProducts(null)}
           onSaved={handleInwardSaved}
         />

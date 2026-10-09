@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { newPieceHuidError } from '@shared/itemTypes'
 
 export function loadHuidsFor(db: Database.Database, ids: number[]): Map<number, string[]> {
   const byProduct = new Map<number, string[]>()
@@ -100,11 +101,10 @@ export function stringifyHuids(huids: string[] | undefined): string {
   return JSON.stringify(huids ?? [])
 }
 
-export function requireHuidsForNewPieces(huids: string[], qty: number): void {
+export function requireHuidsForNewPieces(metal: string, huids: string[], qty: number): void {
   if (qty <= 0) return
-  if (huids.length !== qty) {
-    throw new Error(
-      qty === 1 ? 'Add 1 HUID for the new piece' : `Add ${qty} HUIDs for the new pieces`,
-    )
+  const error = newPieceHuidError(metal, huids.length, qty)
+  if (error) {
+    throw new Error(error)
   }
 }

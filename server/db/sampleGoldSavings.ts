@@ -95,6 +95,7 @@ function payNext(
         paymentDate: row.due_date,
         amount: row.amount,
         paymentMode: mode,
+        acceptRateDate: true,
       },
       user,
     )
@@ -120,10 +121,12 @@ function enroll(
       enrollmentDate: input.enrollmentDate,
       firstInstallmentDate: input.firstInstallmentDate,
       termsAccepted: true,
+      acceptRateDate: true,
       initialPayment: {
         amount: MONTHLY_AMOUNT,
         paymentDate: input.firstInstallmentDate,
         paymentMode: input.paymentMode,
+        acceptRateDate: true,
       },
     },
     user,
@@ -250,7 +253,7 @@ export function seedSampleGoldSavingsIfEmpty(database: Database.Database): boole
     },
     user,
   )
-  cancelAccount(database, kumar.account.id, 'Sample cancelled account', user.id)
+  cancelAccount(database, kumar.account.id, { reason: 'Sample cancelled account' }, user)
 
   return true
 }

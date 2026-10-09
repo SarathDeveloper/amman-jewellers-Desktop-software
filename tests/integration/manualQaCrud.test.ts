@@ -250,6 +250,7 @@ describe('manual QA CRUD catalogue', () => {
           metalRate: 6850,
           netWeight: 3.9,
           makingCharges: 700,
+          huid: ring.huids[0],
         },
         {
           productId: chain.id,
@@ -258,14 +259,16 @@ describe('manual QA CRUD catalogue', () => {
           metalRate: 6850,
           netWeight: 17.2,
           makingCharges: 1800,
+          huid: chain.huids[0],
         },
       ],
     })
     expect(cashDraft.status).toBe('draft')
-    expect(cashDraft.invoiceNo).toMatch(/^CB-/)
+    expect(cashDraft.invoiceNo).toBe(`DRAFT-${cashDraft.id}`)
 
     const cashFinal = await ipc<Invoice>(IPC_CHANNELS.INVOICES_FINALIZE, cashDraft.id)
     expect(cashFinal.status).toBe('final')
+    expect(cashFinal.invoiceNo).toMatch(/^CB-/)
     expect(cashFinal.balanceDue).toBeGreaterThan(0)
     expect((await ipc<Product>(IPC_CHANNELS.PRODUCTS_GET, ring.id)).stockQty).toBe(11)
     expect((await ipc<Product>(IPC_CHANNELS.PRODUCTS_GET, chain.id)).stockQty).toBe(5)

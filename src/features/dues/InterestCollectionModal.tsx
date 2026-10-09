@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
-import { nextInterestDueDate } from '@shared/billing/pledgeMath'
 import { localTodayIso } from '@shared/localDate'
-import type { AdaguDueSummary } from '@shared/types'
+import type { AdaguDueSummary, PledgePaymentMode } from '@shared/types'
 import { DateInput } from '../../components/DateInput'
 import { Modal } from '../../components/Modal'
 import { formatCurrency, formatDisplayDate } from '../../lib/format'
+import { PLEDGE_PAYMENT_MODES } from './pledgePaymentModes'
 
 export function InterestCollectionModal({
   summary,
@@ -15,21 +15,23 @@ export function InterestCollectionModal({
   summary: AdaguDueSummary
   busy?: boolean
   onClose: () => void
-  onSubmit: (input: { amount: number; collectedDate: string }) => void
+  onSubmit: (input: { amount: number; collectedDate: string; mode: PledgePaymentMode }) => void
 }) {
   const suggested = Math.min(summary.monthlyInterest, summary.remaining) || summary.remaining
   const [amount, setAmount] = useState(suggested)
   const [collectedDate, setCollectedDate] = useState(localTodayIso())
+  const [mode, setMode] = useState<PledgePaymentMode>('cash')
 
-  const nextDue = useMemo(
-    () => nextInterestDueDate(summary.pledgeDate, collectedDate || localTodayIso()),
-    [summary.pledgeDate, collectedDate],
+  const interestDue = useMemo(
+    () => Math.max(summary.interestDue, 0),
+    [summary.interestDue],
   )
 
   return (
     <Modal
       title={`Collect interest · ${summary.receiptNo}`}
       onClose={onClose}
+      busy={busy}
       footer={
         <div className="modal-actions">
           <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>
@@ -39,15 +41,15 @@ export function InterestCollectionModal({
             type="button"
             className="btn"
             disabled={busy || amount <= 0}
-            onClick={() => onSubmit({ amount, collectedDate })}
+            onClick={() => onSubmit({ amount, collectedDate, mode })}
           >
-            Record collection
+            {busy ? 'Recording…' : 'Record collection'}
           </button>
         </div>
       }
     >
       <p className="muted">
-        Principal {formatCurrency(summary.principal)} · monthly interest{' '}
+        Principal {formatCurrency(summary.principalOutstanding)} · monthly interest{' '}
         {formatCurrency(summary.monthlyInterest)} · remaining{' '}
         <strong>{formatCurrency(summary.remaining)}</strong>.
       </p>
@@ -56,16 +58,16 @@ export function InterestCollectionModal({
       ) : null}
       <dl className="dues-detail-totals">
         <div>
-          <dt>Total due</dt>
-          <dd className="num">{formatCurrency(summary.totalDue)}</dd>
-        </div>
-        <div>
-          <dt>Collected</dt>
-          <dd className="num">{formatCurrency(summary.amountCollected)}</dd>
+          <dt>Interest due</dt>
+          <dd className="num">{formatCurrency(interestDue)}</dd>
         </div>
         <div>
           <dt>Next interest due</dt>
-          <dd>{formatDisplayDate(nextDue)}</dd>
+          <dd>{formatDisplayDate(summary.nextInterestDue)}</dd>
+        </div>
+        <div>
+          <dt>Interest paid up to</dt>
+          <dd>{formatDisplayDate(summary.interestPaidUpto)}</dd>
         </div>
       </dl>
       <div className="form-grid">
@@ -86,18 +88,41 @@ export function InterestCollectionModal({
             step="0.01"
             max={summary.remaining}
             value={amount || ''}
+            autoFocus
             onChange={(event) => setAmount(Number(event.target.value) || 0)}
           />
         </label>
+        <label>
+          Mode
+          <select
+            className="input"
+            value={mode}
+            onChange={(event) => setMode(event.target.value as PledgePaymentMode)}
+          >
+            {PLEDGE_PAYMENT_MODES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
-      <button
-        type="button"
-        className="btn ghost"
-        style={{ marginTop: '0.5rem' }}
-        onClick={() => setAmount(Math.min(summary.monthlyInterest, summary.remaining))}
-      >
-        Fill monthly interest
-      </button>
+      <div className="form-inline-actions">
+        <button
+          type="button"
+          className="btn ghost"
+          onClick={() => setAmount(interestDue > 0 ? interestDue : Math.min(summary.monthlyInterest, summary.remaining))}
+        >
+          Fill interest due
+        </button>
+        <button
+          type="button"
+          className="btn ghost"
+          onClick={() => setAmount(Math.min(summary.monthlyInterest, summary.remaining))}
+        >
+          Fill monthly interest
+        </button>
+      </div>
     </Modal>
   )
 }

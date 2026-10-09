@@ -36,6 +36,11 @@ export function PurchaseInvoicePrint({
           alt=""
           aria-hidden
         />
+        {data.watermark ? (
+          <div className="bill-status-watermark" aria-hidden>
+            <span>{data.watermark}</span>
+          </div>
+        ) : null}
         <header className="purchase-invoice-header">
           {shopInfo.taxVisibility.showLogo ? (
             <img

@@ -1,14 +1,9 @@
-import {
-  copyFileSync,
-  existsSync,
-  readdirSync,
-  renameSync,
-  statSync,
-  unlinkSync,
-} from 'node:fs'
+import { createHash } from 'node:crypto'
+import { createReadStream, copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import Database from 'better-sqlite3'
-import type { BackupFile, BackupStatus } from '@shared/types'
+import type { BackupFile, BackupInspection, BackupKind, BackupStatus } from '@shared/types'
+import { backupKindForName } from '@shared/backupRetention'
 import {
   DEFAULT_BACKUP_FREQUENCY,
   DEFAULT_BACKUP_TIME,
@@ -17,30 +12,57 @@ import {
   normalizeBackupSchedule,
   type BackupSchedule,
 } from '@shared/backupSchedule'
-import { localDateIso, localNowStamp } from '@shared/localDate'
+import { localDateIso, localNowStamp, localTimeStamp } from '@shared/localDate'
 import { getShopSetting, setShopSetting } from '../lib/settingsStore'
-import { getBackupsDir, getDataDir } from '../lib/paths'
+import { getBackupsDir, getDataDir, getUploadsDir } from '../lib/paths'
 import { sqliteNativeOptions } from '../lib/sqliteNative'
 import { HttpError } from '../lib/http'
 import { logDiagnostic } from '../lib/logger'
 import { closeDatabase, getDatabase, getDbPath, initDatabase } from './index'
 import { excelPathFor, writeExcelBackupFromSqliteFile } from './excelBackup'
+import { latestMigrationVersion } from './migrations'
 import { offsiteDirError } from './offsitePath'
+import { prerestoreSnapshotName, pruneBackupFiles, removeBackupSiblings } from './snapshot'
 
 export const LAST_BACKUP_AT_KEY = 'last_backup_at'
+export const LAST_SCHEDULED_BACKUP_AT_KEY = 'last_scheduled_backup_at'
 export const BACKUP_FREQUENCY_KEY = 'backup_frequency'
 export const BACKUP_TIME_KEY = 'backup_time'
 export const OFFSITE_DIR_KEY = 'backup_offsite_dir'
 export const LAST_OFFSITE_AT_KEY = 'last_offsite_at'
 export const LAST_OFFSITE_ERROR_KEY = 'last_offsite_error'
 export const LAST_OFFSITE_SOURCE_KEY = 'last_offsite_source'
-const MAX_DAILY_BACKUPS = 14
-const DAILY_RE = /^jeweltrackerpro-\d{4}-\d{2}-\d{2}\.db$/
-const DAILY_XLSX_RE = /^jeweltrackerpro-\d{4}-\d{2}-\d{2}\.xlsx$/
-const MANUAL_RE = /^jeweltrackerpro-manual-\d{8}-\d{6}\.db$/
-const PROVE_TABLES = ['users', 'products', 'shop_settings'] as const
 
-let scheduledBackupInFlight = false
+const RESTORE_REQUIRED_TABLES = ['schema_migrations', 'users', 'shop_settings', 'products', 'invoices'] as const
+const INVOICE_INSTANT_COLUMNS = ['created_at', 'invoice_date', 'bill_date', 'date'] as const
+
+/**
+ * Serialises every operation that reads or replaces the database files, so a
+ * scheduled backup, an off-machine copy, a manual backup, a day-close backup
+ * and a restore can never overlap.
+ */
+let queue: Promise<unknown> = Promise.resolve()
+let pendingTasks = 0
+
+export function withBackupLock<T>(task: () => Promise<T>): Promise<T> {
+  pendingTasks += 1
+  const run = queue.then(async () => {
+    try {
+      return await task()
+    } finally {
+      pendingTasks -= 1
+    }
+  })
+  queue = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
+export function isBackupBusy(): boolean {
+  return pendingTasks > 0
+}
 
 export function getBackupSchedule(): BackupSchedule {
   const db = getDatabase()
@@ -52,6 +74,12 @@ export function getBackupSchedule(): BackupSchedule {
 
 function settingOrNull(key: string): string | null {
   return getShopSetting(getDatabase(), key, '') || null
+}
+
+function lastScheduledAnchor(): string | null {
+  // Only the scheduled run updates this. A manual or day-close backup must not
+  // suppress the day's scheduled backup.
+  return settingOrNull(LAST_SCHEDULED_BACKUP_AT_KEY)
 }
 
 export function getOffsiteDir(): string {
@@ -93,7 +121,7 @@ export function updateBackupSchedule(input: BackupSchedule & { offsiteDir?: stri
 export function getBackupStatus(now = new Date()): BackupStatus {
   const lastBackupAt = settingOrNull(LAST_BACKUP_AT_KEY)
   const schedule = getBackupSchedule()
-  const next = nextBackupAt(schedule, lastBackupAt, now)
+  const next = nextBackupAt(schedule, lastScheduledAnchor(), now)
   return {
     lastBackupAt,
     frequency: schedule.frequency,
@@ -105,8 +133,12 @@ export function getBackupStatus(now = new Date()): BackupStatus {
   }
 }
 
-function markBackupCompleted(): BackupStatus {
-  setShopSetting(getDatabase(), LAST_BACKUP_AT_KEY, new Date().toISOString())
+function markBackupCompleted(options: { scheduled?: boolean } = {}): BackupStatus {
+  const db = getDatabase()
+  setShopSetting(db, LAST_BACKUP_AT_KEY, new Date().toISOString())
+  if (options.scheduled) {
+    setShopSetting(db, LAST_SCHEDULED_BACKUP_AT_KEY, new Date().toISOString())
+  }
   return getBackupStatus()
 }
 
@@ -137,84 +169,196 @@ export function assertSqliteIntegrity(filePath: string): void {
   }
 }
 
+function openBackup(filePath: string): Database.Database {
+  return new Database(filePath, sqliteNativeOptions({ readonly: true, fileMustExist: true }))
+}
+
+function listTableNames(db: Database.Database): Set<string> {
+  return new Set(
+    (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map(
+      (row) => row.name,
+    ),
+  )
+}
+
 function tableCount(db: Database.Database, table: string): number {
   return (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
 }
 
-export function proveBackupRestores(copyPath: string, sourcePath: string): void {
-  assertSqliteIntegrity(copyPath)
-  const copy = new Database(copyPath, sqliteNativeOptions({ readonly: true, fileMustExist: true }))
-  const source = new Database(sourcePath, sqliteNativeOptions({ readonly: true, fileMustExist: true }))
+function countIfPresent(db: Database.Database, tables: Set<string>, table: string): number {
+  return tables.has(table) ? tableCount(db, table) : 0
+}
+
+function schemaVersionOf(db: Database.Database, tables: Set<string>): number {
+  if (!tables.has('schema_migrations')) return 0
+  const row = db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as {
+    version: number | null
+  }
+  return row.version ?? 0
+}
+
+/**
+ * Rejects anything that is not a healthy JewelTrackerPro backup this build can
+ * open, before the live database is touched.
+ */
+export function assertRestorableBackup(filePath: string): void {
   try {
-    for (const table of PROVE_TABLES) {
-      if (tableCount(copy, table) !== tableCount(source, table)) {
-        throw new Error('Off-machine copy did not match the local backup')
-      }
+    assertSqliteIntegrity(filePath)
+  } catch (error) {
+    throw new HttpError(400, error instanceof Error ? error.message : 'Backup file is damaged and cannot be used')
+  }
+
+  const db = openBackup(filePath)
+  try {
+    const tables = listTableNames(db)
+    const missing = RESTORE_REQUIRED_TABLES.filter((table) => !tables.has(table))
+    if (missing.length > 0) {
+      throw new HttpError(400, 'This file is not a JewelTrackerPro backup')
+    }
+    if (schemaVersionOf(db, tables) > latestMigrationVersion()) {
+      throw new HttpError(
+        400,
+        'This backup was made by a newer version of the app. Update the app before restoring it.',
+      )
     }
   } finally {
-    copy.close()
-    source.close()
+    db.close()
   }
 }
 
-export async function backupDatabaseTo(destinationPath: string): Promise<BackupStatus> {
+export function inspectBackup(name: string): BackupInspection {
+  const filePath = resolveBackupPath(name)
+  const issues: string[] = []
+  let db: Database.Database
+  try {
+    db = openBackup(filePath)
+  } catch (error) {
+    throw new HttpError(400, error instanceof Error ? error.message : 'Backup file could not be opened')
+  }
+  try {
+    if (db.pragma('integrity_check', { simple: true }) !== 'ok') {
+      issues.push('The file failed its integrity check')
+    }
+    const tables = listTableNames(db)
+    for (const table of RESTORE_REQUIRED_TABLES) {
+      if (!tables.has(table)) {
+        issues.push(`Missing table: ${table}`)
+      }
+    }
+    const schemaVersion = schemaVersionOf(db, tables)
+    if (schemaVersion > latestMigrationVersion()) {
+      issues.push('Made by a newer version of the app')
+    }
+
+    let latestInvoiceAt: string | null = null
+    if (tables.has('invoices')) {
+      const columns = (
+        db.prepare('PRAGMA table_info("invoices")').all() as { name: string }[]
+      ).map((row) => row.name)
+      const column = INVOICE_INSTANT_COLUMNS.find((candidate) => columns.includes(candidate))
+      if (column) {
+        const row = db.prepare(`SELECT MAX("${column}") AS value FROM invoices`).get() as {
+          value: string | null
+        }
+        latestInvoiceAt = row.value ?? null
+      }
+    }
+
+    return {
+      name,
+      schemaVersion,
+      appSchemaVersion: latestMigrationVersion(),
+      restorable: issues.length === 0,
+      latestInvoiceAt,
+      counts: {
+        customers: countIfPresent(db, tables, 'customers'),
+        invoices: countIfPresent(db, tables, 'invoices'),
+        pledges: countIfPresent(db, tables, 'pledges'),
+        products: countIfPresent(db, tables, 'products'),
+        goldSavingAccounts: countIfPresent(db, tables, 'gold_saving_accounts'),
+      },
+      issues,
+    }
+  } finally {
+    db.close()
+  }
+}
+
+function fileSha256(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256')
+    const stream = createReadStream(filePath)
+    stream.on('data', (chunk) => hash.update(chunk))
+    stream.on('end', () => resolve(hash.digest('hex')))
+    stream.on('error', reject)
+  })
+}
+
+/**
+ * Byte-for-byte proof that the off-machine file equals the local snapshot,
+ * plus an integrity check on the copy. Stronger than comparing a few row
+ * counts, which can match even when the rest of the file is damaged.
+ */
+export async function proveBackupRestores(copyPath: string, sourcePath: string): Promise<void> {
+  assertSqliteIntegrity(copyPath)
+  const [copyHash, sourceHash] = await Promise.all([fileSha256(copyPath), fileSha256(sourcePath)])
+  if (copyHash !== sourceHash) {
+    throw new Error('Off-machine copy did not match the local backup')
+  }
+}
+
+export async function backupDatabaseTo(
+  destinationPath: string,
+  options: { scheduled?: boolean } = {},
+): Promise<BackupStatus> {
   const db = getDatabase()
   await db.backup(destinationPath)
-  return markBackupCompleted()
+  return markBackupCompleted(options)
 }
 
-function pruneDatedFiles(dir: string, pattern: RegExp): void {
-  if (!existsSync(dir)) return
-  const files = readdirSync(dir)
-    .filter((name) => pattern.test(name))
-    .sort()
-    .reverse()
-
-  for (const name of files.slice(MAX_DAILY_BACKUPS)) {
-    unlinkSync(join(dir, name))
-  }
-}
-
-function writeExcelBeside(dbPath: string): void {
+async function writeExcelBeside(dbPath: string): Promise<void> {
   try {
-    writeExcelBackupFromSqliteFile(dbPath)
+    await writeExcelBackupFromSqliteFile(dbPath)
   } catch (error) {
     logDiagnostic('backup', 'Excel backup failed', error)
   }
 }
 
-function copyExcelBeside(sourceDbPath: string, destDir: string, now: Date): void {
+async function copyExcelBeside(sourceDbPath: string, destDir: string, now: Date): Promise<void> {
   try {
+    // Excel is written only for daily and manual snapshots. A day-close or
+    // pre-restore snapshot must not grow an extra workbook here.
     const sourceXlsx = excelPathFor(sourceDbPath)
-    if (!existsSync(sourceXlsx)) {
-      writeExcelBackupFromSqliteFile(sourceDbPath, sourceXlsx)
-    }
     if (!existsSync(sourceXlsx)) return
     const destXlsx = join(destDir, `jeweltrackerpro-${localDateIso(now)}.xlsx`)
     copyFileSync(sourceXlsx, destXlsx)
-    pruneDatedFiles(destDir, DAILY_XLSX_RE)
   } catch (error) {
     logDiagnostic('backup', 'Off-machine Excel copy failed', error)
   }
 }
 
 export async function ensureScheduledBackup(now = new Date()): Promise<void> {
-  const lastBackupAt = getShopSetting(getDatabase(), LAST_BACKUP_AT_KEY, '') || null
-  if (!isBackupDue(getBackupSchedule(), lastBackupAt, now)) {
-    return
-  }
-  const dir = getBackupsDir()
-  const destinationPath = join(dir, `jeweltrackerpro-${localDateIso(now)}.db`)
-  await backupDatabaseTo(destinationPath)
-  writeExcelBeside(destinationPath)
-  pruneDatedFiles(dir, DAILY_RE)
-  pruneDatedFiles(dir, DAILY_XLSX_RE)
+  return withBackupLock(() => runScheduledBackup(now))
 }
 
 export const ensureDailyBackup = ensureScheduledBackup
 
+async function runScheduledBackup(now: Date): Promise<void> {
+  if (!isBackupDue(getBackupSchedule(), lastScheduledAnchor(), now)) {
+    return
+  }
+  const dir = getBackupsDir()
+  const destinationPath = join(dir, `jeweltrackerpro-${localDateIso(now)}.db`)
+  await backupDatabaseTo(destinationPath, { scheduled: true })
+  await writeExcelBeside(destinationPath)
+  pruneBackupFiles(dir)
+}
+
+/** Only these kinds are worth mirroring off the machine. */
+const OFFSITE_SOURCE_KINDS: BackupKind[] = ['daily', 'manual', 'dayclose']
+
 function newestLocalBackup(): BackupFile | null {
-  return listBackups()[0] ?? null
+  return listBackups().find((file) => OFFSITE_SOURCE_KINDS.includes(file.kind)) ?? null
 }
 
 function sourceFingerprint(file: BackupFile): string {
@@ -226,9 +370,8 @@ async function ensureLocalSnapshot(now = new Date()): Promise<BackupFile> {
   const dir = getBackupsDir()
   const destinationPath = join(dir, `jeweltrackerpro-${localDateIso(now)}.db`)
   await backupDatabaseTo(destinationPath)
-  writeExcelBeside(destinationPath)
-  pruneDatedFiles(dir, DAILY_RE)
-  pruneDatedFiles(dir, DAILY_XLSX_RE)
+  await writeExcelBeside(destinationPath)
+  pruneBackupFiles(dir)
   const newest = newestLocalBackup()
   if (!newest) {
     throw new Error('Local backup was not found')
@@ -236,7 +379,32 @@ async function ensureLocalSnapshot(now = new Date()): Promise<BackupFile> {
   return newest
 }
 
-function copyAndProve(sourcePath: string, destDir: string, now: Date): string {
+function mirrorUploads(destDir: string): void {
+  const sourceDir = getUploadsDir()
+  if (!existsSync(sourceDir)) return
+
+  const targetDir = join(destDir, 'uploads')
+  try {
+    mkdirSync(targetDir, { recursive: true })
+  } catch (error) {
+    logDiagnostic('backup', 'Off-machine uploads folder could not be created', error)
+    return
+  }
+
+  for (const name of readdirSync(sourceDir)) {
+    try {
+      const source = join(sourceDir, name)
+      if (!statSync(source).isFile()) continue
+      const target = join(targetDir, name)
+      if (existsSync(target)) continue
+      copyFileSync(source, target)
+    } catch (error) {
+      logDiagnostic('backup', 'Shop image could not be mirrored', error)
+    }
+  }
+}
+
+async function copyAndProve(sourcePath: string, destDir: string, now: Date): Promise<string> {
   if (!existsSync(destDir)) {
     throw new Error('Off-machine folder was not found')
   }
@@ -244,14 +412,17 @@ function copyAndProve(sourcePath: string, destDir: string, now: Date): string {
     throw new Error('Off-machine folder is not a directory')
   }
 
-  const destPath = join(destDir, `jeweltrackerpro-${localDateIso(now)}.db`)
-  const partialPath = `${destPath}.partial`
+  const date = localDateIso(now)
+  const destPath = join(destDir, `jeweltrackerpro-${date}.db`)
+  // Leading "~$" keeps half-written files out of OneDrive/Drive sync clients.
+  const partialPath = join(destDir, `~$jeweltrackerpro-${date}.db.tmp`)
   if (existsSync(partialPath)) {
     unlinkSync(partialPath)
   }
+
   copyFileSync(sourcePath, partialPath)
   try {
-    proveBackupRestores(partialPath, sourcePath)
+    await proveBackupRestores(partialPath, sourcePath)
     if (existsSync(destPath)) {
       unlinkSync(destPath)
     }
@@ -262,8 +433,10 @@ function copyAndProve(sourcePath: string, destDir: string, now: Date): string {
     }
     throw error
   }
-  pruneDatedFiles(destDir, DAILY_RE)
-  copyExcelBeside(sourcePath, destDir, now)
+
+  pruneBackupFiles(destDir)
+  await copyExcelBeside(sourcePath, destDir, now)
+  mirrorUploads(destDir)
   return destPath
 }
 
@@ -271,6 +444,10 @@ export async function copyNewestBackupOffsite(
   options: { forceFresh?: boolean } = {},
   now = new Date(),
 ): Promise<BackupStatus> {
+  return withBackupLock(() => runOffsiteCopy(options, now))
+}
+
+async function runOffsiteCopy(options: { forceFresh?: boolean }, now: Date): Promise<BackupStatus> {
   const destDir = getOffsiteDir()
   if (!destDir) {
     return getBackupStatus()
@@ -287,11 +464,12 @@ export async function copyNewestBackupOffsite(
     if (!options.forceFresh && lastSource === fingerprint) {
       const destXlsx = join(destDir, `jeweltrackerpro-${localDateIso(now)}.xlsx`)
       if (!existsSync(destXlsx)) {
-        copyExcelBeside(sourcePath, destDir, now)
+        await copyExcelBeside(sourcePath, destDir, now)
       }
+      mirrorUploads(destDir)
       return getBackupStatus()
     }
-    copyAndProve(sourcePath, destDir, now)
+    await copyAndProve(sourcePath, destDir, now)
     recordOffsiteSuccess(fingerprint)
     return getBackupStatus()
   } catch (error) {
@@ -303,16 +481,35 @@ export async function copyNewestBackupOffsite(
 }
 
 export async function tickScheduledBackup(): Promise<void> {
-  if (scheduledBackupInFlight) return
-  scheduledBackupInFlight = true
-  try {
+  if (isBackupBusy()) return
+  await withBackupLock(async () => {
     try {
-      await ensureScheduledBackup()
+      await runScheduledBackup(new Date())
     } finally {
-      await copyNewestBackupOffsite()
+      await runOffsiteCopy({}, new Date())
     }
-  } finally {
-    scheduledBackupInFlight = false
+  })
+}
+
+/**
+ * Snapshot taken after a metal day is closed. Runs under the same lock as every
+ * other backup and never throws: a failed backup must not undo a close.
+ */
+export async function runDayCloseBackup(businessDate: string, metal: string): Promise<boolean> {
+  try {
+    await withBackupLock(async () => {
+      const now = new Date()
+      const slug = metal.trim().toLowerCase().replace(/[^a-z0-9]+/g, '') || 'metal'
+      const name = `jeweltrackerpro-dayclose-${localDateIso(now)}-${slug}-${localTimeStamp(now)}.db`
+      const dir = getBackupsDir()
+      await backupDatabaseTo(join(dir, name))
+      pruneBackupFiles(dir)
+      await runOffsiteCopy({}, now)
+    })
+    return true
+  } catch (error) {
+    logDiagnostic('backup', `Day-close backup failed for ${businessDate} ${metal}`, error)
+    return false
   }
 }
 
@@ -325,28 +522,83 @@ function removeSidecarFiles(dbPath: string): void {
   }
 }
 
-export function restoreDatabaseFrom(sourcePath: string): BackupStatus {
-  assertSqliteIntegrity(sourcePath)
+async function writePrerestoreSnapshot(): Promise<string> {
+  const dir = getBackupsDir()
+  const destination = join(dir, prerestoreSnapshotName())
+  if (existsSync(destination)) {
+    unlinkSync(destination)
+  }
+  await getDatabase().backup(destination)
+  pruneBackupFiles(dir)
+  return destination
+}
+
+function restoreShopImages(): void {
+  const offsiteDir = getOffsiteDir()
+  if (!offsiteDir) return
+
+  const sourceDir = join(offsiteDir, 'uploads')
+  if (!existsSync(sourceDir)) return
+
+  const targetDir = getUploadsDir()
+  for (const name of readdirSync(sourceDir)) {
+    try {
+      const source = join(sourceDir, name)
+      if (!statSync(source).isFile()) continue
+      const target = join(targetDir, name)
+      if (existsSync(target)) continue
+      copyFileSync(source, target)
+    } catch (error) {
+      logDiagnostic('backup', 'Shop image could not be restored', error)
+    }
+  }
+}
+
+export async function restoreDatabaseFrom(sourcePath: string): Promise<BackupStatus> {
+  return withBackupLock(() => runRestore(sourcePath))
+}
+
+async function runRestore(sourcePath: string): Promise<BackupStatus> {
+  assertRestorableBackup(sourcePath)
+
   const dest = getDbPath()
+  const safetyCopy = await writePrerestoreSnapshot()
+
   closeDatabase()
   try {
     copyFileSync(sourcePath, dest)
     removeSidecarFiles(dest)
-  } catch (error) {
     initDatabase()
-    throw error
+  } catch (error) {
+    try {
+      // The failed initDatabase leaves a half-built connection in the module.
+      // Close it first, or the re-init below would hand back the broken file.
+      closeDatabase()
+      if (existsSync(safetyCopy)) {
+        copyFileSync(safetyCopy, dest)
+        removeSidecarFiles(dest)
+      }
+    } catch (rollbackError) {
+      logDiagnostic('backup', 'Restore rollback failed', rollbackError)
+    }
+    try {
+      initDatabase()
+    } catch (reinitError) {
+      logDiagnostic('backup', 'Database could not be reopened after a failed restore', reinitError)
+    }
+    logDiagnostic('backup', 'Restore failed and was rolled back', error)
+    throw new HttpError(400, 'Backup could not be opened. Your current data was kept.')
   }
-  initDatabase()
+
+  restoreShopImages()
   return getBackupStatus()
 }
 
-function backupKind(name: string): BackupFile['kind'] | null {
-  if (DAILY_RE.test(name)) return 'daily'
-  if (MANUAL_RE.test(name)) return 'manual'
-  return null
+function backupKind(name: string): BackupKind | null {
+  return backupKindForName(name)
 }
 
-function describeBackup(name: string, kind: BackupFile['kind']): BackupFile {
+function describeBackup(name: string, kind: BackupKind): BackupFile {
   const stat = statSync(join(getBackupsDir(), name))
   return {
     name,
@@ -380,22 +632,22 @@ export function listBackups(): BackupFile[] {
 }
 
 export async function createManualBackup(): Promise<BackupFile> {
-  const name = `jeweltrackerpro-manual-${localNowStamp()}.db`
-  const destinationPath = join(getBackupsDir(), name)
-  await backupDatabaseTo(destinationPath)
-  writeExcelBeside(destinationPath)
-  return describeBackup(name, 'manual')
+  return withBackupLock(async () => {
+    const name = `jeweltrackerpro-manual-${localNowStamp()}.db`
+    const destinationPath = join(getBackupsDir(), name)
+    await backupDatabaseTo(destinationPath)
+    await writeExcelBeside(destinationPath)
+    pruneBackupFiles(getBackupsDir())
+    return describeBackup(name, 'manual')
+  })
 }
 
 export function deleteBackup(name: string): void {
   const filePath = resolveBackupPath(name)
   unlinkSync(filePath)
-  const xlsxPath = excelPathFor(filePath)
-  if (existsSync(xlsxPath)) {
-    unlinkSync(xlsxPath)
-  }
+  removeBackupSiblings(getBackupsDir(), name)
 }
 
-export function restoreBackupByName(name: string): BackupStatus {
+export async function restoreBackupByName(name: string): Promise<BackupStatus> {
   return restoreDatabaseFrom(resolveBackupPath(name))
 }

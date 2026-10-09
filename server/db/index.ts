@@ -6,6 +6,8 @@ import { getDataDir } from '../lib/paths'
 import { sqliteNativeOptions } from '../lib/sqliteNative'
 import { getMigrations } from './migrations'
 import { ensureStockCategories } from './stockCategories'
+import { writePremigrateSnapshot } from './snapshot'
+import { backfillLegacyPledgePayments } from '../pledges/backfill'
 
 let db: Database.Database | null = null
 
@@ -24,12 +26,20 @@ function runMigrations(database: Database.Database): void {
       .map((row) => (row as { version: number }).version),
   )
 
-  for (const migration of getMigrations()) {
+  const migrations = getMigrations()
+  const hasPendingMigration = migrations.some((migration) => !applied.has(migration.version))
+  if (hasPendingMigration && applied.size > 0) {
+    // Never migrate without a rollback point: a migration that commits but is
+    // wrong would otherwise be expensive to undo.
+    writePremigrateSnapshot(database, Math.max(...applied))
+  }
+
+  for (const migration of migrations) {
     if (applied.has(migration.version)) {
       continue
     }
 
-    const disableForeignKeys = migration.version === 34
+    const disableForeignKeys = migration.disableForeignKeys === true
     if (disableForeignKeys) {
       database.pragma('foreign_keys = OFF')
     }
@@ -71,6 +81,7 @@ export function initDatabase(): Database.Database {
   db.pragma('foreign_keys = ON')
   runMigrations(db)
   ensureStockCategories(db)
+  backfillLegacyPledgePayments(db)
   if (process.env.JEWELTRACKERPRO_E2E === '1') {
     seedE2eAdmin(db)
   } else {

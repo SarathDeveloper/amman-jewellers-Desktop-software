@@ -18,6 +18,7 @@ import {
   Weight,
   X,
 } from 'lucide-react'
+import { isHuidMandatory } from '@shared/itemTypes'
 import type { Product, ProductInput } from '@shared/types'
 import { Modal } from '../../components/Modal'
 import { localImageSrc } from '../invoices/mapShopDisplay'
@@ -29,6 +30,7 @@ import {
   categoryOptions,
   formToProductInput,
   metalOptions,
+  newAttributeRow,
   productToForm,
   purityOptions,
   resolvePurityForMetal,
@@ -273,7 +275,7 @@ export function ProductFormModal({
   function addAttribute() {
     setForm((current) => ({
       ...current,
-      attributes: [...current.attributes, { key: '', value: '' }],
+      attributes: [...current.attributes, newAttributeRow()],
     }))
   }
 
@@ -596,6 +598,7 @@ export function ProductFormModal({
               </div>
               <p className="muted">
                 {taggedHuidCount} of {stockQty} pieces tagged
+                {isHuidMandatory(form.metal) ? '' : ' · optional for silver'}
               </p>
               {stockQty === 0 && taggedHuidCount === 0 ? (
                 <p className="muted">No HUID needed while stock is 0.</p>
@@ -637,7 +640,7 @@ export function ProductFormModal({
                 <p className="muted">Optional keys such as finish, colour, or hallmark.</p>
               ) : (
                 form.attributes.map((row, index) => (
-                  <div key={index} className="product-attr-row">
+                  <div key={row.id} className="product-attr-row">
                     <input
                       className="input"
                       value={row.key}

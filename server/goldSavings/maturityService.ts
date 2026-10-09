@@ -1,40 +1,106 @@
 import type Database from 'better-sqlite3'
-import { eligibleBonusGoldWeight, rateForPurity, roundGoldGrams } from '@shared/goldSavings/math'
-import type { GoldSavingRedemption, GoldSavingRedemptionInput } from '@shared/types'
-import { getLatestMetalRates } from '../routes/metalRates.routes'
+import { roundGoldGrams } from '@shared/goldSavings/math'
+import type { GoldSavingRedemption, GoldSavingRedemptionInput, GoldSavingRedemptionKind } from '@shared/types'
+import { eligibleBonusGoldForAccount } from './bonus'
 import { currentGoldBalance, insertLedger, loadAccount, loadScheme, mapRedemption, nextReceiptNo, REDEMPTION_SELECT, writeAudit, type RedemptionRow } from './rows'
-
-function eligibleBonusGold(
-  db: Database.Database,
-  accountId: number,
-  accumulated: number,
-): number {
-  const account = loadAccount(db, accountId)
-  const scheme = loadScheme(db, account.scheme_id)
-  const paid = (
-    db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM gold_saving_installments WHERE account_id = ? AND status = 'paid'`,
-      )
-      .get(accountId) as { count: number }
-  ).count
-  const rates = getLatestMetalRates(db)
-  const rate = rates ? rateForPurity(rates, account.purity) : 0
-  return eligibleBonusGoldWeight({
-    bonusType: scheme.bonus_type,
-    bonusValue: scheme.bonus_value,
-    accumulatedGrams: accumulated,
-    paidInstallments: paid,
-    durationMonths: account.duration_months,
-    ratePerGram: rate,
-  })
-}
 
 export function listRedemptions(db: Database.Database, accountId?: number): GoldSavingRedemption[] {
   const rows = accountId
     ? (db.prepare(`${REDEMPTION_SELECT} WHERE r.account_id = ? ORDER BY r.id DESC`).all(accountId) as RedemptionRow[])
     : (db.prepare(`${REDEMPTION_SELECT} ORDER BY r.id DESC`).all() as RedemptionRow[])
   return rows.map(mapRedemption)
+}
+
+export interface RedeemInTxInput {
+  accountId: number
+  redemptionDate: string
+  redemptionKind: GoldSavingRedemptionKind
+  /** Grams deducted from the ledger (excluding bonus). */
+  requested: number
+  /** Bonus grams credited alongside this redemption. */
+  bonusGold: number
+  /** Total grams available before this redemption (accumulated + bonus). */
+  eligible: number
+  invoiceId?: number | null
+  notes?: string
+  bonusType?: string
+  userId: number | null
+}
+
+/**
+ * Insert a redemption and its ledger rows. Callers must validate eligibility
+ * first. Used by the maturity screen and by sale-bill finalize so both paths
+ * write an identical ledger.
+ */
+export function redeemInTx(db: Database.Database, input: RedeemInTxInput): number {
+  const account = loadAccount(db, input.accountId)
+  const requested = roundGoldGrams(input.requested)
+  const remainingAfter = roundGoldGrams(input.eligible - requested)
+  const isFull = remainingAfter <= 0
+  const receiptNo = nextReceiptNo(db, 'GSRD')
+
+  const result = db
+    .prepare(
+      `INSERT INTO gold_saving_redemptions (
+        account_id, receipt_no, redemption_date, redemption_kind, gold_weight, bonus_gold_weight,
+        invoice_id, making_charges, wastage, taxes, invoice_value, remaining_gold, closes_account, notes, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?)`,
+    )
+    .run(
+      account.id,
+      receiptNo,
+      input.redemptionDate,
+      input.redemptionKind,
+      requested,
+      input.bonusGold,
+      input.invoiceId ?? null,
+      remainingAfter,
+      isFull ? 1 : 0,
+      input.notes ?? '',
+      input.userId,
+    )
+  const redemptionId = Number(result.lastInsertRowid)
+
+  if (input.bonusGold > 0) {
+    insertLedger(db, {
+      accountId: account.id,
+      entryDate: input.redemptionDate,
+      entryType: 'bonus',
+      redemptionId,
+      amount: 0,
+      goldWeight: input.bonusGold,
+      goldRate: 0,
+      txnRef: `${receiptNo}-BONUS`,
+      notes: `Configured bonus (${input.bonusType ?? 'scheme'})`,
+      createdBy: input.userId,
+    })
+  }
+  insertLedger(db, {
+    accountId: account.id,
+    entryDate: input.redemptionDate,
+    entryType: 'redemption',
+    redemptionId,
+    amount: 0,
+    goldWeight: -requested,
+    goldRate: 0,
+    txnRef: receiptNo,
+    notes: input.notes ?? '',
+    createdBy: input.userId,
+  })
+
+  if (isFull) {
+    db.prepare(
+      `UPDATE gold_saving_accounts SET status = 'redeemed', closed_at = ?, updated_at = datetime('now') WHERE id = ?`,
+    ).run(input.redemptionDate, account.id)
+  }
+  writeAudit(db, {
+    entityType: 'redemption',
+    entityId: redemptionId,
+    action: isFull ? 'redeem_full' : 'redeem_partial',
+    changedBy: input.userId,
+    after: { receiptNo, goldWeight: requested, bonusGold: input.bonusGold, remainingAfter, invoiceId: input.invoiceId ?? null },
+  })
+  return redemptionId
 }
 
 export function processRedemption(
@@ -49,7 +115,7 @@ export function processRedemption(
     }
     const scheme = loadScheme(db, account.scheme_id)
     const accumulated = currentGoldBalance(db, account.id)
-    const bonusGold = eligibleBonusGold(db, account.id, accumulated)
+    const bonusGold = eligibleBonusGoldForAccount(db, account.id, accumulated)
     const eligible = roundGoldGrams(accumulated + bonusGold)
     if (eligible <= 0) {
       throw new Error('No accumulated gold is available to redeem')
@@ -80,73 +146,18 @@ export function processRedemption(
       invoiceNo = invoice.invoice_no
     }
 
-    const receiptNo = nextReceiptNo(db, 'GSRD')
-    const result = db
-      .prepare(
-        `INSERT INTO gold_saving_redemptions (
-          account_id, receipt_no, redemption_date, redemption_kind, gold_weight, bonus_gold_weight,
-          invoice_id, making_charges, wastage, taxes, invoice_value, remaining_gold, closes_account, notes, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        account.id,
-        receiptNo,
-        input.redemptionDate,
-        input.redemptionKind,
-        requested,
-        bonusGold,
-        input.invoiceId ?? null,
-        input.makingCharges ?? 0,
-        input.wastage ?? 0,
-        input.taxes ?? 0,
-        input.invoiceValue ?? 0,
-        remainingAfter,
-        isFull ? 1 : 0,
-        input.notes ?? (invoiceNo ? `Linked to bill ${invoiceNo}` : ''),
-        userId,
-      )
-    const redemptionId = Number(result.lastInsertRowid)
-
-    if (bonusGold > 0) {
-      insertLedger(db, {
-        accountId: account.id,
-        entryDate: input.redemptionDate,
-        entryType: 'bonus',
-        redemptionId,
-        amount: 0,
-        goldWeight: bonusGold,
-        goldRate: 0,
-        txnRef: `${receiptNo}-BONUS`,
-        notes: `Configured bonus (${scheme.bonus_type})`,
-        createdBy: userId,
-      })
-    }
-    insertLedger(db, {
+    return redeemInTx(db, {
       accountId: account.id,
-      entryDate: input.redemptionDate,
-      entryType: 'redemption',
-      redemptionId,
-      amount: 0,
-      goldWeight: -requested,
-      goldRate: 0,
-      txnRef: receiptNo,
-      notes: input.notes ?? '',
-      createdBy: userId,
+      redemptionDate: input.redemptionDate,
+      redemptionKind: input.redemptionKind,
+      requested,
+      bonusGold,
+      eligible,
+      invoiceId: input.invoiceId ?? null,
+      notes: input.notes ?? (invoiceNo ? `Linked to bill ${invoiceNo}` : ''),
+      bonusType: scheme.bonus_type,
+      userId,
     })
-
-    if (isFull) {
-      db.prepare(
-        `UPDATE gold_saving_accounts SET status = 'redeemed', closed_at = ?, updated_at = datetime('now') WHERE id = ?`,
-      ).run(input.redemptionDate, account.id)
-    }
-    writeAudit(db, {
-      entityType: 'redemption',
-      entityId: redemptionId,
-      action: isFull ? 'redeem_full' : 'redeem_partial',
-      changedBy: userId,
-      after: { receiptNo, goldWeight: requested, bonusGold, remainingAfter, invoiceId: input.invoiceId ?? null },
-    })
-    return redemptionId
   })
   const id = tx()
   const row = db.prepare(`${REDEMPTION_SELECT} WHERE r.id = ?`).get(id) as RedemptionRow

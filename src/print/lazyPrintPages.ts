@@ -35,6 +35,11 @@ export const PledgeReleasePrintPage = lazy(() =>
     default: module.PledgeReleasePrintPage,
   })),
 )
+export const PledgeNoticePrintPage = lazy(() =>
+  import('../features/pledges/PledgeNoticePrintPage').then((module) => ({
+    default: module.PledgeNoticePrintPage,
+  })),
+)
 export const MetalDayPrintPage = lazy(() =>
   import('../features/stock/MetalDayPrintPage').then((module) => ({
     default: module.MetalDayPrintPage,
@@ -50,6 +55,11 @@ export const PurchaseInvoicePrintPage = lazy(() =>
     default: module.PurchaseInvoicePrintPage,
   })),
 )
+export const OldGoldPurchasePrintPage = lazy(() =>
+  import('../features/oldGoldPurchases/print/OldGoldPurchasePrintPage').then((module) => ({
+    default: module.OldGoldPurchasePrintPage,
+  })),
+)
 export const GsReceiptPrintPage = lazy(() =>
   import('../features/goldSavings/print/GsReceiptPrintPage').then((module) => ({
     default: module.GsReceiptPrintPage,
@@ -58,5 +68,20 @@ export const GsReceiptPrintPage = lazy(() =>
 export const GsPassbookPrintPage = lazy(() =>
   import('../features/goldSavings/print/GsPassbookPrintPage').then((module) => ({
     default: module.GsPassbookPrintPage,
+  })),
+)
+export const GsRefundPrintPage = lazy(() =>
+  import('../features/goldSavings/print/GsRefundPrintPage').then((module) => ({
+    default: module.GsRefundPrintPage,
+  })),
+)
+export const GsCallListPrintPage = lazy(() =>
+  import('../features/goldSavings/print/GsCallListPrintPage').then((module) => ({
+    default: module.GsCallListPrintPage,
+  })),
+)
+export const GsBatchReceiptPrintPage = lazy(() =>
+  import('../features/goldSavings/print/GsBatchReceiptPrintPage').then((module) => ({
+    default: module.GsBatchReceiptPrintPage,
   })),
 )

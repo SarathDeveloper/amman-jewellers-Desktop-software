@@ -43,6 +43,7 @@ function shop(overrides: Partial<ShopSettings> = {}): ShopSettings {
     quickProductIds: [],
     pledgeLtvPct: 75,
     adaguInterestPct: 2.1,
+    adaguAuctionNoticeDays: 14,
     ...overrides,
   }
 }

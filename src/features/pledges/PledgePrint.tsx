@@ -14,9 +14,11 @@ function formatAmount(value: number): string {
   return value.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
-function formatDate(isoDate: string | null | undefined): string {
-  if (!isoDate) return ''
-  return formatDisplayDate(isoDate)
+/** KYC numbers are only ever printed masked: `XXXX XXXX 1234`. */
+function maskAadhaar(value: string | undefined): string {
+  const digits = (value ?? '').replace(/\D/g, '')
+  if (digits.length < 4) return ''
+  return `XXXX XXXX ${digits.slice(-4)}`
 }
 
 export function PledgePrint({
@@ -49,6 +51,15 @@ export function PledgePrint({
   const totalStone = pledge.items.reduce((sum, item) => sum + (item.stoneWeight ?? 0), 0)
   const totalNet = pledge.items.reduce((sum, item) => sum + item.netWeight, 0)
   const puritySummary = [...new Set(pledge.items.map((item) => item.purity).filter(Boolean))].join(', ')
+  const showItemValue = pledge.items.some(
+    (item) => (item.ratePerGram ?? 0) > 0 || (item.itemValue ?? 0) > 0,
+  )
+  const maskedAadhaar = maskAadhaar(pledge.customerAadhaar)
+  const idProofLine = [pledge.customerIdProofType, maskedAadhaar, pledge.customerPan]
+    .filter((part) => (part ?? '').trim())
+    .join(' · ')
+  const customerPhoto = pledge.photos?.find((photo) => photo.kind === 'customer')
+  const itemPhoto = pledge.photos?.find((photo) => photo.kind === 'item')
 
   return (
     <div className="pledge-print-root" data-print-root>
@@ -98,7 +109,7 @@ export function PledgePrint({
           </div>
           <div>
             <span>DATE:</span>
-            <strong>{formatDate(pledge.pledgeDate)}</strong>
+            <strong>{formatDisplayDate(pledge.pledgeDate)}</strong>
           </div>
           <div>
             <span>PLEDGE TYPE:</span>
@@ -125,8 +136,32 @@ export function PledgePrint({
               <span>Address:</span>
               <strong>{pledge.customerAddress || '—'}</strong>
             </div>
+            <div className="full">
+              <span>ID Proof:</span>
+              <strong>{idProofLine || '—'}</strong>
+            </div>
           </div>
         </section>
+
+        {customerPhoto || itemPhoto ? (
+          <section className="pledge-print-section">
+            <h2>PHOTOS ON RECORD</h2>
+            <div className="pledge-print-photos">
+              {customerPhoto ? (
+                <figure>
+                  <img src={localImageSrc(customerPhoto.path, '')} alt="Borrower" />
+                  <figcaption>Borrower</figcaption>
+                </figure>
+              ) : null}
+              {itemPhoto ? (
+                <figure>
+                  <img src={localImageSrc(itemPhoto.path, '')} alt="Pledged item" />
+                  <figcaption>Pledged item</figcaption>
+                </figure>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         <section className="pledge-print-section">
           <h2>DESCRIPTION OF JEWELLS (Detailed item breakdown)</h2>
@@ -167,6 +202,10 @@ export function PledgePrint({
                 <td>Net Wt.</td>
                 <td>{formatWeight(totalNet)} gms</td>
               </tr>
+              <tr>
+                <td>Assessed Value</td>
+                <td>₹ {formatAmount(pledge.assessedValue ?? 0)}</td>
+              </tr>
             </tbody>
           </table>
 
@@ -182,6 +221,8 @@ export function PledgePrint({
                   <th className="num">Gross</th>
                   <th className="num">Ded.</th>
                   <th className="num">Net</th>
+                  {showItemValue ? <th className="num">Rate/gm</th> : null}
+                  {showItemValue ? <th className="num">Value</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -195,6 +236,12 @@ export function PledgePrint({
                     <td className="num">{formatWeight(item.grossWeight)}</td>
                     <td className="num">{formatWeight(item.stoneWeight ?? 0)}</td>
                     <td className="num">{formatWeight(item.netWeight)}</td>
+                    {showItemValue ? (
+                      <td className="num">{formatAmount(item.ratePerGram ?? 0)}</td>
+                    ) : null}
+                    {showItemValue ? (
+                      <td className="num">{formatAmount(item.itemValue ?? 0)}</td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -229,7 +276,7 @@ export function PledgePrint({
             </div>
             <div className="full">
               <span>Repayment Due</span>
-              <strong>{formatDate(pledge.repaymentDueDate) || '—'}</strong>
+              <strong>{pledge.repaymentDueDate ? formatDisplayDate(pledge.repaymentDueDate) : '—'}</strong>
             </div>
           </div>
         </section>

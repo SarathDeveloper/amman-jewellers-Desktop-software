@@ -10,6 +10,7 @@ describe('printPreviewPaths', () => {
     expect(printPreviewPaths.pledge(4)).toBe('/print/pledge/4')
     expect(printPreviewPaths.pledgeRelease(4)).toBe('/print/pledge-release/4')
     expect(printPreviewPaths.purchase(9)).toBe('/print/purchase/9')
+    expect(printPreviewPaths.oldGoldPurchase(7)).toBe('/print/old-gold-purchase/7')
     expect(printPreviewPaths.metalDay('2026-09-30', 'Gold')).toBe('/print/metal-day/2026-09-30/Gold')
     expect(printPreviewPaths.stockClosing('2026-09-30', 'transacted')).toBe(
       '/print/stock-closing/2026-09-30?mode=transacted',

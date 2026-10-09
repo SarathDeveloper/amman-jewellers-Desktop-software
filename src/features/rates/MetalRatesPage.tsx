@@ -24,8 +24,39 @@ import { RateTrendChart, type RateTrendDays } from './RateTrendChart'
 type GoldField = 'gold24k' | 'gold22k' | 'gold20k' | 'gold18k'
 type SilverField = 'silverFine' | 'silver925'
 type RateField = GoldField | SilverField
+type BuyField = 'gold24kBuy' | 'gold22kBuy' | 'gold20kBuy' | 'gold18kBuy' | 'silverFineBuy' | 'silver925Buy'
 
 type DraftRates = Record<RateField, NumericField>
+type BuyRates = Record<BuyField, NumericField>
+
+const BUY_CARDS: { field: BuyField; title: string }[] = [
+  { field: 'gold24kBuy', title: '24K GOLD BUY' },
+  { field: 'gold22kBuy', title: '22K GOLD BUY' },
+  { field: 'gold20kBuy', title: '20K GOLD BUY' },
+  { field: 'gold18kBuy', title: '18K GOLD BUY' },
+  { field: 'silverFineBuy', title: 'FINE SILVER BUY' },
+  { field: 'silver925Buy', title: '925 SILVER BUY' },
+]
+
+const EMPTY_BUY_RATES: BuyRates = {
+  gold24kBuy: '',
+  gold22kBuy: '',
+  gold20kBuy: '',
+  gold18kBuy: '',
+  silverFineBuy: '',
+  silver925Buy: '',
+}
+
+function buyRatesFromRates(rates: MetalRates): BuyRates {
+  return {
+    gold24kBuy: rates.gold24kBuy || '',
+    gold22kBuy: rates.gold22kBuy || '',
+    gold20kBuy: rates.gold20kBuy || '',
+    gold18kBuy: rates.gold18kBuy || '',
+    silverFineBuy: rates.silverFineBuy || '',
+    silver925Buy: rates.silver925Buy || '',
+  }
+}
 
 const GOLD_CARDS: { field: GoldField; karat: GoldKarat; title: string }[] = [
   { field: 'gold24k', karat: 24, title: '24K GOLD' },
@@ -178,6 +209,7 @@ export function MetalRatesPage() {
   const [trendDays, setTrendDays] = useState<RateTrendDays>(90)
   const [effectiveDate, setEffectiveDate] = useState(localTodayIso)
   const [draft, setDraft] = useState<DraftRates>(EMPTY_DRAFT)
+  const [buyDraft, setBuyDraft] = useState<BuyRates>(EMPTY_BUY_RATES)
   const [editing, setEditing] = useState<RateField | null>(null)
   const [page, setPage] = useState(1)
 
@@ -193,6 +225,7 @@ export function MetalRatesPage() {
     setPage(1)
     if (latestRates) {
       setDraft(draftFromRates(latestRates))
+      setBuyDraft(buyRatesFromRates(latestRates))
     }
     return latestRates
   }
@@ -208,7 +241,10 @@ export function MetalRatesPage() {
         setLatest(latestRates)
         setHistory(list)
         setTrend(trendList)
-        if (latestRates) setDraft(draftFromRates(latestRates))
+        if (latestRates) {
+          setDraft(draftFromRates(latestRates))
+          setBuyDraft(buyRatesFromRates(latestRates))
+        }
         setPage(1)
         setError(null)
       } catch (err) {
@@ -241,15 +277,23 @@ export function MetalRatesPage() {
   )
 
   const savedSnapshot = useMemo(() => (latest ? draftFromRates(latest) : EMPTY_DRAFT), [latest])
+  const savedBuySnapshot = useMemo(
+    () => (latest ? buyRatesFromRates(latest) : EMPTY_BUY_RATES),
+    [latest],
+  )
   const dirty =
     effectiveDate !== (latest?.effectiveDate ?? localTodayIso()) ||
     GOLD_CARDS.some((card) => numericFieldToNumber(draft[card.field]) !== numericFieldToNumber(savedSnapshot[card.field])) ||
     SILVER_CARDS.some(
       (card) => numericFieldToNumber(draft[card.field]) !== numericFieldToNumber(savedSnapshot[card.field]),
+    ) ||
+    BUY_CARDS.some(
+      (card) => numericFieldToNumber(buyDraft[card.field]) !== numericFieldToNumber(savedBuySnapshot[card.field]),
     )
 
   function revert() {
     setDraft(latest ? draftFromRates(latest) : EMPTY_DRAFT)
+    setBuyDraft(latest ? buyRatesFromRates(latest) : EMPTY_BUY_RATES)
     setEditing(null)
   }
 
@@ -282,6 +326,12 @@ export function MetalRatesPage() {
       gold18k: numericFieldToNumber(draft.gold18k),
       silverFine: numericFieldToNumber(draft.silverFine),
       silver925: numericFieldToNumber(draft.silver925),
+      gold24kBuy: numericFieldToNumber(buyDraft.gold24kBuy),
+      gold22kBuy: numericFieldToNumber(buyDraft.gold22kBuy),
+      gold20kBuy: numericFieldToNumber(buyDraft.gold20kBuy),
+      gold18kBuy: numericFieldToNumber(buyDraft.gold18kBuy),
+      silverFineBuy: numericFieldToNumber(buyDraft.silverFineBuy),
+      silver925Buy: numericFieldToNumber(buyDraft.silver925Buy),
     }
     setSaving(true)
     try {
@@ -390,6 +440,39 @@ export function MetalRatesPage() {
               onChange={(raw) => onSilverChange(card.fineness, raw)}
               onKeyDown={onCardKeyDown}
             />
+          ))}
+        </div>
+      </section>
+
+      <section className="card padded rates-metal-panel">
+        <h2 className="rates-metal-label">OLD GOLD BUYING RATES</h2>
+        <p className="rate-purity-updated">
+          Rates paid to the customer when buying old gold. Leave a rate at zero to fall back to the
+          selling rate above.
+        </p>
+        <div className="rates-gold-grid">
+          {BUY_CARDS.map((card) => (
+            <article key={card.field} className="rate-purity-card">
+              <div className="rate-purity-card-head">
+                <div>
+                  <h3>{card.title}</h3>
+                </div>
+              </div>
+              <input
+                className="input rate-purity-input"
+                type="number"
+                min="0"
+                step="0.01"
+                value={buyDraft[card.field]}
+                onChange={(event) =>
+                  setBuyDraft((current) => ({
+                    ...current,
+                    [card.field]: parseNumericField(event.target.value),
+                  }))
+                }
+                aria-label={`${card.title} rate per gram`}
+              />
+            </article>
           ))}
         </div>
       </section>

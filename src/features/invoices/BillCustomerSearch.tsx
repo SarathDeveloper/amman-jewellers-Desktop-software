@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Plus, Search, X } from 'lucide-react'
 import type { Customer } from '@shared/types'
+import { useAnchoredPanel } from '../../lib/useAnchoredPanel'
 import {
   CustomerFormModal,
   prefillFromSearch,
@@ -40,6 +42,8 @@ export function BillCustomerSearch({
   const [modalOpen, setModalOpen] = useState(false)
   const [modalPrefill, setModalPrefill] = useState<ReturnType<typeof prefillFromSearch> | undefined>()
   const rootRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const panelStyle = useAnchoredPanel(rootRef, open)
   const prevCustomerIdRef = useRef(customerId)
 
   const selected = customers.find((c) => c.id === customerId)
@@ -66,9 +70,9 @@ export function BillCustomerSearch({
 
   useEffect(() => {
     function onDocClick(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false)
-      }
+      const target = event.target as Node
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
@@ -138,29 +142,36 @@ export function BillCustomerSearch({
           {selected.address ? ` · ${selected.address}` : ''}
         </p>
       ) : null}
-      {open && !disabled ? (
-        <div className="billing-customer-dropdown" role="listbox">
-          {filtered.map((customer) => (
-            <button
-              key={customer.id}
-              type="button"
-              className="billing-customer-option"
-              role="option"
-              onClick={() => pick(customer)}
-            >
-              <span className="billing-customer-option-name">{customer.name}</span>
-              <span className="billing-customer-option-meta">
-                {customer.phone || `ID ${customer.id}`}
-              </span>
-            </button>
-          ))}
-          {showNoMatch ? (
-            <button type="button" className="billing-customer-option billing-customer-no-match" onClick={openAddModal}>
-              No customer found — Add new
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      {open && !disabled
+        ? createPortal(
+            <div ref={panelRef} className="billing-customer-dropdown" role="listbox" style={panelStyle}>
+              {filtered.map((customer) => (
+                <button
+                  key={customer.id}
+                  type="button"
+                  className="billing-customer-option"
+                  role="option"
+                  onClick={() => pick(customer)}
+                >
+                  <span className="billing-customer-option-name">{customer.name}</span>
+                  <span className="billing-customer-option-meta">
+                    {customer.phone || `ID ${customer.id}`}
+                  </span>
+                </button>
+              ))}
+              {showNoMatch ? (
+                <button
+                  type="button"
+                  className="billing-customer-option billing-customer-no-match"
+                  onClick={openAddModal}
+                >
+                  No customer found — Add new
+                </button>
+              ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
 
       <CustomerFormModal
         open={modalOpen}

@@ -26,9 +26,31 @@
   padding: 10mm 12mm;
 }
 
-.purchase-invoice > *:not(.print-watermark) {
+.purchase-invoice > *:not(.print-watermark):not(.bill-status-watermark) {
   position: relative;
   z-index: 1;
+}
+
+.purchase-invoice .bill-status-watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.purchase-invoice .bill-status-watermark span {
+  transform: rotate(-30deg);
+  font-size: 46pt;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  color: rgba(178, 34, 34, 0.16);
+  border: 3pt solid rgba(178, 34, 34, 0.16);
+  border-radius: 4mm;
+  padding: 2mm 8mm;
+  white-space: nowrap;
 }
 
 .print-watermark {

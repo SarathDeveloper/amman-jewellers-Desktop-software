@@ -4,12 +4,8 @@ import {
   dueEntryUpdateInputSchema,
   duePaymentInputSchema,
 } from '@shared/schemas'
-import {
-  isInterestPeriodDue,
-  nextInterestDueDate,
-} from '@shared/billing/pledgeMath'
+import { daysBetween } from '@shared/billing/pledgeMath'
 import { resolveAmountPayable } from '@shared/billing/billSummary'
-import { roundMoney } from '@shared/billing/pricing'
 import { localTodayIso } from '@shared/localDate'
 import type {
   AdaguDueSummary,
@@ -26,8 +22,14 @@ import type {
 import type Database from 'better-sqlite3'
 import { getDatabase } from '../db'
 import { refreshActivePledgeDues } from '../dues/pledgeSync'
-import { asyncHandler, HttpError, parseBody, parseIdParam } from '../lib/http'
-import { computePledgeDueWithLoadedTopups } from '../pledges/topups'
+import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
+import { replayForPledge } from '../pledges/ledger'
+import { loadPledgeTopups } from '../pledges/topups'
+import {
+  computePledgePayoff,
+  deleteLatestPledgePayment,
+  recordPledgePayment,
+} from '../pledges/payments'
 
 const router = Router()
 
@@ -75,25 +77,15 @@ function mapItems(rows: InvoiceItemRow[]): DueInvoiceItemSummary[] {
 }
 
 function pledgeRemainingFromRow(db: Database.Database, row: DueEntryRow): number | null {
-  if (row.pledge_id === null || row.pledge_loan_amount == null || row.pledge_date == null) {
+  if (row.pledge_id === null) {
     return null
   }
   const asOf =
     row.pledge_status === 'active'
       ? localTodayIso()
       : row.pledge_redeemed_date || localTodayIso()
-  const { due } = computePledgeDueWithLoadedTopups(
-    db,
-    {
-      id: row.pledge_id,
-      loan_amount: row.pledge_loan_amount,
-      interest_pct: row.pledge_interest_pct ?? 0,
-      pledge_date: row.pledge_date,
-      amount_collected: row.pledge_amount_collected ?? 0,
-    },
-    asOf,
-  )
-  return due.remaining
+  const payoff = computePledgePayoff(db, row.pledge_id, asOf)
+  return payoff ? payoff.payoff : null
 }
 
 function mapDueEntry(
@@ -199,6 +191,19 @@ function loadDueEntry(db: Database.Database, id: number): DueEntry {
   return mapDueEntry(db, row, loadItemsForInvoice(db, row.invoice_id))
 }
 
+function loadDueEntryForPledgePayment(
+  db: Database.Database,
+  pledgePaymentId: number,
+): DueEntry {
+  const row = db
+    .prepare('SELECT id FROM customer_dues WHERE pledge_payment_id = ?')
+    .get(pledgePaymentId) as { id: number } | undefined
+  if (!row) {
+    throw new Error('Payment ledger row not found')
+  }
+  return loadDueEntry(db, row.id)
+}
+
 function remainingForDue(db: Database.Database, entry: DueEntry): number {
   if (entry.kind !== 'due') {
     throw new Error('Payments can only be recorded against a due entry')
@@ -215,28 +220,11 @@ function remainingForDue(db: Database.Database, entry: DueEntry): number {
   }
 
   if (entry.pledgeId !== null) {
-    const pledge = db
-      .prepare(
-        `SELECT id, loan_amount, interest_pct, pledge_date, amount_collected, status, redeemed_date
-         FROM pledges WHERE id = ?`,
-      )
-      .get(entry.pledgeId) as
-      | {
-          id: number
-          loan_amount: number
-          interest_pct: number
-          pledge_date: string
-          amount_collected: number
-          status: string
-          redeemed_date: string | null
-        }
-      | undefined
-    if (!pledge) {
+    const payoff = computePledgePayoff(db, entry.pledgeId)
+    if (!payoff) {
       throw new Error('Pledge not found')
     }
-    const asOf = pledge.status === 'active' ? localTodayIso() : pledge.redeemed_date || localTodayIso()
-    const { due } = computePledgeDueWithLoadedTopups(db, pledge, asOf)
-    return due.remaining
+    return payoff.payoff
   }
 
   const rows = db
@@ -266,6 +254,8 @@ type PledgeListRow = {
   redeemed_date: string | null
   customer_name: string
   customer_phone: string
+  auction_notice_date: string | null
+  auction_date: string | null
 }
 
 function buildAdaguDues(
@@ -277,10 +267,12 @@ function buildAdaguDues(
     .prepare(
       `SELECT p.id, p.customer_id, p.receipt_no, p.pledge_date, p.loan_amount, p.interest_pct,
               p.amount_collected, p.status, p.redeemed_date,
-              c.name AS customer_name, c.phone AS customer_phone
+              c.name AS customer_name, c.phone AS customer_phone,
+              (SELECT notice_date FROM pledge_auctions WHERE pledge_id = p.id) AS auction_notice_date,
+              (SELECT auction_date FROM pledge_auctions WHERE pledge_id = p.id) AS auction_date
        FROM pledges p
        JOIN customers c ON c.id = p.customer_id
-       WHERE p.status IN ('active', 'redeemed', 'forfeited')
+       WHERE p.status IN ('active', 'redeemed', 'forfeited', 'renewed')
        ORDER BY p.pledge_date DESC, p.id DESC`,
     )
     .all() as PledgeListRow[]
@@ -298,9 +290,9 @@ function buildAdaguDues(
       if (!haystack.includes(term)) continue
     }
     const asOf = pledge.status === 'active' ? today : pledge.redeemed_date || today
-    const { due, topups } = computePledgeDueWithLoadedTopups(db, pledge, asOf)
+    const { result } = replayForPledge(db, pledge, asOf)
     const dueRow = dueIdStmt.get(pledge.id) as { id: number } | undefined
-    const remaining = pledge.status === 'forfeited' ? 0 : due.remaining
+    const remaining = Math.max(0, result.payoff)
     adaguOutstanding += remaining
     adaguDues.push({
       pledgeId: pledge.id,
@@ -310,18 +302,22 @@ function buildAdaguDues(
       customerPhone: pledge.customer_phone,
       receiptNo: pledge.receipt_no,
       pledgeDate: pledge.pledge_date,
-      principal: due.principal,
+      principal: result.principalOutstanding,
+      principalOutstanding: result.principalOutstanding,
       interestPct: pledge.interest_pct,
-      monthlyInterest: due.monthlyInterest,
-      daysActive: due.days,
-      nextInterestDue: nextInterestDueDate(pledge.pledge_date, asOf),
-      isInterestOverdue:
-        pledge.status === 'active' && remaining > 0 && isInterestPeriodDue(pledge.pledge_date, asOf),
-      totalDue: due.totalDue,
+      monthlyInterest: result.monthlyInterest,
+      daysActive: daysBetween(pledge.pledge_date, asOf),
+      interestDue: result.interestDue,
+      interestPaidUpto: result.interestPaidUpto,
+      nextInterestDue: result.nextInterestDue,
+      isInterestOverdue: pledge.status === 'active' && remaining > 0 && result.isInterestOverdue,
+      totalDue: result.grossDue,
       amountCollected: pledge.amount_collected,
       remaining,
       status: pledge.status,
-      topups,
+      auctionNoticeDate: pledge.auction_notice_date,
+      auctionDate: pledge.auction_date,
+      topups: loadPledgeTopups(db, pledge.id),
     })
   }
 
@@ -349,18 +345,6 @@ function loadInvoicePaymentState(
   }
 }
 
-function assertActivePledgeForPayment(db: Database.Database, pledgeId: number): void {
-  const pledge = db.prepare('SELECT status FROM pledges WHERE id = ?').get(pledgeId) as
-    | { status: string }
-    | undefined
-  if (!pledge) {
-    throw new HttpError(404, 'Pledge not found')
-  }
-  if (pledge.status !== 'active') {
-    throw new HttpError(400, 'Only active Adagu pledges can receive payments')
-  }
-}
-
 export function insertPayment(
   db: Database.Database,
   input: {
@@ -379,9 +363,6 @@ export function insertPayment(
     if (invoice.amountPaid + input.amount - invoice.payable > 0.009) {
       throw new Error('Payment cannot exceed the balance due')
     }
-  }
-  if (input.pledgeId !== null) {
-    assertActivePledgeForPayment(db, input.pledgeId)
   }
 
   const result = db
@@ -409,54 +390,7 @@ export function insertPayment(
     )
   }
 
-  if (input.pledgeId !== null) {
-    applyPledgeCollection(db, input.pledgeId, input.amount, input.entryDate)
-  }
-
   return loadDueEntry(db, Number(result.lastInsertRowid))
-}
-
-function applyPledgeCollection(
-  db: Database.Database,
-  pledgeId: number,
-  amount: number,
-  collectedDate: string,
-): void {
-  const pledge = db
-    .prepare(
-      `SELECT id, loan_amount, interest_pct, pledge_date, amount_collected, status
-       FROM pledges WHERE id = ?`,
-    )
-    .get(pledgeId) as
-    | {
-        id: number
-        loan_amount: number
-        interest_pct: number
-        pledge_date: string
-        amount_collected: number
-        status: string
-      }
-    | undefined
-  if (!pledge) {
-    throw new HttpError(404, 'Pledge not found')
-  }
-  if (pledge.status !== 'active') {
-    throw new HttpError(400, 'Only active Adagu pledges can receive payments')
-  }
-
-  const { due } = computePledgeDueWithLoadedTopups(db, pledge, collectedDate)
-  const nextCollected = roundMoney(pledge.amount_collected + amount)
-  if (nextCollected >= due.totalDue) {
-    db.prepare(
-      `UPDATE pledges SET
-        status = 'redeemed',
-        redeemed_date = ?,
-        amount_collected = ?
-       WHERE id = ?`,
-    ).run(collectedDate, nextCollected, pledgeId)
-  } else {
-    db.prepare(`UPDATE pledges SET amount_collected = ? WHERE id = ?`).run(nextCollected, pledgeId)
-  }
 }
 
 function syncInvoicePaidFromPayments(db: Database.Database, invoiceId: number): void {
@@ -481,60 +415,6 @@ function syncInvoicePaidFromPayments(db: Database.Database, invoiceId: number): 
     balanceDue,
     invoiceId,
   )
-}
-
-function syncPledgePaidFromPayments(db: Database.Database, pledgeId: number): void {
-  const pledge = db
-    .prepare(
-      `SELECT id, loan_amount, interest_pct, pledge_date, status, redeemed_date
-       FROM pledges WHERE id = ?`,
-    )
-    .get(pledgeId) as
-    | {
-        id: number
-        loan_amount: number
-        interest_pct: number
-        pledge_date: string
-        status: string
-        redeemed_date: string | null
-      }
-    | undefined
-  if (!pledge) {
-    throw new Error('Pledge not found')
-  }
-
-  const paidRow = db
-    .prepare(
-      `SELECT COALESCE(SUM(amount), 0) AS paid
-       FROM customer_dues
-       WHERE pledge_id = ? AND kind = 'payment'`,
-    )
-    .get(pledgeId) as { paid: number }
-  const amountCollected = paidRow.paid
-  const asOf = pledge.status === 'active' ? localTodayIso() : pledge.redeemed_date || localTodayIso()
-  const { due } = computePledgeDueWithLoadedTopups(
-    db,
-    { ...pledge, amount_collected: 0 },
-    asOf,
-  )
-
-  if (amountCollected >= due.totalDue && due.totalDue > 0) {
-    db.prepare(
-      `UPDATE pledges SET
-        status = 'redeemed',
-        redeemed_date = COALESCE(redeemed_date, ?),
-        amount_collected = ?
-       WHERE id = ?`,
-    ).run(localTodayIso(), amountCollected, pledgeId)
-  } else {
-    db.prepare(
-      `UPDATE pledges SET
-        status = CASE WHEN status = 'forfeited' THEN status ELSE 'active' END,
-        redeemed_date = CASE WHEN status = 'forfeited' THEN redeemed_date ELSE NULL END,
-        amount_collected = ?
-       WHERE id = ?`,
-    ).run(amountCollected, pledgeId)
-  }
 }
 
 router.get(
@@ -648,12 +528,13 @@ router.delete(
     const id = parseIdParam(req.params.id)
     const db = getDatabase()
     const existing = db
-      .prepare('SELECT id, invoice_id, pledge_id, kind FROM customer_dues WHERE id = ?')
+      .prepare('SELECT id, invoice_id, pledge_id, kind, pledge_payment_id FROM customer_dues WHERE id = ?')
       .get(id) as {
       id: number
       invoice_id: number | null
       pledge_id: number | null
       kind: DueEntryKind
+      pledge_payment_id: number | null
     } | undefined
 
     if (!existing) {
@@ -672,6 +553,13 @@ router.delete(
     const linkedPledgePayment = pledgeId !== null && existing.kind === 'payment'
 
     const tx = db.transaction(() => {
+      if (linkedPledgePayment && existing.pledge_payment_id !== null) {
+        // Removes both the detailed payment and this ledger row, then rebuilds
+        // the pledge so earlier interest periods stay consistent.
+        deleteLatestPledgePayment(db, existing.pledge_payment_id)
+        return
+      }
+
       const result = db.prepare('DELETE FROM customer_dues WHERE id = ?').run(id)
       if (result.changes === 0) {
         throw new Error('Due entry not found')
@@ -680,7 +568,7 @@ router.delete(
         syncInvoicePaidFromPayments(db, invoiceId)
       }
       if (linkedPledgePayment) {
-        syncPledgePaidFromPayments(db, pledgeId)
+        refreshActivePledgeDues(db)
       }
     })
     tx()
@@ -710,14 +598,32 @@ router.post(
         : due.pledgeReceiptNo
           ? `Payment for ${due.pledgeReceiptNo}`
           : 'Payment'
+      const note = input.note || label
+
+      if (due.pledgeId !== null) {
+        const payoff = computePledgePayoff(db, due.pledgeId, input.entryDate)
+        if (!payoff) {
+          throw new Error('Pledge not found')
+        }
+        const kind = input.amount <= payoff.interestDue + 0.01 ? 'interest' : 'part'
+        const payment = recordPledgePayment(db, {
+          pledgeId: due.pledgeId,
+          date: input.entryDate,
+          amount: input.amount,
+          mode: input.mode ?? 'cash',
+          kind,
+          note,
+        })
+        return loadDueEntryForPledgePayment(db, payment.id)
+      }
 
       return insertPayment(db, {
         customerId: due.customerId,
         entryDate: input.entryDate,
         amount: input.amount,
-        note: input.note || label,
+        note,
         invoiceId: due.invoiceId,
-        pledgeId: due.pledgeId,
+        pledgeId: null,
       })
     })
     res.json(tx())
@@ -744,13 +650,25 @@ router.post(
           ? `Settled ${due.pledgeReceiptNo}`
           : 'Settled'
 
+      if (due.pledgeId !== null) {
+        const payment = recordPledgePayment(db, {
+          pledgeId: due.pledgeId,
+          date: entryDate,
+          amount: remaining,
+          mode: 'cash',
+          kind: 'redeem',
+          note: label,
+        })
+        return loadDueEntryForPledgePayment(db, payment.id)
+      }
+
       return insertPayment(db, {
         customerId: due.customerId,
         entryDate,
         amount: remaining,
         note: label,
         invoiceId: due.invoiceId,
-        pledgeId: due.pledgeId,
+        pledgeId: null,
       })
     })
     res.json(tx())

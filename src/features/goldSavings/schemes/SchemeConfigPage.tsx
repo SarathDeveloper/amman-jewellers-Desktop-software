@@ -11,6 +11,7 @@ import { PageHeader } from '../../../components/PageHeader'
 import { useToast } from '../../../components/toastContext'
 import { formatCurrency } from '../../../lib/format'
 import { api } from '../../../lib/api'
+import { useAuth } from '../../auth/authContext'
 import { GsStatusBadge } from '../GsStatusBadge'
 
 function emptyForm(): GoldSavingSchemeInput {
@@ -39,6 +40,10 @@ function emptyForm(): GoldSavingSchemeInput {
     availableTo: null,
     terms: '',
     status: 'active',
+    cancelDeductionType: 'none',
+    cancelDeductionValue: 0,
+    lateFeeType: 'none',
+    lateFeeValue: 0,
   }
 }
 
@@ -69,11 +74,16 @@ function formFromScheme(scheme: GoldSavingScheme | null): GoldSavingSchemeInput 
     availableTo: scheme.availableTo,
     terms: scheme.terms,
     status: scheme.status,
+    cancelDeductionType: scheme.cancelDeductionType ?? 'none',
+    cancelDeductionValue: scheme.cancelDeductionValue ?? 0,
+    lateFeeType: scheme.lateFeeType ?? 'none',
+    lateFeeValue: scheme.lateFeeValue ?? 0,
   }
 }
 
 export function SchemeConfigPage() {
   const { showToast } = useToast()
+  const { isAdmin } = useAuth()
   const [schemes, setSchemes] = useState<GoldSavingScheme[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -130,11 +140,15 @@ export function SchemeConfigPage() {
         availableTo: toggle.availableTo,
         terms: toggle.terms,
         status: toggle.status === 'active' ? 'inactive' : 'active',
+        cancelDeductionType: toggle.cancelDeductionType,
+        cancelDeductionValue: toggle.cancelDeductionValue,
+        lateFeeType: toggle.lateFeeType,
+        lateFeeValue: toggle.lateFeeValue,
       })
       showToast(toggle.status === 'active' ? 'Scheme deactivated' : 'Scheme activated')
       await reload()
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not update scheme')
+      showToast(err instanceof Error ? err.message : 'Could not update scheme', 'error')
     } finally {
       setToggle(null)
     }
@@ -154,17 +168,19 @@ export function SchemeConfigPage() {
         title="Scheme configuration"
         subtitle="Bonus, making charges and redemption rules are configured here — never hardcoded"
         actions={
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              setEditing(null)
-              setOpen(true)
-            }}
-          >
-            <Plus size={18} strokeWidth={2} aria-hidden />
-            New scheme
-          </button>
+          isAdmin ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setEditing(null)
+                setOpen(true)
+              }}
+            >
+              <Plus size={18} strokeWidth={2} aria-hidden />
+              New scheme
+            </button>
+          ) : undefined
         }
       />
       {error ? <div className="error-banner">{error}</div> : null}
@@ -199,20 +215,26 @@ export function SchemeConfigPage() {
                   </td>
                   <td className="table-actions">
                     <div className="row-actions">
-                    <button
-                      type="button"
-                      className="btn ghost"
-                      onClick={() => {
-                        setEditing(scheme)
-                        setOpen(true)
-                      }}
-                    >
-                      <Pencil size={16} />
-                      Edit
-                    </button>
-                    <button type="button" className="btn ghost" onClick={() => setToggle(scheme)}>
-                      {scheme.status === 'active' ? 'Deactivate' : 'Activate'}
-                    </button>
+                    {isAdmin ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={() => {
+                            setEditing(scheme)
+                            setOpen(true)
+                          }}
+                        >
+                          <Pencil size={16} />
+                          Edit
+                        </button>
+                        <button type="button" className="btn ghost" onClick={() => setToggle(scheme)}>
+                          {scheme.status === 'active' ? 'Deactivate' : 'Activate'}
+                        </button>
+                      </>
+                    ) : (
+                      <span className="muted">View only</span>
+                    )}
                     </div>
                   </td>
                 </tr>
@@ -267,7 +289,7 @@ function SchemeFormModal({
       showToast(editing ? 'Scheme updated' : 'Scheme created')
       await onSaved()
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not save scheme')
+      showToast(err instanceof Error ? err.message : 'Could not save scheme', 'error')
     } finally {
       setSaving(false)
     }
@@ -412,11 +434,60 @@ function SchemeFormModal({
             onChange={(e) => setForm({ ...form, gracePeriodDays: Number(e.target.value) })}
           />
         </label>
+        <label>
+          <span className="field-label">Cancellation deduction</span>
+          <select
+            className="input"
+            value={form.cancelDeductionType}
+            onChange={(e) => setForm({ ...form, cancelDeductionType: e.target.value as GoldSavingSchemeInput['cancelDeductionType'] })}
+          >
+            <option value="none">No deduction</option>
+            <option value="percentage">Percentage of amount paid</option>
+            <option value="fixed">Fixed amount</option>
+          </select>
+        </label>
+        <label>
+          <span className="field-label">
+            {form.cancelDeductionType === 'percentage' ? 'Deduction (%)' : 'Deduction (₹)'}
+          </span>
+          <input
+            className="input"
+            type="number"
+            min={0}
+            disabled={form.cancelDeductionType === 'none'}
+            value={form.cancelDeductionValue}
+            onChange={(e) => setForm({ ...form, cancelDeductionValue: Number(e.target.value) })}
+          />
+        </label>
+        <label>
+          <span className="field-label">Late fee</span>
+          <select
+            className="input"
+            value={form.lateFeeType}
+            onChange={(e) => setForm({ ...form, lateFeeType: e.target.value as GoldSavingSchemeInput['lateFeeType'] })}
+          >
+            <option value="none">No late fee</option>
+            <option value="fixed">Fixed amount once late</option>
+            <option value="per_day">Amount per day late</option>
+          </select>
+        </label>
+        <label>
+          <span className="field-label">
+            {form.lateFeeType === 'per_day' ? 'Late fee (₹ / day)' : 'Late fee (₹)'}
+          </span>
+          <input
+            className="input"
+            type="number"
+            min={0}
+            disabled={form.lateFeeType === 'none'}
+            value={form.lateFeeValue}
+            onChange={(e) => setForm({ ...form, lateFeeValue: Number(e.target.value) })}
+          />
+        </label>
         <label className="full">
           <span className="field-label">Making charge rules</span>
           <textarea className="textarea" value={form.makingChargeRules} onChange={(e) => setForm({ ...form, makingChargeRules: e.target.value })} />
-        </label>
-        <label className="full">
+        </label>        <label className="full">
           <span className="field-label">Wastage rules</span>
           <textarea className="textarea" value={form.wastageRules} onChange={(e) => setForm({ ...form, wastageRules: e.target.value })} />
         </label>

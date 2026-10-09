@@ -3,8 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Ban, IndianRupee, Printer, RotateCcw } from 'lucide-react'
 import { rateForPurity } from '@shared/goldSavings/math'
 import { localTodayIso } from '@shared/localDate'
-import type { GoldSavingAccountDetail, MetalRates } from '@shared/types'
+import type { GoldSavingAccountDetail, GoldSavingPaymentMode, MetalRates } from '@shared/types'
 import { DataTable } from '../../../components/DataTable'
+import { DateInput } from '../../../components/DateInput'
 import { FilterBar } from '../../../components/FilterBar'
 import { LoadingState } from '../../../components/LoadingState'
 import { Modal } from '../../../components/Modal'
@@ -16,7 +17,7 @@ import { api } from '../../../lib/api'
 import { PrintPreviewModal } from '../../print/PrintPreviewModal'
 import { CollectPaymentModal } from '../collections/CollectPaymentModal'
 import { GsStatusBadge } from '../GsStatusBadge'
-import { formatGsPaymentMode } from '../gsLabels'
+import { formatGsPaymentMode, GS_PAYMENT_MODES } from '../gsLabels'
 import {
   bonusConditionText,
   currentBonusGold,
@@ -48,10 +49,16 @@ export function AccountDetailPage() {
   const [tab, setTab] = useState<DetailTab>('overview')
   const [collectOpen, setCollectOpen] = useState(false)
   const [printPassbook, setPrintPassbook] = useState(false)
-  const [reasonAction, setReasonAction] = useState<{ kind: 'cancel' } | { kind: 'reverse'; paymentId: number } | null>(
-    null,
-  )
+  const [reasonAction, setReasonAction] = useState<
+    { kind: 'cancel' } | { kind: 'reverse'; paymentId: number } | { kind: 'waive'; installmentId: number } | null
+  >(null)
   const [reason, setReason] = useState('')
+  const [refundDate, setRefundDate] = useState(localTodayIso())
+  const [cancelMode, setCancelMode] = useState<GoldSavingPaymentMode>('cash')
+  const [cancelRef, setCancelRef] = useState('')
+  const [deductionOverride, setDeductionOverride] = useState('')
+  const [printRefundId, setPrintRefundId] = useState<number | null>(null)
+  const [reasonBusy, setReasonBusy] = useState(false)
 
   async function reload() {
     const accountId = Number(id)
@@ -98,6 +105,11 @@ export function AccountDetailPage() {
   }
 
   const { account, scheme } = detail
+  const canReversePayment =
+    account.status !== 'redeemed' &&
+    account.status !== 'cancelled' &&
+    account.status !== 'closed' &&
+    detail.redemptions.length === 0
   const schemeValue = account.monthlyAmount * account.durationMonths
   const remainingInstallments = Math.max(0, account.durationMonths - account.paidInstallments)
   const remainingAmount = Math.max(0, schemeValue - account.totalPaid)
@@ -128,20 +140,49 @@ export function AccountDetailPage() {
   const installmentPct = progressPct(account.paidInstallments, account.durationMonths)
   const amountPct = progressPct(account.totalPaid, schemeValue)
 
+  const overrideValue = deductionOverride.trim()
+  const previewDeduction = (() => {
+    if (overrideValue !== '' && Number.isFinite(Number(overrideValue))) {
+      return Math.min(Math.max(Number(overrideValue), 0), account.totalPaid)
+    }
+    if (scheme.cancelDeductionType === 'percentage') {
+      return Math.round(((account.totalPaid * scheme.cancelDeductionValue) / 100) * 100) / 100
+    }
+    if (scheme.cancelDeductionType === 'fixed') {
+      return Math.min(scheme.cancelDeductionValue, account.totalPaid)
+    }
+    return 0
+  })()
+  const previewRefund = Math.round((account.totalPaid - previewDeduction) * 100) / 100
+
   async function cancel() {
     try {
-      await api.cancelGsAccount(account.id, reason)
-      showToast('Account cancelled', 'success')
+      setReasonBusy(true)
+      const override = deductionOverride.trim()
+      const detail = await api.cancelGsAccount(account.id, {
+        reason,
+        refundDate,
+        paymentMode: cancelMode,
+        transactionRef: cancelRef,
+        deductionOverride: override === '' ? undefined : Number(override),
+      })
+      showToast('Account cancelled and refund recorded', 'success')
       setReasonAction(null)
       setReason('')
-      await reload()
+      setDeductionOverride('')
+      setCancelRef('')
+      setDetail(detail)
+      if (detail.refund) setPrintRefundId(detail.refund.id)
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Cancel failed', 'error')
+    } finally {
+      setReasonBusy(false)
     }
   }
 
   async function reverse(paymentId: number) {
     try {
+      setReasonBusy(true)
       await api.reverseGsPayment(paymentId, reason)
       showToast('Payment reversed', 'success')
       setReasonAction(null)
@@ -149,6 +190,23 @@ export function AccountDetailPage() {
       await reload()
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Reverse failed', 'error')
+    } finally {
+      setReasonBusy(false)
+    }
+  }
+
+  async function waive(installmentId: number) {
+    try {
+      setReasonBusy(true)
+      const detail = await api.waiveGsInstallment(installmentId, reason)
+      showToast('Installment waived', 'success')
+      setReasonAction(null)
+      setReason('')
+      setDetail(detail)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Waive failed', 'error')
+    } finally {
+      setReasonBusy(false)
     }
   }
 
@@ -173,12 +231,16 @@ export function AccountDetailPage() {
                 Collect payment
               </button>
             ) : null}
-            {isAdmin && account.status === 'active' ? (
+            {isAdmin && (account.status === 'active' || account.status === 'matured') ? (
               <button
                 type="button"
                 className="btn danger"
                 onClick={() => {
                   setReason('')
+                  setRefundDate(localTodayIso())
+                  setCancelMode('cash')
+                  setCancelRef('')
+                  setDeductionOverride('')
                   setReasonAction({ kind: 'cancel' })
                 }}
               >
@@ -276,6 +338,24 @@ export function AccountDetailPage() {
             <p className="muted">No bonus is configured on this scheme.</p>
           )}
         </section>
+        {account.status === 'cancelled' && detail.refund ? (
+          <section className="card padded">
+            <h2 className="settings-section-title">Cancellation refund</h2>
+            <p className="settings-row"><strong>Voucher</strong> {detail.refund.voucherNo}</p>
+            <p className="settings-row"><strong>Refund date</strong> {formatDisplayDate(detail.refund.refundDate)}</p>
+            <p className="settings-row"><strong>Total paid</strong> {formatCurrency(detail.refund.totalPaid)}</p>
+            <p className="settings-row"><strong>Deduction</strong> {formatCurrency(detail.refund.deduction)}</p>
+            <p className="settings-row"><strong>Refund amount</strong> {formatCurrency(detail.refund.refundAmount)}</p>
+            <p className="settings-row"><strong>Gold forfeited</strong> {formatWeight(detail.refund.goldForfeited, 3)}</p>
+            <p className="settings-row"><strong>Mode</strong> {formatGsPaymentMode(detail.refund.paymentMode)}</p>
+            <p className="settings-row"><strong>Reference</strong> {detail.refund.transactionRef || '—'}</p>
+            <p className="settings-row"><strong>Reason</strong> {detail.refund.reason}</p>
+            <button type="button" className="btn secondary" onClick={() => setPrintRefundId(detail.refund!.id)}>
+              <Printer size={16} strokeWidth={1.75} aria-hidden />
+              Print refund voucher
+            </button>
+          </section>
+        ) : null}
         </>
       ) : null}
 
@@ -288,6 +368,7 @@ export function AccountDetailPage() {
                 <th>Due date</th>
                 <th className="num">Amount</th>
                 <th>Status</th>
+                {isAdmin ? <th /> : null}
               </tr>
             </thead>
             <tbody>
@@ -297,6 +378,22 @@ export function AccountDetailPage() {
                   <td>{formatDisplayDate(item.dueDate)}</td>
                   <td className="num">{formatCurrency(item.amount)}</td>
                   <td><GsStatusBadge status={item.status} /></td>
+                  {isAdmin ? (
+                    <td>
+                      {item.status !== 'paid' && item.status !== 'waived' ? (
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={() => {
+                            setReason('')
+                            setReasonAction({ kind: 'waive', installmentId: item.id })
+                          }}
+                        >
+                          Waive
+                        </button>
+                      ) : null}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -337,7 +434,7 @@ export function AccountDetailPage() {
                         <Printer size={16} />
                         Reprint
                       </button>
-                      {isAdmin && payment.status === 'posted' ? (
+                      {isAdmin && payment.status === 'posted' && canReversePayment ? (
                         <button
                           type="button"
                           className="btn link-danger"
@@ -392,9 +489,11 @@ export function AccountDetailPage() {
             Maturity {formatDisplayDate(account.maturityDate)}. Accumulated gold {formatWeight(account.goldAccumulated, 3)}.
             Bonus is applied only from scheme configuration at redemption.
           </p>
-          <Link className="btn" to={`/gold-savings/maturity?accountId=${account.id}`}>
-            Open maturity
-          </Link>
+          {account.status === 'active' || account.status === 'matured' ? (
+            <Link className="btn" to={`/gold-savings/maturity?accountId=${account.id}`}>
+              Open maturity
+            </Link>
+          ) : null}
           {detail.redemptions.length > 0 ? (
             <DataTable>
               <table>
@@ -470,41 +569,124 @@ export function AccountDetailPage() {
           onClose={() => setPrintPassbook(false)}
         />
       ) : null}
+      {printRefundId ? (
+        <PrintPreviewModal
+          title="Cancellation refund voucher"
+          path={`/print/gs-refund/${printRefundId}`}
+          pdfFilename="gs-refund.pdf"
+          onClose={() => setPrintRefundId(null)}
+        />
+      ) : null}
       {reasonAction ? (
         <Modal
-          title={reasonAction.kind === 'cancel' ? 'Cancel scheme account' : 'Reverse payment'}
+          title={
+            reasonAction.kind === 'cancel'
+              ? 'Cancel scheme account'
+              : reasonAction.kind === 'waive'
+                ? 'Waive installment'
+                : 'Reverse payment'
+          }
           onClose={() => setReasonAction(null)}
+          busy={reasonBusy}
           footer={
             <div className="modal-actions">
-              <button type="button" className="btn secondary" onClick={() => setReasonAction(null)}>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={reasonBusy}
+                onClick={() => setReasonAction(null)}
+              >
                 Close
               </button>
               <button
                 type="button"
-                className="btn danger"
+                className={reasonAction.kind === 'cancel' ? 'btn danger' : 'btn'}
+                disabled={reasonBusy}
                 onClick={() => {
                   if (!reason.trim()) {
                     showToast('Reason is required', 'error')
                     return
                   }
                   if (reasonAction.kind === 'cancel') void cancel()
+                  else if (reasonAction.kind === 'waive') void waive(reasonAction.installmentId)
                   else void reverse(reasonAction.paymentId)
                 }}
               >
-                {reasonAction.kind === 'cancel' ? 'Cancel account' : 'Reverse payment'}
+                {reasonBusy
+                  ? 'Working…'
+                  : reasonAction.kind === 'cancel'
+                    ? 'Cancel account & refund'
+                    : reasonAction.kind === 'waive'
+                      ? 'Waive installment'
+                      : 'Reverse payment'}
               </button>
             </div>
           }
         >
           <p className="confirm-dialog-copy">
             {reasonAction.kind === 'cancel'
-              ? 'This does not delete payments. Enter a reason to continue.'
-              : 'Reversing restores the installment and deducts the credited gold from the ledger. Physical stock is unchanged.'}
+              ? 'This cancels the scheme and records a refund voucher. The payment history is kept.'
+              : reasonAction.kind === 'waive'
+                ? 'Waiving marks the installment as settled without a payment. Accumulated gold is unchanged, and the bonus still needs every installment paid.'
+                : 'Reversing restores the installment and deducts the credited gold from the ledger. Physical stock is unchanged.'}
           </p>
+          {reasonAction.kind === 'cancel' ? (
+            <div className="gs-cancel-summary">
+              <p className="settings-row">
+                <strong>Total paid</strong> {formatCurrency(account.totalPaid)}
+              </p>
+              <p className="settings-row">
+                <strong>Deduction</strong> {formatCurrency(previewDeduction)}
+              </p>
+              <p className="settings-row">
+                <strong>Refund amount</strong> {formatCurrency(previewRefund)}
+              </p>
+              <p className="settings-row">
+                <strong>Gold forfeited</strong> {formatWeight(account.goldAccumulated, 3)}
+              </p>
+            </div>
+          ) : null}
           <label>
             <span className="field-label">Reason</span>
             <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
           </label>
+          {reasonAction.kind === 'cancel' ? (
+            <>
+              <label>
+                <span className="field-label">Refund date</span>
+                <DateInput className="input" value={refundDate} onChange={setRefundDate} showIcon />
+              </label>
+              <label>
+                <span className="field-label">Payment mode</span>
+                <select
+                  className="input"
+                  value={cancelMode}
+                  onChange={(e) => setCancelMode(e.target.value as GoldSavingPaymentMode)}
+                >
+                  {GS_PAYMENT_MODES.map((mode) => (
+                    <option key={mode} value={mode}>
+                      {formatGsPaymentMode(mode)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="field-label">Transaction reference</span>
+                <input className="input" value={cancelRef} onChange={(e) => setCancelRef(e.target.value)} />
+              </label>
+              <label>
+                <span className="field-label">Deduction override (₹, optional)</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  value={deductionOverride}
+                  onChange={(e) => setDeductionOverride(e.target.value)}
+                  placeholder={`Scheme default: ${formatCurrency(previewDeduction)}`}
+                />
+              </label>
+            </>
+          ) : null}
         </Modal>
       ) : null}
     </div>

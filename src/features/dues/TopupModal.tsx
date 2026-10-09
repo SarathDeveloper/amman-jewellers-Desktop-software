@@ -31,6 +31,7 @@ export function TopupModal({
     <Modal
       title={`Extra loan · ${summary.receiptNo}`}
       onClose={onClose}
+      busy={busy}
       footer={
         <div className="modal-actions">
           <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>
@@ -42,7 +43,7 @@ export function TopupModal({
             disabled={busy || amount <= 0}
             onClick={() => onSubmit({ amount, topupDate, note })}
           >
-            Add extra
+            {busy ? 'Adding…' : 'Add extra'}
           </button>
         </div>
       }

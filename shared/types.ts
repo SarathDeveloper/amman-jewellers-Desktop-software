@@ -32,12 +32,14 @@ export interface RendererErrorInput {
   source: DiagnosticSource
 }
 
-export type InvoiceStatus = 'draft' | 'final'
+export type InvoiceStatus = 'draft' | 'final' | 'cancelled'
 export type BillFormat = 'cash_bill' | 'tax_invoice'
 export type PaymentMode = 'cash' | 'upi' | 'card' | 'mixed'
 export type PaperSize = 'a5' | 'a4' | 'thermal'
 export type PrinterRole = 'cash' | 'tax'
 export type PrinterState = 'ready' | 'printing' | 'offline'
+/** Diagonal stamp printed across a bill that is not a real, final sale. */
+export type BillPrintWatermark = 'DRAFT' | 'ESTIMATE' | 'CANCELLED'
 
 export interface InstalledPrinter {
   name: string
@@ -120,6 +122,7 @@ export interface Customer {
   gstin: string
   aadhaar: string
   pan: string
+  idProofType: string
   createdAt: string
   lastBillDate?: string | null
 }
@@ -133,6 +136,7 @@ export interface CustomerInput {
   gstin?: string
   aadhaar?: string
   pan?: string
+  idProofType?: string
 }
 
 export type InvoiceLineKind = 'sale' | 'exchange'
@@ -160,6 +164,10 @@ export interface InvoiceItem {
   category?: string
   lineKind: InvoiceLineKind
   description: string
+  /** Purity as sold, captured on the line so a reprint never changes. */
+  purity: string
+  /** Hallmark Unique ID chosen for this piece, empty when not tagged. */
+  huid: string
 }
 
 export interface InvoiceItemInput {
@@ -179,6 +187,8 @@ export interface InvoiceItemInput {
   description?: string
   metal?: string
   category?: string
+  purity?: string
+  huid?: string
 }
 
 export interface OldGoldItemInput {
@@ -206,7 +216,9 @@ export interface OldGoldItem {
   finalValue: number
 }
 
-export type OldGoldPurchaseStatus = 'draft' | 'final'
+export type OldGoldPurchaseStatus = 'draft' | 'final' | 'cancelled'
+
+export type OldGoldPayoutMode = 'cash' | 'upi' | 'bank'
 
 export interface OldGoldPurchaseItemInput {
   description?: string
@@ -216,6 +228,10 @@ export interface OldGoldPurchaseItemInput {
   purity?: string
   ratePerGram: number
   deductionPct?: number
+  /** Touch / assay percentage. 0 or omitted means the full net weight is valued. */
+  touchPct?: number
+  fineWeight?: number
+  metal?: 'Gold' | 'Silver'
 }
 
 export interface OldGoldPurchaseItem {
@@ -228,9 +244,35 @@ export interface OldGoldPurchaseItem {
   purity: string
   ratePerGram: number
   deductionPct: number
+  touchPct: number
+  fineWeight: number
+  metal: string
   grossValue: number
   deductionAmount: number
   finalValue: number
+}
+
+/** A bill that drew part of a purchase's value. */
+export interface OldGoldPurchaseBillLink {
+  invoiceId: number
+  invoiceNo: string
+  invoiceDate: string
+  invoiceStatus: string
+  amount: number
+}
+
+export interface OldGoldPurchasePayout {
+  id: number
+  purchaseId: number
+  payoutDate: string
+  amount: number
+  mode: OldGoldPayoutMode
+  note: string
+  invoiceId: number | null
+  invoiceNo: string | null
+  createdAt: string
+  voidedAt: string | null
+  voidReason: string
 }
 
 export interface OldGoldPurchase {
@@ -245,7 +287,17 @@ export interface OldGoldPurchase {
   status: OldGoldPurchaseStatus
   createdAt: string
   finalizedAt: string | null
+  cancelledAt: string | null
+  cancelReason: string
   items: OldGoldPurchaseItem[]
+  /** Amount already drawn by payouts and bill links. */
+  paidOut: number
+  applied: number
+  /** totalAmount - paidOut - applied, never below zero. */
+  balance: number
+  links: OldGoldPurchaseBillLink[]
+  payouts: OldGoldPurchasePayout[]
+  /** First bill the purchase was applied to, kept for the list view. */
   linkedInvoiceId: number | null
   linkedInvoiceNo: string | null
 }
@@ -263,8 +315,123 @@ export interface OldGoldPurchaseUpdateInput extends OldGoldPurchaseInput {
   id: number
 }
 
+export interface OldGoldPurchaseCancelInput {
+  reason: string
+}
+
+export interface OldGoldPayoutInput {
+  payoutDate: string
+  amount: number
+  mode: OldGoldPayoutMode
+  note?: string
+  invoiceId?: number | null
+}
+
+export interface OldGoldPayoutVoidInput {
+  reason: string
+}
+
 export interface OldGoldPurchaseLinkInput {
   purchaseId: number
+  /** Rupees of the purchase to apply. Omitted means the full available balance. */
+  amount?: number
+}
+
+export type OldGoldBatchStatus = 'open' | 'melted' | 'sent' | 'settled' | 'cancelled'
+
+export type OldGoldSettlementMode = 'cash' | 'bank' | 'fine'
+
+/** An unbatched (lot) or batched old gold purchase item. */
+export interface OldGoldBatchItem {
+  id: number
+  purchaseId: number
+  purchaseNo: string
+  purchaseDate: string
+  customerName: string
+  description: string
+  metal: string
+  grossWeight: number
+  netWeight: number
+  purity: string
+  fineWeight: number
+  finalValue: number
+  batchId: number | null
+}
+
+export interface OldGoldBatch {
+  id: number
+  batchNo: string
+  metal: string
+  status: OldGoldBatchStatus
+  supplierId: number | null
+  supplierName: string
+  createdDate: string
+  grossWeight: number
+  fineWeightExpected: number
+  costAmount: number
+  meltDate: string | null
+  meltedWeight: number | null
+  sentDate: string | null
+  sentWeight: number | null
+  settledDate: string | null
+  fineWeightReceived: number | null
+  fineRate: number | null
+  cashReceived: number | null
+  settlementMode: OldGoldSettlementMode
+  notes: string
+  cancelledAt: string | null
+  cancelReason: string
+  createdAt: string
+  items: OldGoldBatchItem[]
+  /** cashReceived + fineWeightReceived * fineRate - costAmount. */
+  gainLoss: number
+}
+
+export interface OldGoldLotGroup {
+  metal: string
+  items: number
+  grossWeight: number
+  netWeight: number
+  fineWeight: number
+  costAmount: number
+}
+
+/** Items of finalized purchases that are not in a batch yet, grouped by metal. */
+export interface OldGoldLot {
+  groups: OldGoldLotGroup[]
+  items: OldGoldBatchItem[]
+}
+
+export interface OldGoldBatchCreateInput {
+  itemIds: number[]
+  createdDate: string
+  supplierId?: number | null
+  notes?: string
+}
+
+export interface OldGoldBatchMeltInput {
+  meltDate: string
+  meltedWeight: number
+  notes?: string
+}
+
+export interface OldGoldBatchSendInput {
+  sentDate: string
+  sentWeight: number
+  notes?: string
+}
+
+export interface OldGoldBatchSettleInput {
+  settledDate: string
+  fineWeightReceived: number
+  fineRate: number
+  cashReceived: number
+  settlementMode?: OldGoldSettlementMode
+  notes?: string
+}
+
+export interface OldGoldBatchCancelInput {
+  reason: string
 }
 
 export interface OldGoldPurchaseLink {
@@ -276,11 +443,52 @@ export interface OldGoldPurchaseLink {
   purchaseDate: string
   amountApplied: number
   netWeight: number
+  /** Full value of the purchase, for showing how much is used. */
+  purchaseTotal: number
+  /** Value left on the purchase after this bill's link and any payout. */
+  balance: number
 }
 
 export interface MixedPaymentPart {
   mode: Extract<PaymentMode, 'cash' | 'upi' | 'card'>
   amount: number
+}
+
+/** A gold savings account applied as a credit on a sale bill. */
+export interface GoldSavingInvoiceLinkInput {
+  accountId: number
+}
+
+export interface GoldSavingInvoiceLink {
+  id: number
+  invoiceId: number
+  accountId: number
+  accountNo: string
+  customerName: string
+  goldWeight: number
+  bonusGoldWeight: number
+  goldRate: number
+  amountApplied: number
+  redemptionId: number | null
+}
+
+/** A redeemable scheme account shown on the sale bill before it is applied. */
+export interface GoldSavingSchemeCreditPreview {
+  accountId: number
+  accountNo: string
+  customerName: string
+  schemeName: string
+  purity: string
+  accumulatedGold: number
+  bonusGoldWeight: number
+  goldWeight: number
+  goldRate: number
+  credit: number
+  allowPartialRedemption: boolean
+  /** Effective date of the rate used for this preview. */
+  rateDate: string
+  /** True when the rate on file is not dated the bill date. */
+  rateStale: boolean
 }
 
 export interface InvoicePayment {
@@ -321,9 +529,30 @@ export interface Invoice {
   summaryMaking: number
   oldGold: OldGoldItem[]
   oldGoldLinks: OldGoldPurchaseLink[]
+  goldSavingLinks: GoldSavingInvoiceLink[]
   roundOff: number
   amountPayable: number
   payments: InvoicePayment[]
+  /** Customer details captured at finalize; null on drafts and legacy rows. */
+  customerSnapshot?: BillCustomerInfo | null
+  /** Metal rates captured at finalize; null on drafts and legacy rows. */
+  ratesSnapshot?: MetalRates | null
+  /** When the whole bill was cancelled, and by whom. */
+  cancelledAt?: string | null
+  cancelReason?: string
+  cancelledBy?: number | null
+}
+
+export interface InvoiceCancelInput {
+  reason: string
+}
+
+/** Customer details as they appeared on the bill when it was finalized. */
+export interface BillCustomerInfo {
+  name: string
+  phone: string
+  address: string
+  gstin: string
 }
 
 export interface InvoiceListQuery {
@@ -348,6 +577,7 @@ export interface InvoiceListStats {
   customersBilled: number
   totalItemsSold: number
   chart: Array<{ key: string; total: number }>
+  collectionsChart: Array<{ key: string; total: number }>
 }
 
 export interface PledgeListQuery {
@@ -391,6 +621,8 @@ export interface InvoiceInput {
   isEstimate?: boolean
   oldGold?: OldGoldItemInput[]
   oldGoldLinks?: OldGoldPurchaseLinkInput[]
+  goldSavingLinks?: GoldSavingInvoiceLinkInput[]
+  acceptRateDate?: boolean
   roundOff?: number
   mixedPayments?: MixedPaymentPart[]
 }
@@ -410,6 +642,8 @@ export interface InvoiceUpdateInput {
   isEstimate?: boolean
   oldGold?: OldGoldItemInput[]
   oldGoldLinks?: OldGoldPurchaseLinkInput[]
+  goldSavingLinks?: GoldSavingInvoiceLinkInput[]
+  acceptRateDate?: boolean
   roundOff?: number
   mixedPayments?: MixedPaymentPart[]
 }
@@ -460,6 +694,9 @@ export interface ShopSettings {
   quickProductIds: number[]
   pledgeLtvPct: number
   adaguInterestPct: number
+  adaguAuctionNoticeDays: number
+  adaguRequireKyc: boolean
+  adaguReminderTemplate: string
 }
 
 export interface MetalRates {
@@ -471,6 +708,13 @@ export interface MetalRates {
   gold18k: number
   silverFine: number
   silver925: number
+  /** Buying rates for old gold. Zero or unset falls back to the matching selling rate. */
+  gold22kBuy?: number
+  gold24kBuy?: number
+  gold20kBuy?: number
+  gold18kBuy?: number
+  silverFineBuy?: number
+  silver925Buy?: number
   createdAt: string
 }
 
@@ -482,6 +726,12 @@ export interface MetalRatesInput {
   gold18k?: number
   silverFine: number
   silver925?: number
+  gold22kBuy?: number
+  gold24kBuy?: number
+  gold20kBuy?: number
+  gold18kBuy?: number
+  silverFineBuy?: number
+  silver925Buy?: number
 }
 
 export interface TaxReportRow {
@@ -540,6 +790,7 @@ export interface DuePaymentInput {
   amount: number
   entryDate: string
   note: string
+  mode?: PledgePaymentMode
 }
 
 export interface CustomerDuesColumn {
@@ -559,15 +810,20 @@ export interface AdaguDueSummary {
   receiptNo: string
   pledgeDate: string
   principal: number
+  principalOutstanding: number
   interestPct: number
   monthlyInterest: number
   daysActive: number
+  interestDue: number
+  interestPaidUpto: string
   nextInterestDue: string
   isInterestOverdue: boolean
   totalDue: number
   amountCollected: number
   remaining: number
   status: PledgeStatus
+  auctionNoticeDate?: string | null
+  auctionDate?: string | null
   topups: PledgeTopup[]
 }
 
@@ -599,11 +855,29 @@ export interface BackupStatus {
   lastOffsiteError: string | null
 }
 
+export type BackupKind = 'daily' | 'manual' | 'dayclose' | 'prerestore' | 'premigrate'
+
 export interface BackupFile {
   name: string
   createdAt: string
   sizeBytes: number
-  kind: 'daily' | 'manual'
+  kind: BackupKind
+}
+
+export interface BackupInspection {
+  name: string
+  schemaVersion: number
+  appSchemaVersion: number
+  restorable: boolean
+  latestInvoiceAt: string | null
+  counts: {
+    customers: number
+    invoices: number
+    pledges: number
+    products: number
+    goldSavingAccounts: number
+  }
+  issues: string[]
 }
 
 export type UserRole = 'admin' | 'staff'
@@ -766,6 +1040,10 @@ export interface MetalDayClosingSheet {
   closedAt: string | null
   rows: ItemStockRow[]
   pieceRows: MetalDayPieceRow[]
+}
+
+export interface MetalDayCloseResult extends MetalDayClosingSheet {
+  backupSaved: boolean
 }
 
 export interface MetalDayPieceRow {
@@ -1064,7 +1342,56 @@ export interface DayClosingCloseInput {
   note?: string
 }
 
-export type PledgeStatus = 'draft' | 'active' | 'redeemed' | 'forfeited'
+export type PledgeStatus = 'draft' | 'active' | 'redeemed' | 'forfeited' | 'renewed'
+
+export type PledgePaymentKind =
+  | 'interest'
+  | 'part'
+  | 'redeem'
+  | 'renewal'
+  | 'transfer'
+  | 'auction'
+  | 'legacy'
+
+export type PledgePaymentMode =
+  | 'cash'
+  | 'upi'
+  | 'card'
+  | 'bank_transfer'
+  | 'transfer'
+  | 'auction'
+
+export interface PledgePayment {
+  id: number
+  pledgeId: number
+  paymentDate: string
+  kind: PledgePaymentKind
+  mode: PledgePaymentMode
+  amount: number
+  interestPart: number
+  principalPart: number
+  discount: number
+  note: string
+  createdAt: string
+}
+
+/** Replayed interest state of a pledge at a given date. */
+export interface PledgePayoff {
+  asOfDate: string
+  principalOutstanding: number
+  assessedInterest: number
+  currentInterest: number
+  interestCredit: number
+  interestDue: number
+  totalDiscount: number
+  grossDue: number
+  payoff: number
+  daysActive: number
+  interestPaidUpto: string
+  nextInterestDue: string
+  isInterestOverdue: boolean
+  monthlyInterest: number
+}
 
 export interface PledgeItem {
   id: number
@@ -1077,6 +1404,8 @@ export interface PledgeItem {
   stoneWeight: number
   netWeight: number
   pieces: number
+  ratePerGram: number
+  itemValue: number
 }
 
 export interface PledgeItemInput {
@@ -1088,6 +1417,62 @@ export interface PledgeItemInput {
   stoneWeight?: number
   netWeight: number
   pieces: number
+  ratePerGram?: number
+  itemValue?: number
+}
+
+export type PledgePhotoKind = 'item' | 'customer' | 'id_proof'
+
+export interface PledgePhoto {
+  id: number
+  pledgeId: number
+  kind: PledgePhotoKind
+  path: string
+  createdAt: string
+}
+
+export interface PledgeReminder {
+  id: number
+  pledgeId: number
+  kind: string
+  channel: string
+  sentAt: string
+}
+
+/** Why a loan appears in the reminder list. */
+export type PledgeReminderReason =
+  | 'interest_due'
+  | 'interest_overdue'
+  | 'maturity'
+  | 'auction_notice'
+  | 'auction_due'
+
+export interface PledgeReminderEntry {
+  pledgeId: number
+  receiptNo: string
+  customerId: number
+  customerName: string
+  customerPhone: string
+  status: PledgeStatus
+  reason: PledgeReminderReason
+  /** The date that drives the reminder (next interest due or repayment due). */
+  dueDate: string | null
+  /** Negative when the date is already in the past. */
+  daysUntil: number
+  interestDue: number
+  principalOutstanding: number
+  totalDue: number
+  nextInterestDue: string
+  isInterestOverdue: boolean
+  lastRemindedAt: string | null
+  /** Ready-to-open WhatsApp link built from the shop reminder template. */
+  whatsappUrl: string | null
+}
+
+export interface PledgeWhatsAppOpenInput {
+  pledgeId: number
+  url: string
+  kind?: string
 }
 
 export interface Pledge {
@@ -1097,6 +1482,10 @@ export interface Pledge {
   customerPhone: string
   customerAddress: string
   guardianName: string
+  /** Borrower KYC, echoed for printing (Aadhaar is masked on the print). */
+  customerAadhaar?: string
+  customerPan?: string
+  customerIdProofType?: string
   receiptNo: string
   pledgeDate: string
   pledgeType: string
@@ -1109,10 +1498,16 @@ export interface Pledge {
   redeemedDate: string | null
   amountCollected: number
   notes: string
+  renewedFromId: number | null
+  renewedToId: number | null
+  renewedFromReceiptNo?: string
+  renewedToReceiptNo?: string
   createdAt: string
   items: PledgeItem[]
   itemCount?: number
   topups: PledgeTopup[]
+  payments: PledgePayment[]
+  photos: PledgePhoto[]
 }
 
 export interface PledgeTopup {
@@ -1145,6 +1540,7 @@ export interface PledgeInput {
   repaymentDueDate?: string | null
   notes?: string
   items: PledgeItemInput[]
+  allowAboveLtv?: boolean
 }
 
 export interface PledgeUpdateInput extends PledgeInput {
@@ -1155,17 +1551,78 @@ export interface PledgeRedeemInput {
   id: number
   redeemedDate: string
   amountCollected: number
+  discount?: number
+  mode?: PledgePaymentMode
 }
 
 export interface PledgeCollectInput {
   id: number
   collectedDate: string
   amount: number
+  mode?: PledgePaymentMode
 }
 
 export interface PledgeForfeitInput {
   id: number
   forfeitedDate: string
+}
+
+export interface PledgeRenewInput {
+  id: number
+  renewDate: string
+  mode?: PledgePaymentMode
+  newLoanAmount?: number
+  note?: string
+}
+
+export type PledgeAuctionBuyerType = 'outside' | 'shop'
+
+export interface PledgeAuctionItemCategory {
+  pledgeItemId: number
+  category: string
+}
+
+export interface PledgeAuction {
+  id: number
+  pledgeId: number
+  noticeDate: string
+  auctionDate: string | null
+  buyerType: PledgeAuctionBuyerType | null
+  buyerName: string
+  saleAmount: number
+  payoffAtAuction: number
+  surplusAmount: number
+  surplusPaidDate: string | null
+  surplusMode: PledgePaymentMode | null
+  shortfallAmount: number
+  shortfallWrittenOff: boolean
+  note: string
+  /** Days of notice required before an auction (today's shop setting). */
+  noticeDays: number
+  /** Last date on which the auction may be recorded (noticeDate + noticeDays). */
+  auctionEligibleDate: string
+}
+
+export interface PledgeAuctionNoticeInput {
+  id: number
+  noticeDate: string
+}
+
+export interface PledgeAuctionInput {
+  id: number
+  auctionDate: string
+  buyerType: PledgeAuctionBuyerType
+  buyerName?: string
+  saleAmount: number
+  writeOffShortfall?: boolean
+  note?: string
+  items?: PledgeAuctionItemCategory[]
+}
+
+export interface PledgeAuctionSurplusInput {
+  id: number
+  surplusPaidDate: string
+  mode?: PledgePaymentMode
 }
 
 export type GoldSavingSchemeStatus = 'active' | 'inactive'
@@ -1176,7 +1633,9 @@ export type GoldSavingAccountStatus = 'active' | 'matured' | 'redeemed' | 'cance
 export type GoldSavingInstallmentStatus = 'upcoming' | 'due' | 'paid' | 'overdue' | 'waived'
 export type GoldSavingPaymentStatus = 'posted' | 'reversed'
 export type GoldSavingPaymentMode = 'cash' | 'upi' | 'card' | 'bank_transfer' | 'other'
-export type GoldSavingLedgerType = 'payment' | 'reversal' | 'bonus' | 'redemption' | 'correction'
+export type GoldSavingLedgerType = 'payment' | 'reversal' | 'bonus' | 'redemption' | 'correction' | 'refund'
+export type GoldSavingCancelDeductionType = 'none' | 'percentage' | 'fixed'
+export type GoldSavingLateFeeType = 'none' | 'fixed' | 'per_day'
 export type GoldSavingRedemptionKind = 'gold' | 'jewellery' | 'invoice'
 export type GoldSavingReportId =
   | 'daily-collections'
@@ -1220,6 +1679,10 @@ export interface GoldSavingScheme {
   availableTo: string | null
   terms: string
   status: GoldSavingSchemeStatus
+  cancelDeductionType: GoldSavingCancelDeductionType
+  cancelDeductionValue: number
+  lateFeeType: GoldSavingLateFeeType
+  lateFeeValue: number
   createdAt: string
   updatedAt: string
 }
@@ -1249,6 +1712,39 @@ export interface GoldSavingSchemeInput {
   availableTo?: string | null
   terms?: string
   status?: GoldSavingSchemeStatus
+  cancelDeductionType?: GoldSavingCancelDeductionType
+  cancelDeductionValue?: number
+  lateFeeType?: GoldSavingLateFeeType
+  lateFeeValue?: number
+}
+
+export interface GoldSavingRefund {
+  id: number
+  accountId: number
+  accountNo: string
+  customerId: number
+  customerName: string
+  customerPhone: string
+  schemeName: string
+  durationMonths: number
+  voucherNo: string
+  refundDate: string
+  totalPaid: number
+  deduction: number
+  refundAmount: number
+  paymentMode: GoldSavingPaymentMode
+  transactionRef: string
+  goldForfeited: number
+  reason: string
+  createdAt: string
+}
+
+export interface GoldSavingCancelInput {
+  reason: string
+  refundDate?: string
+  paymentMode?: GoldSavingPaymentMode
+  transactionRef?: string
+  deductionOverride?: number
 }
 
 export interface GoldSavingAccount {
@@ -1289,6 +1785,7 @@ export interface GoldSavingInitialPaymentInput {
   transactionRef?: string
   goldRate?: number
   goldRateOverrideReason?: string
+  acceptRateDate?: boolean
   remarks?: string
   idempotencyKey?: string
 }
@@ -1304,6 +1801,7 @@ export interface GoldSavingAccountInput {
   nomineeRelationship?: string
   nomineePhone?: string
   termsAccepted: boolean
+  acceptRateDate?: boolean
   initialPayment?: GoldSavingInitialPaymentInput
 }
 
@@ -1344,6 +1842,10 @@ export interface GoldSavingPayment {
   transactionRef: string
   remarks: string
   status: GoldSavingPaymentStatus
+  /** Shared by every payment written in one multi-installment collection. */
+  batchNo: string
+  /** Sibling payments of the same batch, present only when the batch has more than one row. */
+  batchPayments?: GoldSavingPayment[]
   createdAt: string
   totalPaidToDate: number
   goldAccumulatedToDate: number
@@ -1352,6 +1854,8 @@ export interface GoldSavingPayment {
 export interface GoldSavingPaymentInput {
   accountId: number
   installmentId?: number
+  /** How many installments to collect in order, starting at `installmentId` or the next unpaid one. */
+  installmentCount?: number
   paymentDate: string
   amount: number
   lateFee?: number
@@ -1360,8 +1864,18 @@ export interface GoldSavingPaymentInput {
   transactionRef?: string
   goldRate?: number
   goldRateOverrideReason?: string
+  acceptRateDate?: boolean
   remarks?: string
   idempotencyKey?: string
+}
+
+/** Gold rate that applies on a requested date, with its effective date. */
+export interface GoldSavingRate {
+  rate: number
+  effectiveDate: string
+  /** True when a rate row exists exactly on the requested date. */
+  matchesDate: boolean
+  purity: string
 }
 
 export interface GoldSavingLedgerEntry {
@@ -1437,6 +1951,7 @@ export interface GoldSavingAccountDetail {
   payments: GoldSavingPayment[]
   ledger: GoldSavingLedgerEntry[]
   redemptions: GoldSavingRedemption[]
+  refund: GoldSavingRefund | null
   audit: GoldSavingAuditLog[]
 }
 

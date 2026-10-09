@@ -340,6 +340,33 @@
   color: #111;
 }
 
+.pledge-print-photos {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pledge-print-photos figure {
+  margin: 0;
+  width: 46mm;
+  text-align: center;
+}
+
+.pledge-print-photos img {
+  width: 100%;
+  height: 34mm;
+  object-fit: cover;
+  border: 1px solid #111;
+}
+
+.pledge-print-photos figcaption {
+  margin-top: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 @media print {
   @page {
     size: A4;

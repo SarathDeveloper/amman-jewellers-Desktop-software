@@ -14,6 +14,27 @@ describe('bill summary', () => {
       grossValue: 60000,
       deductionAmount: 6000,
       finalValue: 54000,
+      fineWeight: 10,
+    })
+  })
+
+  it('values on the fine weight when a touch percentage is set', () => {
+    expect(
+      computeOldGoldValue({ netWeight: 10, ratePerGram: 6000, deductionPct: 0, touchPct: 75 }),
+    ).toEqual({
+      grossValue: 45000,
+      deductionAmount: 0,
+      finalValue: 45000,
+      fineWeight: 7.5,
+    })
+    // Touch and deduction stack: value the fine weight, then take the deduction.
+    expect(
+      computeOldGoldValue({ netWeight: 10, ratePerGram: 6000, deductionPct: 10, touchPct: 75 }),
+    ).toEqual({
+      grossValue: 45000,
+      deductionAmount: 4500,
+      finalValue: 40500,
+      fineWeight: 7.5,
     })
   })
 

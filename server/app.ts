@@ -23,7 +23,9 @@ import settingsRoutes from './routes/settings.routes'
 import stockRoutes from './routes/stock.routes'
 import stockAdjustmentsRoutes from './routes/stockAdjustments.routes'
 import suppliersRoutes from './routes/suppliers.routes'
+import systemRoutes from './routes/system.routes'
 import oldGoldPurchasesRoutes from './routes/oldGoldPurchases.routes'
+import oldGoldBatchesRoutes from './routes/oldGoldBatches.routes'
 import usersRoutes from './routes/users.routes'
 import goldSavingsRoutes from './routes/goldSavings.routes'
 
@@ -54,6 +56,7 @@ export function createApp(): express.Express {
   app.use('/api/suppliers', requireAuth, requireFeature('inward'), suppliersRoutes)
   app.use('/api/inwards', requireAuth, requireFeature('inward'), inwardsRoutes)
   app.use('/api/old-gold-purchases', requireAuth, oldGoldPurchasesRoutes)
+  app.use('/api/old-gold-batches', requireAuth, oldGoldBatchesRoutes)
   app.use('/api/dues', requireAuth, requireFeature('dues'), duesRoutes)
   app.use('/api/invoices', requireAuth, requireFeature('billing'), invoicesRoutes)
   app.use('/api/pledges', requireAuth, requireFeature('billing'), pledgesRoutes)
@@ -64,6 +67,7 @@ export function createApp(): express.Express {
   app.use('/api/stock', requireAuth, requireFeature('stock'), stockRoutes)
   app.use('/api/reports', requireAuth, requireFeature('reports'), reportsRoutes)
   app.use('/api/gold-savings', requireAuth, requireFeature('gold_savings'), goldSavingsRoutes)
+  app.use('/api/system', systemRoutes)
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' })

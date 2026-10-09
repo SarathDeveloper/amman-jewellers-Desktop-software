@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Banknote,
-  Bell,
   Calendar,
   ChevronDown,
+  Coins,
   FileEdit,
   FileText,
   IndianRupee,
@@ -20,35 +20,34 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { STOCK_METALS } from '@shared/itemTypes'
 import { localTodayIso } from '@shared/localDate'
-import type { DuesLedger, Invoice, InvoiceListStats, ItemStockRow, MetalRates, PaymentMode } from '@shared/types'
+import type {
+  DuesLedger,
+  GoldSavingDashboard,
+  Invoice,
+  InvoiceListStats,
+  ItemStockRow,
+  MetalRates,
+  StockReconciliationRow,
+} from '@shared/types'
 import { FilterBar } from '../../components/FilterBar'
 import { DateInput } from '../../components/DateInput'
 import { MetalBarIcon } from '../../components/MetalBarIcon'
-import { formatCurrency, formatDisplayDate } from '../../lib/format'
+import { formatCurrency, formatDisplayDate, formatInr, formatPaymentMode, formatWeight } from '../../lib/format'
 import { api } from '../../lib/api'
+import { useAuth } from '../auth/authContext'
+import { DashboardAlertsMenu } from './DashboardAlertsMenu'
 import {
   applyInvoiceStats,
+  buildDashboardAlerts,
   periodGranularity,
+  RECENT_BILLS_LIMIT,
   resolvePeriodRange,
   type ChartGranularity,
   type DashboardPeriod,
   type DashboardStats,
+  type OldGoldTodayStats,
   type SalesChartBucket,
 } from './dashboardStats'
-
-function formatInr(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(amount)
-}
-
-function formatWeight(weight: number): string {
-  return `${new Intl.NumberFormat('en-IN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 3,
-  }).format(weight)} g`
-}
 
 function formatDashboardDate(isoDate: string): string {
   const formatted = formatDisplayDate(isoDate)
@@ -62,11 +61,6 @@ function greetingForHour(hour: number): string {
   if (hour < 12) return 'Good morning'
   if (hour < 17) return 'Good afternoon'
   return 'Good evening'
-}
-
-function formatPaymentMode(mode: PaymentMode): string {
-  if (mode === 'upi') return 'UPI'
-  return mode.charAt(0).toUpperCase() + mode.slice(1)
 }
 
 const PERIOD_OPTIONS: { value: DashboardPeriod; label: string }[] = [
@@ -333,11 +327,11 @@ function MetalStockBlock({
       </div>
       <dl className="dashboard-metal-stats">
         <div>
-          <dt>Opening</dt>
+          <dt>Opening today</dt>
           <dd className="num">{formatWeight(summary.opening)}</dd>
         </div>
         <div>
-          <dt>Inward</dt>
+          <dt>Inward today</dt>
           <dd className="num stock-qty in">{formatWeight(summary.inward)}</dd>
         </div>
         <div>
@@ -358,14 +352,22 @@ export function DashboardPage() {
     throw new Error('Diagnostic crash test')
   }
 
+  const { user, can } = useAuth()
+  const displayName = user?.username || 'Shop Owner'
+  const avatarLetter = displayName.charAt(0).toUpperCase()
   const [invoiceStats, setInvoiceStats] = useState<InvoiceListStats | null>(null)
   const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([])
   const [ledger, setLedger] = useState<DuesLedger | undefined>(undefined)
   const [goldStock, setGoldStock] = useState<ItemStockRow[]>([])
   const [silverStock, setSilverStock] = useState<ItemStockRow[]>([])
   const [metalRates, setMetalRates] = useState<MetalRates | null>(null)
+  const [reconciliation, setReconciliation] = useState<StockReconciliationRow[] | null>(null)
+  const [goldSavings, setGoldSavings] = useState<GoldSavingDashboard | null>(null)
+  const [oldGoldStats, setOldGoldStats] = useState<OldGoldTodayStats | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const hasLoadedRef = useRef(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [period, setPeriod] = useState<DashboardPeriod>('today')
   const [customFrom, setCustomFrom] = useState(() => localTodayIso())
@@ -383,6 +385,7 @@ export function DashboardPage() {
     customersBilled: 0,
     totalItemsSold: 0,
     chart: [],
+    collectionsChart: [],
   }
   const stats: DashboardStats = applyInvoiceStats(
     invoiceStats ?? emptyStats,
@@ -392,6 +395,7 @@ export function DashboardPage() {
     silverStock,
     today,
     { period, customFrom, customTo },
+    oldGoldStats,
   )
 
   useEffect(() => {
@@ -400,21 +404,35 @@ export function DashboardPage() {
       try {
         if (active) {
           setError(null)
-          setLoading(true)
+          if (hasLoadedRef.current) setRefreshing(true)
+          else setLoading(true)
         }
-        const [statsPayload, recentPage, dues, goldRows, silverRows, latestRates] = await Promise.all([
-          api.getInvoiceStats({ from: range.from, to: range.to, granularity }).catch(() => emptyStats),
-          api.listInvoices({ page: 1, pageSize: 5, sort: 'desc' }).catch(() => ({
-            items: [] as Invoice[],
-            total: 0,
-            page: 1,
-            pageSize: 5,
-          })),
-          api.listDues().catch(() => undefined),
-          api.listItemStock({ stockDate: today, metal: STOCK_METALS[0] }).catch(() => [] as ItemStockRow[]),
-          api.listItemStock({ stockDate: today, metal: STOCK_METALS[1] }).catch(() => [] as ItemStockRow[]),
-          api.getLatestMetalRates().catch(() => null),
-        ])
+        const [
+          statsPayload,
+          recentPage,
+          dues,
+          goldRows,
+          silverRows,
+          latestRates,
+          reconRows,
+          gsDashboard,
+          oldGoldPayload,
+        ] = await Promise.all([
+            api.getInvoiceStats({ from: range.from, to: range.to, granularity }).catch(() => emptyStats),
+            api.listInvoices({ page: 1, pageSize: RECENT_BILLS_LIMIT, sort: 'desc' }).catch(() => ({
+              items: [] as Invoice[],
+              total: 0,
+              page: 1,
+              pageSize: RECENT_BILLS_LIMIT,
+            })),
+            api.listDues().catch(() => undefined),
+            api.listItemStock({ stockDate: today, metal: STOCK_METALS[0] }).catch(() => [] as ItemStockRow[]),
+            api.listItemStock({ stockDate: today, metal: STOCK_METALS[1] }).catch(() => [] as ItemStockRow[]),
+            api.getLatestMetalRates().catch(() => null),
+            can('stock') ? api.getStockReconciliation(today).catch(() => null) : Promise.resolve(null),
+            can('gold_savings') ? api.getGsDashboard().catch(() => null) : Promise.resolve(null),
+            api.getOldGoldPurchaseStats(today).catch(() => null),
+          ])
         if (active) {
           setInvoiceStats(statsPayload ?? emptyStats)
           setRecentInvoices(recentPage.items ?? [])
@@ -422,19 +440,26 @@ export function DashboardPage() {
           setGoldStock(goldRows)
           setSilverStock(silverRows)
           setMetalRates(latestRates)
+          setReconciliation(reconRows)
+          setGoldSavings(gsDashboard)
+          setOldGoldStats(oldGoldPayload)
+          hasLoadedRef.current = true
         }
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : 'Failed to load dashboard')
         }
       } finally {
-        if (active) setLoading(false)
+        if (active) {
+          setLoading(false)
+          setRefreshing(false)
+        }
       }
     })()
     return () => {
       active = false
     }
-  }, [today, refreshKey, range.from, range.to, granularity])
+  }, [today, refreshKey, range.from, range.to, granularity, can])
 
   const recentBills = stats.recentBills ?? []
   const sales = stats.salesOverview
@@ -443,14 +468,21 @@ export function DashboardPage() {
       ? `${stats.outstandingCustomerCount} customer${stats.outstandingCustomerCount === 1 ? '' : 's'}`
       : undefined
   const draftHint = stats.draftCount > 0 ? 'Needs attention' : undefined
+  const oldGold = stats.oldGoldToday
+  const oldGoldHint =
+    oldGold.count > 0
+      ? `${formatWeight(oldGold.netWeight)} · open ₹ ${formatInr(oldGold.openBalance)}`
+      : undefined
   const salesSparkline = sales.hourlyTotals
+  const collectionsSparkline = sales.collectionTotals
+  const alerts = buildDashboardAlerts(ledger, reconciliation, goldSavings, today)
 
   return (
     <div className="dashboard-page">
       <header className="dashboard-header">
         <div>
           <h1>Dashboard</h1>
-          <p className="dashboard-greeting">{greeting}, Shop Owner</p>
+          <p className="dashboard-greeting">{greeting}, {displayName}</p>
         </div>
         <div className="dashboard-header-tools">
           <GoldRateTicker rates={metalRates} />
@@ -467,18 +499,19 @@ export function DashboardPage() {
             type="button"
             className="btn ghost dashboard-icon-btn"
             onClick={() => setRefreshKey((k) => k + 1)}
-            disabled={loading}
+            disabled={loading || refreshing}
             aria-label="Refresh dashboard"
           >
-            <RefreshCw size={18} strokeWidth={1.75} className={loading ? 'dashboard-spin' : ''} />
+            <RefreshCw
+              size={18}
+              strokeWidth={1.75}
+              className={loading || refreshing ? 'dashboard-spin' : ''}
+            />
           </button>
-          <button type="button" className="btn ghost dashboard-icon-btn dashboard-bell-btn" aria-label="Notifications">
-            <Bell size={18} strokeWidth={1.75} />
-            <span className="dashboard-bell-badge" aria-hidden />
-          </button>
+          <DashboardAlertsMenu alerts={alerts} />
           <div className="dashboard-profile">
-            <span className="dashboard-avatar" aria-hidden>S</span>
-            <span className="dashboard-profile-name">Shop Owner</span>
+            <span className="dashboard-avatar" aria-hidden>{avatarLetter}</span>
+            <span className="dashboard-profile-name">{displayName}</span>
           </div>
         </div>
       </header>
@@ -504,7 +537,7 @@ export function DashboardPage() {
               value={`₹ ${formatInr(stats.todayCollections)}`}
               icon={Banknote}
               tone="success"
-              sparkline={salesSparkline}
+              sparkline={collectionsSparkline}
             />
             <KpiCard
               to="/dues"
@@ -521,6 +554,14 @@ export function DashboardPage() {
               hint={draftHint}
               icon={FileEdit}
               tone="info"
+            />
+            <KpiCard
+              to="/inventory/old-gold"
+              label="Old gold bought"
+              value={`₹ ${formatInr(oldGold.amount)}`}
+              hint={oldGoldHint}
+              icon={Coins}
+              tone="brand"
             />
           </div>
 
@@ -592,7 +633,12 @@ export function DashboardPage() {
 
             <section className="card padded dashboard-panel dashboard-metal-panel">
               <div className="dashboard-panel-head">
-                <h2>Metal stock (today)</h2>
+                <div>
+                  <h2>Metal stock</h2>
+                  <p className="muted dashboard-panel-sub">
+                    {formatDashboardDate(today)} · Not affected by the sales period filter
+                  </p>
+                </div>
               </div>
               <MetalStockBlock
                 title="Gold"
@@ -671,7 +717,7 @@ export function DashboardPage() {
                           </td>
                           <td>{invoice.customerName}</td>
                           <td>{formatDisplayDate(invoice.invoiceDate)}</td>
-                          <td className="num">{formatInr(invoice.total)}</td>
+                          <td className="num">{formatCurrency(invoice.total)}</td>
                           <td>{formatPaymentMode(invoice.paymentMode)}</td>
                           <td>
                             {invoice.status === 'draft' ? (

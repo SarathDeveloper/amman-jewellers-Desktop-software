@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Gem, Receipt } from 'lucide-react'
 import type { DuesLedger, Invoice } from '@shared/types'
 import { PageHeader } from '../../components/PageHeader'
@@ -18,15 +18,18 @@ export function DuesPage() {
   const today = localTodayIso()
   const [tab, setTab] = useState<DuesTab>('bills')
   const [search, setSearch] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [ledger, setLedger] = useState<DuesLedger>(emptyDuesLedger())
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const hasLoadedRef = useRef(false)
 
-  async function loadLedger() {
+  async function loadLedger(query: string = searchQuery) {
     setError(null)
     const [data, todayBills] = await Promise.all([
-      api.listDues(search),
+      api.listDues(query),
       api.listInvoices({ from: today, to: today, page: 1, pageSize: 50 }),
     ])
     const ledger: DuesLedger = {
@@ -36,28 +39,38 @@ export function DuesPage() {
     }
     setLedger(ledger)
     setInvoices(todayBills.items ?? [])
+    hasLoadedRef.current = true
     return ledger
   }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearchQuery(search.trim()), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
 
   useEffect(() => {
     let active = true
     void (async () => {
       try {
-        setLoading(true)
+        if (hasLoadedRef.current) setRefreshing(true)
+        else setLoading(true)
         await loadLedger()
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : 'Failed to load dues')
         }
       } finally {
-        if (active) setLoading(false)
+        if (active) {
+          setLoading(false)
+          setRefreshing(false)
+        }
       }
     })()
     return () => {
       active = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- search triggers IPC reload
-  }, [search])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- searchQuery triggers IPC reload
+  }, [searchQuery])
 
   const billCols = useMemo(() => billColumns(ledger.columns), [ledger.columns])
   const billTotal = useMemo(() => billOutstanding(ledger.columns), [ledger.columns])
@@ -144,6 +157,8 @@ export function DuesPage() {
         </div>
 
         {error && <div className="error-banner">{error}</div>}
+
+        {refreshing ? <p className="muted list-refreshing-hint">Updating…</p> : null}
 
         <div className="dues-tab-panel">
           {tab === 'bills' ? (

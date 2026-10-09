@@ -1,23 +1,33 @@
 import { Router, type Request } from 'express'
 import {
   historicalInvoiceInputSchema,
+  invoiceCancelInputSchema,
   invoiceInputSchema,
   invoicePaymentInputSchema,
   invoiceUpdateInputSchema,
 } from '@shared/schemas'
 import { computeOldGoldValue, resolveAmountPayable } from '@shared/billing/billSummary'
+import {
+  isDraftInvoiceNo,
+  isEstimateInvoiceNo,
+  isProvisionalInvoiceNo,
+} from '@shared/billing/invoiceNumber'
 import { computeInvoiceTax, roundMoney } from '@shared/billing/pricing'
+import { huidRemovalRange } from '@shared/itemTypes'
 import { localTodayIso } from '@shared/localDate'
 import type {
+  BillCustomerInfo,
   BillFormat,
   HistoricalInvoiceInput,
   Invoice,
+  InvoiceCancelInput,
   InvoiceInput,
   InvoiceItem,
   InvoiceLineKind,
   InvoicePayment,
   InvoicePaymentInput,
   InvoiceUpdateInput,
+  MetalRates,
   MixedPaymentPart,
   OldGoldItem,
   OldGoldItemInput,
@@ -30,13 +40,21 @@ import { computeInvoiceAmounts, computeInvoiceLines } from '../billing/invoiceCo
 import { getDatabase } from '../db'
 import { assertMetalsOpenForDate } from '../db/metalDayClosing'
 import { syncDueEntryForFinalInvoice } from '../dues/invoiceSync'
+import {
+  finalizeGoldSavingLinks,
+  loadGoldSavingLinks,
+  replaceGoldSavingLinks,
+  resolveSchemeCredits,
+} from '../goldSavings/billingCredit'
 import { asyncHandler, parseBody, parseIdParam, parsePaging, queryString } from '../lib/http'
 import { saveLastPrintedBill } from '../lib/settingsStore'
+import { listHuids, appendHuids, removeHuids } from '../products/huids'
 import { recordPieceMovement } from '../stock/movements'
 import { EMPTY_PRODUCT_VARIANT_FIELDS } from '@shared/types'
 import { assertCustomerAllowedForBill } from './customers.routes'
 import { insertPayment } from './dues.routes'
 import { getLatestMetalRates } from './metalRates.routes'
+import { getPurchaseBalance } from '../oldGold/balance'
 
 const router = Router()
 
@@ -51,7 +69,7 @@ type InvoiceRow = {
   subtotal: number
   tax: number
   total: number
-  status: 'draft' | 'final'
+  status: 'draft' | 'final' | 'cancelled'
   created_at: string
   bill_format: BillFormat
   payment_mode: PaymentMode
@@ -68,6 +86,14 @@ type InvoiceRow = {
   summary_making: number
   round_off: number
   amount_payable: number
+  customer_name_snap: string
+  customer_phone_snap: string
+  customer_address_snap: string
+  customer_gstin_snap: string
+  rates_snapshot: string
+  cancelled_at: string | null
+  cancel_reason: string
+  cancelled_by: number | null
 }
 
 type InvoiceItemRow = {
@@ -93,18 +119,69 @@ type InvoiceItemRow = {
   category: string
   line_kind: InvoiceLineKind
   description: string
+  purity: string
+  huid: string
 }
 
-function nextInvoiceNo(db: ReturnType<typeof getDatabase>, billFormat: BillFormat = 'cash_bill'): string {
-  const year = new Date().getFullYear()
-  const prefix = billFormat === 'tax_invoice' ? `TI-${year}-` : `CB-${year}-`
-  const last = db
-    .prepare(`SELECT invoice_no FROM invoices WHERE invoice_no LIKE ? ORDER BY invoice_no DESC LIMIT 1`)
-    .get(`${prefix}%`) as { invoice_no: string } | undefined
+function yearFromInvoiceDate(invoiceDate?: string): string {
+  const year = (invoiceDate ?? '').slice(0, 4)
+  return /^\d{4}$/.test(year) ? year : String(new Date().getFullYear())
+}
 
-  const lastSeq = last ? Number.parseInt(last.invoice_no.replace(prefix, ''), 10) : 0
-  const next = (Number.isNaN(lastSeq) ? 0 : lastSeq) + 1
+/**
+ * Next number in a `<PREFIX>-<year>-NNNN` series. Uses a numeric max so the
+ * series keeps counting past 9999 (a text sort puts "-10000" before "-9999").
+ */
+function nextSerialNo(db: ReturnType<typeof getDatabase>, prefix: string): string {
+  const row = db
+    .prepare(
+      `SELECT MAX(CAST(substr(invoice_no, ?) AS INTEGER)) AS max_seq
+       FROM invoices
+       WHERE invoice_no LIKE ?`,
+    )
+    .get(prefix.length + 1, `${prefix}%`) as { max_seq: number | null } | undefined
+  const next = (row?.max_seq ?? 0) + 1
   return `${prefix}${String(next).padStart(4, '0')}`
+}
+
+function nextInvoiceNo(
+  db: ReturnType<typeof getDatabase>,
+  billFormat: BillFormat = 'cash_bill',
+  invoiceDate?: string,
+): string {
+  const year = yearFromInvoiceDate(invoiceDate)
+  const prefix = billFormat === 'tax_invoice' ? `TI-${year}-` : `CB-${year}-`
+  return nextSerialNo(db, prefix)
+}
+
+function nextEstimateNo(db: ReturnType<typeof getDatabase>, invoiceDate?: string): string {
+  return nextSerialNo(db, `EST-${yearFromInvoiceDate(invoiceDate)}-`)
+}
+
+let tempInvoiceNoSerial = 0
+
+/** Unique throwaway number for the instant before a draft's own id is known. */
+function tempInvoiceNo(): string {
+  tempInvoiceNoSerial += 1
+  return `TMP-${Date.now()}-${tempInvoiceNoSerial}`
+}
+
+/**
+ * The provisional number a draft should keep. Legacy CB-/TI- drafts keep their
+ * number; a new or toggled draft uses `DRAFT-<id>` or the estimate series.
+ */
+function provisionalInvoiceNo(
+  db: ReturnType<typeof getDatabase>,
+  id: number,
+  isEstimate: boolean,
+  invoiceDate: string,
+  currentNo: string,
+): string {
+  if (!isProvisionalInvoiceNo(currentNo)) return currentNo
+  if (isEstimate) {
+    return isEstimateInvoiceNo(currentNo) ? currentNo : nextEstimateNo(db, invoiceDate)
+  }
+  return `DRAFT-${id}`
 }
 
 function loadProductsMap(db: ReturnType<typeof getDatabase>) {
@@ -172,8 +249,8 @@ function loadInvoiceItems(db: ReturnType<typeof getDatabase>, invoiceId: number)
     invoiceId: row.invoice_id,
     productId: row.product_id,
     productName:
-      row.product_name ||
       row.description ||
+      row.product_name ||
       (row.line_kind === 'exchange' ? 'Old gold exchange' : 'Item'),
     qty: row.qty,
     rate: row.rate,
@@ -193,6 +270,8 @@ function loadInvoiceItems(db: ReturnType<typeof getDatabase>, invoiceId: number)
     category: row.category,
     lineKind: row.line_kind ?? 'sale',
     description: row.description ?? '',
+    purity: row.purity ?? '',
+    huid: row.huid ?? '',
   }))
 }
 
@@ -318,8 +397,12 @@ function loadOldGoldLinks(db: ReturnType<typeof getDatabase>, invoiceId: number)
   const rows = db
     .prepare(
       `SELECT l.id, l.invoice_id, l.purchase_id, l.amount_applied,
-              p.purchase_no, p.customer_name, p.purchase_date,
-              COALESCE((SELECT SUM(i.net_weight) FROM old_gold_purchase_items i WHERE i.purchase_id = p.id), 0) AS net_weight
+              p.purchase_no, p.customer_name, p.purchase_date, p.total_amount,
+              COALESCE((SELECT SUM(i.net_weight) FROM old_gold_purchase_items i WHERE i.purchase_id = p.id), 0) AS net_weight,
+              COALESCE((SELECT SUM(o.amount) FROM old_gold_payouts o
+                        WHERE o.purchase_id = p.id AND o.voided_at IS NULL), 0) AS paid_out,
+              COALESCE((SELECT SUM(o.amount_applied) FROM invoice_old_gold_links o
+                        WHERE o.purchase_id = p.id AND o.invoice_id != l.invoice_id), 0) AS other_applied
        FROM invoice_old_gold_links l
        JOIN old_gold_purchases p ON p.id = l.purchase_id
        WHERE l.invoice_id = ?
@@ -333,7 +416,10 @@ function loadOldGoldLinks(db: ReturnType<typeof getDatabase>, invoiceId: number)
     purchase_no: string
     customer_name: string
     purchase_date: string
+    total_amount: number
     net_weight: number
+    paid_out: number
+    other_applied: number
   }>
 
   return rows.map((row) => ({
@@ -345,6 +431,10 @@ function loadOldGoldLinks(db: ReturnType<typeof getDatabase>, invoiceId: number)
     purchaseDate: row.purchase_date,
     amountApplied: row.amount_applied,
     netWeight: row.net_weight,
+    purchaseTotal: roundMoney(row.total_amount),
+    balance: roundMoney(
+      Math.max(0, row.total_amount - row.paid_out - row.other_applied - row.amount_applied),
+    ),
   }))
 }
 
@@ -367,16 +457,36 @@ function resolveLinkedOldGoldCredit(
     if (!row) {
       throw new Error('Old gold purchase not found')
     }
+    if (row.status === 'cancelled') {
+      throw new Error(`${row.purchase_no} is cancelled`)
+    }
     if (row.status !== 'final') {
       throw new Error(`${row.purchase_no} must be finalized before it can be applied to a sale bill`)
     }
-    const existing = db
-      .prepare('SELECT invoice_id FROM invoice_old_gold_links WHERE purchase_id = ?')
-      .get(row.id) as { invoice_id: number } | undefined
-    if (existing && existing.invoice_id !== currentInvoiceId) {
-      throw new Error(`${row.purchase_no} is already applied to another sale bill`)
+    const balance = getPurchaseBalance(db, row.id, { excludeInvoiceId: currentInvoiceId }).balance
+    if (balance <= 0.009) {
+      const appliedElsewhere = db
+        .prepare(
+          `SELECT i.invoice_no AS invoice_no
+           FROM invoice_old_gold_links l
+           JOIN invoices i ON i.id = l.invoice_id
+           WHERE l.purchase_id = ? AND l.invoice_id != ?
+           LIMIT 1`,
+        )
+        .get(row.id, currentInvoiceId ?? -1) as { invoice_no: string } | undefined
+      if (appliedElsewhere) {
+        throw new Error(`${row.purchase_no} is already applied to ${appliedElsewhere.invoice_no}`)
+      }
+      throw new Error(`${row.purchase_no} has no balance left to apply`)
     }
-    total += row.total_amount
+    const requested = link.amount == null ? balance : roundMoney(link.amount)
+    if (requested <= 0) {
+      throw new Error(`Enter an amount to apply from ${row.purchase_no}`)
+    }
+    if (requested - balance > 0.009) {
+      throw new Error(`Only ${balance.toFixed(2)} is left on ${row.purchase_no}`)
+    }
+    total += requested
   }
   return roundMoney(total)
 }
@@ -404,8 +514,13 @@ function replaceOldGoldLinks(
     if (!row) {
       throw new Error('Old gold purchase not found')
     }
-    insert.run(invoiceId, row.id, row.total_amount)
-    total += row.total_amount
+    // The amount applied is independent of the bill total, so one purchase can
+    // be spread over several bills and only draw what each one needs.
+    const balance = getPurchaseBalance(db, row.id, { excludeInvoiceId: invoiceId }).balance
+    const amount = link.amount == null ? balance : roundMoney(Math.min(link.amount, balance))
+    if (amount <= 0) continue
+    insert.run(invoiceId, row.id, amount)
+    total += amount
   }
   return roundMoney(total)
 }
@@ -423,6 +538,36 @@ function assertPayableRules(amountBeforeRoundOff: number, roundOff: number, paid
   }
   if (paid - amountPayable > 0.009) {
     throw new Error('Amount paid cannot be more than the amount payable')
+  }
+}
+
+function customerSnapshotFromRow(row: InvoiceRow): BillCustomerInfo | null {
+  const name = row.customer_name_snap ?? ''
+  const phone = row.customer_phone_snap ?? ''
+  const address = row.customer_address_snap ?? ''
+  const gstin = row.customer_gstin_snap ?? ''
+  if (!name && !phone && !address && !gstin) return null
+  return { name, phone, address, gstin }
+}
+
+function ratesSnapshotFromRow(row: InvoiceRow): MetalRates | null {
+  const raw = (row.rates_snapshot ?? '').trim()
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<MetalRates>
+    return {
+      id: 0,
+      effectiveDate: parsed.effectiveDate ?? '',
+      gold22k: parsed.gold22k ?? 0,
+      gold24k: parsed.gold24k ?? 0,
+      gold20k: parsed.gold20k ?? 0,
+      gold18k: parsed.gold18k ?? 0,
+      silverFine: parsed.silverFine ?? 0,
+      silver925: parsed.silver925 ?? 0,
+      createdAt: parsed.createdAt ?? '',
+    }
+  } catch {
+    return null
   }
 }
 
@@ -460,9 +605,15 @@ function mapInvoice(
     summaryMaking: row.summary_making ?? 0,
     oldGold: includeExtras ? loadOldGold(db, row.id) : [],
     oldGoldLinks: includeExtras ? loadOldGoldLinks(db, row.id) : [],
+    goldSavingLinks: includeExtras ? loadGoldSavingLinks(db, row.id) : [],
     roundOff: row.round_off ?? 0,
     amountPayable: resolveAmountPayable(row.amount_payable, row.total),
     payments: includeExtras ? loadPayments(db, row.id, row.payment_mode) : [],
+    customerSnapshot: customerSnapshotFromRow(row),
+    ratesSnapshot: ratesSnapshotFromRow(row),
+    cancelledAt: row.cancelled_at ?? null,
+    cancelReason: row.cancel_reason ?? '',
+    cancelledBy: row.cancelled_by ?? null,
   }
 }
 
@@ -496,9 +647,15 @@ function mapInvoiceSummary(row: InvoiceRow & { item_count?: number }): Invoice {
     summaryMaking: row.summary_making ?? 0,
     oldGold: [],
     oldGoldLinks: [],
+    goldSavingLinks: [],
     roundOff: row.round_off ?? 0,
     amountPayable: resolveAmountPayable(row.amount_payable, row.total),
     payments: [],
+    customerSnapshot: customerSnapshotFromRow(row),
+    ratesSnapshot: ratesSnapshotFromRow(row),
+    cancelledAt: row.cancelled_at ?? null,
+    cancelReason: row.cancel_reason ?? '',
+    cancelledBy: row.cancelled_by ?? null,
   }
 }
 
@@ -539,8 +696,8 @@ function insertItems(
       invoice_id, product_id, qty, rate, line_total,
       gross_weight, net_weight, stone_weight, metal_rate, making_charges,
       wastage_pct, stone_rate, other_charges, line_subtotal, line_tax, hsn_code, metal, category,
-      line_kind, description
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      line_kind, description, purity, huid
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   for (const line of computedLines) {
     insert.run(
@@ -564,7 +721,32 @@ function insertItems(
       line.category,
       line.lineKind,
       line.description,
+      line.purity,
+      (line.input.huid ?? '').trim().toUpperCase(),
     )
+  }
+}
+
+/** Validates HUIDs picked on bill lines: tagged on the product and unique within the bill. */
+function assertLineHuids(db: ReturnType<typeof getDatabase>, lines: ReturnType<typeof computeInvoiceLines>): void {
+  const seen = new Set<string>()
+  for (const line of lines) {
+    if (line.lineKind === 'exchange') continue
+    const huid = (line.input.huid ?? '').trim().toUpperCase()
+    if (!huid) continue
+    if (line.productId == null) {
+      throw new Error('HUID can only be set on a saved product line')
+    }
+    if (seen.has(huid)) {
+      throw new Error(`HUID ${huid} is used twice on this bill`)
+    }
+    seen.add(huid)
+    const tagged = db
+      .prepare('SELECT 1 FROM product_huids WHERE product_id = ? AND huid = ?')
+      .get(line.productId, huid)
+    if (!tagged) {
+      throw new Error(`HUID ${huid} is not tagged on this product`)
+    }
   }
 }
 
@@ -672,13 +854,19 @@ function recordHistoricalInvoice(
   return mapInvoice(db, getInvoiceRow(db, id))
 }
 
-function saveDraftInvoice(db: ReturnType<typeof getDatabase>, input: InvoiceInput, invoiceId?: number): Invoice {
+function saveDraftInvoice(
+  db: ReturnType<typeof getDatabase>,
+  input: InvoiceInput,
+  options?: { invoiceId?: number; isAdmin?: boolean },
+): Invoice {
+  const invoiceId = options?.invoiceId
   const billFormat: BillFormat = input.billFormat ?? 'cash_bill'
   assertCustomerAllowedForBill(db, input.customerId)
 
   const productsById = loadProductsMap(db)
   const metalRates = getLatestMetalRates(db)
   const computedLines = computeInvoiceLines(input.items, productsById, metalRates)
+  assertLineHuids(db, computedLines)
 
   const paymentMode: PaymentMode = input.paymentMode ?? 'cash'
   const discount = input.discount ?? 0
@@ -686,10 +874,11 @@ function saveDraftInvoice(db: ReturnType<typeof getDatabase>, input: InvoiceInpu
   const useIgst = input.useIgst ?? false
   const oldGold = input.oldGold ?? []
   const oldGoldLinks = input.oldGoldLinks ?? []
+  const goldSavingLinks = input.goldSavingLinks ?? []
   const roundOff = input.roundOff ?? 0
   const mixedTotal = mixedPaymentsTotal(input.mixedPayments)
   const linkedCredit = resolveLinkedOldGoldCredit(db, oldGoldLinks, invoiceId)
-  const { totals, summary } = computeInvoiceAmounts(computedLines, {
+  const baseOptions = {
     discount,
     autoTax,
     useIgst,
@@ -698,6 +887,21 @@ function saveDraftInvoice(db: ReturnType<typeof getDatabase>, input: InvoiceInpu
     oldGold,
     extraOldGoldCredit: linkedCredit,
     roundOff,
+  }
+  // First pass without the scheme credit, to learn what is still payable.
+  const base = computeInvoiceAmounts(computedLines, baseOptions)
+  const schemeAvailable = roundMoney(base.summary.invoiceTotal - base.summary.oldGoldTotal)
+  const scheme = resolveSchemeCredits(db, goldSavingLinks, {
+    customerId: input.customerId,
+    available: schemeAvailable,
+    invoiceDate: input.invoiceDate,
+    invoiceId,
+    acceptRateDate: input.acceptRateDate,
+    isAdmin: options?.isAdmin ?? false,
+  })
+  const { totals, summary } = computeInvoiceAmounts(computedLines, {
+    ...baseOptions,
+    schemeCredit: scheme.total,
   })
 
   const paid =
@@ -744,10 +948,23 @@ function saveDraftInvoice(db: ReturnType<typeof getDatabase>, input: InvoiceInpu
     insertItems(db, invoiceId, computedLines)
     replaceOldGold(db, invoiceId, oldGold)
     replaceOldGoldLinks(db, invoiceId, oldGoldLinks)
+    replaceGoldSavingLinks(db, invoiceId, scheme.credits)
+    const current = db
+      .prepare('SELECT invoice_no FROM invoices WHERE id = ?')
+      .get(invoiceId) as { invoice_no: string }
+    const provisional = provisionalInvoiceNo(
+      db,
+      invoiceId,
+      isEstimate === 1,
+      input.invoiceDate,
+      current.invoice_no,
+    )
+    if (provisional !== current.invoice_no) {
+      db.prepare('UPDATE invoices SET invoice_no = ? WHERE id = ?').run(provisional, invoiceId)
+    }
     return mapInvoice(db, getInvoiceRow(db, invoiceId))
   }
 
-  const invoiceNo = nextInvoiceNo(db, billFormat)
   const result = db
     .prepare(
       `INSERT INTO invoices (
@@ -758,7 +975,7 @@ function saveDraftInvoice(db: ReturnType<typeof getDatabase>, input: InvoiceInpu
     )
     .run(
       input.customerId,
-      invoiceNo,
+      tempInvoiceNo(),
       input.invoiceDate,
       totals.subtotal,
       totals.tax,
@@ -777,9 +994,12 @@ function saveDraftInvoice(db: ReturnType<typeof getDatabase>, input: InvoiceInpu
     )
 
   const id = Number(result.lastInsertRowid)
+  const invoiceNo = isEstimate === 1 ? nextEstimateNo(db, input.invoiceDate) : `DRAFT-${id}`
+  db.prepare('UPDATE invoices SET invoice_no = ? WHERE id = ?').run(invoiceNo, id)
   insertItems(db, id, computedLines)
   replaceOldGold(db, id, oldGold)
   replaceOldGoldLinks(db, id, oldGoldLinks)
+  replaceGoldSavingLinks(db, id, scheme.credits)
   return mapInvoice(db, getInvoiceRow(db, id))
 }
 
@@ -825,6 +1045,8 @@ function invoiceListFilter(query: Request['query']): { where: string; params: un
     clauses.push('i.is_estimate = 1')
   } else if (status === 'final') {
     clauses.push("i.status = 'final' AND i.is_estimate = 0")
+  } else if (status === 'cancelled') {
+    clauses.push("i.status = 'cancelled'")
   }
   if (paymentMode === 'cash' || paymentMode === 'upi' || paymentMode === 'card' || paymentMode === 'mixed') {
     clauses.push('i.payment_mode = ?')
@@ -953,7 +1175,48 @@ router.get(
                   FROM invoices WHERE ${saleWhere} GROUP BY key`
     }
 
+    let paidChartSql = `SELECT invoice_date AS key, COALESCE(SUM(amount_paid), 0) AS total FROM invoices WHERE ${saleWhere} GROUP BY invoice_date`
+    if (granularity === 'hour') {
+      paidChartSql = `SELECT CAST(strftime('%H', created_at) AS INTEGER) AS key, COALESCE(SUM(amount_paid), 0) AS total
+                      FROM invoices WHERE ${saleWhere} GROUP BY key`
+    } else if (granularity === 'month') {
+      paidChartSql = `SELECT strftime('%Y-%m', invoice_date) AS key, COALESCE(SUM(amount_paid), 0) AS total
+                      FROM invoices WHERE ${saleWhere} GROUP BY key`
+    }
+
+    const extraPaymentWhere = from && to
+      ? `d.kind = 'payment' AND d.entry_date >= ? AND d.entry_date <= ?
+         AND (d.invoice_id IS NULL OR i.invoice_date < d.entry_date)`
+      : `d.kind = 'payment' AND (d.invoice_id IS NULL OR i.invoice_date < d.entry_date)`
+    let extraChartSql = `SELECT d.entry_date AS key, COALESCE(SUM(d.amount), 0) AS total
+                         FROM customer_dues d
+                         LEFT JOIN invoices i ON i.id = d.invoice_id
+                         WHERE ${extraPaymentWhere}
+                         GROUP BY d.entry_date`
+    if (granularity === 'hour') {
+      extraChartSql = `SELECT CAST(strftime('%H', d.created_at) AS INTEGER) AS key, COALESCE(SUM(d.amount), 0) AS total
+                       FROM customer_dues d
+                       LEFT JOIN invoices i ON i.id = d.invoice_id
+                       WHERE ${extraPaymentWhere}
+                       GROUP BY key`
+    } else if (granularity === 'month') {
+      extraChartSql = `SELECT strftime('%Y-%m', d.entry_date) AS key, COALESCE(SUM(d.amount), 0) AS total
+                       FROM customer_dues d
+                       LEFT JOIN invoices i ON i.id = d.invoice_id
+                       WHERE ${extraPaymentWhere}
+                       GROUP BY key`
+    }
+
     const chart = db.prepare(chartSql).all(...rangeParams) as Array<{ key: string | number; total: number }>
+    const paidChart = db.prepare(paidChartSql).all(...rangeParams) as Array<{ key: string | number; total: number }>
+    const extraChart = db.prepare(extraChartSql).all(...rangeParams) as Array<{ key: string | number; total: number }>
+
+    const collectionsByKey = new Map<string, number>()
+    for (const row of [...paidChart, ...extraChart]) {
+      const key = String(row.key)
+      collectionsByKey.set(key, (collectionsByKey.get(key) ?? 0) + row.total)
+    }
+    const collectionsChart = Array.from(collectionsByKey, ([key, total]) => ({ key, total }))
 
     res.json({
       sales: totals.sales,
@@ -963,6 +1226,7 @@ router.get(
       customersBilled: totals.customers,
       totalItemsSold: totals.items,
       chart: chart.map((row) => ({ key: String(row.key), total: row.total })),
+      collectionsChart,
     })
   }),
 )
@@ -1010,7 +1274,8 @@ router.post(
   asyncHandler((req, res) => {
     const input = parseBody(invoiceInputSchema, req.body) as InvoiceInput
     const db = getDatabase()
-    const tx = db.transaction(() => saveDraftInvoice(db, input))
+    const isAdmin = req.user?.role === 'admin'
+    const tx = db.transaction(() => saveDraftInvoice(db, input, { isAdmin }))
     res.status(201).json(tx())
   }),
 )
@@ -1048,10 +1313,12 @@ router.put(
           isEstimate: input.isEstimate,
           oldGold: input.oldGold,
           oldGoldLinks: input.oldGoldLinks,
+          goldSavingLinks: input.goldSavingLinks,
+          acceptRateDate: input.acceptRateDate,
           roundOff: input.roundOff,
           mixedPayments: input.mixedPayments,
         },
-        input.id,
+        { invoiceId: input.id, isAdmin: req.user?.role === 'admin' },
       ),
     )
     res.json(tx())
@@ -1083,6 +1350,17 @@ router.post(
         if (item.lineKind === 'exchange' || item.productId == null) {
           continue
         }
+        const taggedHuids = listHuids(db, item.productId)
+        const huid = (item.huid ?? '').trim().toUpperCase()
+        const stock = db
+          .prepare('SELECT metal, stock_qty FROM products WHERE id = ?')
+          .get(item.productId) as { metal: string; stock_qty: number } | undefined
+        const mustPickHuid =
+          stock != null &&
+          huidRemovalRange(stock.metal, taggedHuids.length, stock.stock_qty, 1).min > 0
+        if (mustPickHuid && item.qty === 1 && !huid) {
+          throw new Error(`Pick a HUID for ${item.productName || 'this item'}`)
+        }
         recordPieceMovement(db, {
           type: 'sale',
           productId: item.productId,
@@ -1094,10 +1372,41 @@ router.post(
           operatorId: req.user?.id ?? null,
           movementDate: row.invoice_date,
         })
+        if (huid) {
+          removeHuids(db, item.productId, [huid])
+        }
       }
 
-      db.prepare(`UPDATE invoices SET status = 'final' WHERE id = ?`).run(id)
+      const rates = getLatestMetalRates(db)
+      const customer = db
+        .prepare('SELECT name, phone, address, gstin FROM customers WHERE id = ?')
+        .get(row.customer_id) as
+        | { name: string; phone: string; address: string; gstin: string }
+        | undefined
+      const assignedNo = isDraftInvoiceNo(row.invoice_no)
+        ? nextInvoiceNo(db, row.bill_format, row.invoice_date)
+        : row.invoice_no
+      db.prepare(
+        `UPDATE invoices
+         SET status = 'final',
+             invoice_no = ?,
+             customer_name_snap = ?,
+             customer_phone_snap = ?,
+             customer_address_snap = ?,
+             customer_gstin_snap = ?,
+             rates_snapshot = ?
+         WHERE id = ?`,
+      ).run(
+        assignedNo,
+        customer?.name ?? row.customer_name ?? '',
+        customer?.phone ?? row.customer_phone ?? '',
+        customer?.address ?? '',
+        customer?.gstin ?? '',
+        rates ? JSON.stringify(rates) : '',
+        id,
+      )
       syncDueEntryForFinalInvoice(db, id)
+      finalizeGoldSavingLinks(db, id, row.invoice_date, req.user?.id ?? null)
       if (row.payment_mode === 'mixed' && row.amount_paid > 0) {
         db.prepare(
           `UPDATE customer_dues
@@ -1108,6 +1417,74 @@ router.post(
            WHERE invoice_id = ? AND kind = 'payment'`,
         ).run(id)
       }
+      return mapInvoice(db, getInvoiceRow(db, id))
+    })
+    res.json(tx())
+  }),
+)
+
+router.post(
+  '/:id/cancel',
+  asyncHandler((req, res) => {
+    const id = parseIdParam(req.params.id)
+    const input = parseBody(invoiceCancelInputSchema, req.body) as InvoiceCancelInput
+    const db = getDatabase()
+    const tx = db.transaction(() => {
+      const row = getInvoiceRow(db, id)
+      if (row.status === 'cancelled') {
+        throw new Error('This bill is already cancelled')
+      }
+      if (row.status !== 'final') {
+        throw new Error('Only a finalized bill can be cancelled')
+      }
+      if (row.is_historical) {
+        throw new Error('Bills recorded from the old ledger cannot be cancelled')
+      }
+      const redemption = db
+        .prepare('SELECT id FROM invoice_gold_saving_links WHERE invoice_id = ? LIMIT 1')
+        .get(id)
+      if (redemption) {
+        throw new Error('This bill redeemed a gold savings scheme, so it cannot be cancelled')
+      }
+
+      const cancelDate = localTodayIso()
+      const items = loadInvoiceItems(db, id)
+      assertMetalsOpenForDate(
+        db,
+        cancelDate,
+        items.map((item) => item.metal).filter(Boolean),
+      )
+
+      for (const item of items) {
+        if (item.lineKind === 'exchange' || item.productId == null) {
+          continue
+        }
+        const qty = item.qty || 1
+        recordPieceMovement(db, {
+          type: 'sales_return',
+          productId: item.productId,
+          qtyDelta: qty,
+          weightDelta: (item.netWeight ?? 0) * qty,
+          refType: 'invoice',
+          refId: id,
+          reason: `Bill ${row.invoice_no} cancelled`,
+          operatorId: req.user?.id ?? null,
+          movementDate: cancelDate,
+        })
+        const huid = (item.huid ?? '').trim().toUpperCase()
+        if (huid && !listHuids(db, item.productId).includes(huid)) {
+          appendHuids(db, item.productId, [huid])
+        }
+      }
+
+      // The bill is gone, so its dues and its claim on linked old gold go too.
+      db.prepare('DELETE FROM customer_dues WHERE invoice_id = ?').run(id)
+      db.prepare('DELETE FROM invoice_old_gold_links WHERE invoice_id = ?').run(id)
+      db.prepare(
+        `UPDATE invoices
+         SET status = 'cancelled', cancelled_at = datetime('now'), cancel_reason = ?, cancelled_by = ?
+         WHERE id = ?`,
+      ).run(input.reason.trim(), req.user?.id ?? null, id)
       return mapInvoice(db, getInvoiceRow(db, id))
     })
     res.json(tx())

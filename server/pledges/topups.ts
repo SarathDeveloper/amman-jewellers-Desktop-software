@@ -1,6 +1,5 @@
-import type { PledgeTopup } from '@shared/types'
-import { pledgeAmountDueWithTopups, type PledgeTopupSlice } from '@shared/billing/pledgeMath'
 import type Database from 'better-sqlite3'
+import type { PledgeTopup } from '@shared/types'
 
 type PledgeTopupRow = {
   id: number
@@ -34,37 +33,4 @@ export function loadPledgeTopups(db: Database.Database, pledgeId: number): Pledg
     )
     .all(pledgeId) as PledgeTopupRow[]
   return rows.map(mapPledgeTopup)
-}
-
-export function topupSlices(topups: PledgeTopup[]): PledgeTopupSlice[] {
-  return topups.map((topup) => ({
-    amount: topup.amount,
-    topupDate: topup.topupDate,
-    interestPct: topup.interestPct,
-  }))
-}
-
-export function computePledgeDueWithLoadedTopups(
-  db: Database.Database,
-  pledge: {
-    id: number
-    loan_amount: number
-    interest_pct: number
-    pledge_date: string
-    amount_collected: number
-  },
-  asOfDate: string,
-) {
-  const topups = loadPledgeTopups(db, pledge.id)
-  return {
-    topups,
-    due: pledgeAmountDueWithTopups(
-      pledge.loan_amount,
-      topupSlices(topups),
-      pledge.interest_pct,
-      pledge.pledge_date,
-      asOfDate,
-      pledge.amount_collected,
-    ),
-  }
 }

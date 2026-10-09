@@ -111,6 +111,14 @@ describe('validateProductForm', () => {
     const errors = validateProductForm(form({ stockQty: 2, huids: ['A1B2C3'] }), [], null)
     expect(errors.huids).toBe('Add one HUID for each piece in stock')
   })
+
+  it('lets silver pieces stay untagged but not exceed the piece count', () => {
+    const silver = { metal: 'Silver', purity: '925' }
+    expect(validateProductForm(form({ ...silver, stockQty: 2, huids: [''] }), [], null).huids).toBeUndefined()
+    expect(
+      validateProductForm(form({ ...silver, stockQty: 1, huids: ['A1B2C3', 'D4E5F6'] }), [], null).huids,
+    ).toBe('A product cannot have more HUIDs than pieces in stock')
+  })
 })
 
 describe('formToProductInput', () => {

@@ -269,4 +269,51 @@ test.describe('Inventory to billing — live Tauri scenarios', () => {
 
     await expectProductStock(window, productName, '3')
   })
+
+  test('S6 — product search shows stock and blocks a sold-out piece', async ({ window }) => {
+    const stamp = Date.now()
+    const soldOut = `Gold Ring Sold Out ${stamp}`
+    const inStock = `Gold Ring In Stock ${stamp}`
+    const customerName = `Kavya ${stamp}`
+
+    await addProduct(window, {
+      name: soldOut,
+      category: 'Ring',
+      grossWeight: '4.8',
+      netWeight: '4.2',
+      makingCharges: '450',
+      stockQty: '0',
+    })
+    await addProduct(window, {
+      name: inStock,
+      category: 'Ring',
+      grossWeight: '3.6',
+      netWeight: '3.2',
+      makingCharges: '350',
+      stockQty: '1',
+    })
+
+    await openNewBill(window, 'cash')
+    await addCustomerOnBill(window, customerName, '9876500006')
+
+    const search = window.getByPlaceholder('Search product by name, metal, category, SKU…')
+
+    await search.fill(soldOut)
+    const soldOutOption = window.getByRole('option', { name: new RegExp(soldOut) })
+    await expect(soldOutOption).toBeVisible()
+    await expect(soldOutOption).toContainText('Out of stock')
+    await expect(soldOutOption).toBeDisabled()
+
+    await search.fill(inStock)
+    const inStockOption = window.getByRole('option', { name: new RegExp(inStock) })
+    await expect(inStockOption).toBeVisible()
+    await expect(inStockOption).toContainText('1 in stock')
+    await inStockOption.click()
+
+    // The picked piece uses the whole stock, so it cannot be picked again.
+    await search.fill(inStock)
+    const usedUp = window.getByRole('option', { name: new RegExp(inStock) })
+    await expect(usedUp).toContainText('All 1 on this bill')
+    await expect(usedUp).toBeDisabled()
+  })
 })

@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Plus, Search } from 'lucide-react'
 import type { Product, ProductInput } from '@shared/types'
 import { api } from '../../lib/api'
 import { formatWeight } from '../../lib/format'
+import { useAnchoredPanel } from '../../lib/useAnchoredPanel'
 import { ProductFormModal } from '../products/ProductFormModal'
 import { sellableProducts, variantDisplayName } from '../products/productDisplay'
+import { stockAvailabilityLabel } from './invoiceEditorHelpers'
 
 type BillProductSearchProps = {
   products: Product[]
@@ -14,7 +17,9 @@ type BillProductSearchProps = {
   hideAddButton?: boolean
   compact?: boolean
   placeholder?: string
-  onSelect: (product: Product) => void
+  /** Pieces of each product already on the bill, so they cannot be over-picked. */
+  usedQtyByProduct?: Record<number, number>
+  onSelect: (product: Product, huid?: string) => void
   onProductCreated: (product: Product) => void
   onError?: (message: string) => void
 }
@@ -27,6 +32,7 @@ export function BillProductSearch({
   hideAddButton,
   compact,
   placeholder = 'Search product by name, metal or category…',
+  usedQtyByProduct = {},
   onSelect,
   onProductCreated,
   onError,
@@ -36,6 +42,8 @@ export function BillProductSearch({
   const [modalOpen, setModalOpen] = useState(false)
   const [modalName, setModalName] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const panelStyle = useAnchoredPanel(rootRef, open)
 
   const sellable = useMemo(() => sellableProducts(products), [products])
 
@@ -52,17 +60,25 @@ export function BillProductSearch({
         product.variantCode,
         product.size,
         product.stoneDetails,
+        ...(product.huids ?? []),
       ].some((value) => value.toLowerCase().includes(q)),
     )
   }, [sellable, query])
+
+  /** When the search text is exactly a HUID, picking the product claims that piece. */
+  function matchedHuid(product: Product): string | undefined {
+    const q = query.trim().toUpperCase()
+    if (!q) return undefined
+    return (product.huids ?? []).find((huid) => huid.toUpperCase() === q)
+  }
 
   const showNoMatch = query.trim().length > 0 && filtered.length === 0
 
   useEffect(() => {
     function onDocClick(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false)
-      }
+      const target = event.target as Node
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
@@ -75,7 +91,7 @@ export function BillProductSearch({
   }
 
   function pick(product: Product) {
-    onSelect(product)
+    onSelect(product, matchedHuid(product))
     setQuery('')
     setOpen(false)
   }
@@ -126,31 +142,51 @@ export function BillProductSearch({
           </button>
         )}
       </div>
-      {open && !disabled ? (
-        <div className="billing-customer-dropdown" role="listbox">
-          {filtered.map((product) => (
-            <button
-              key={product.id}
-              type="button"
-              className="billing-customer-option"
-              role="option"
-              onClick={() => pick(product)}
-            >
-              <span className="billing-customer-option-name">{variantDisplayName(product)}</span>
-              <span className="billing-customer-option-meta">
-                {[product.metal, product.purity, product.size, formatWeight(product.netWeight)]
+      {open && !disabled
+        ? createPortal(
+            <div ref={panelRef} className="billing-customer-dropdown" role="listbox" style={panelStyle}>
+              {filtered.map((product) => {
+                const used = usedQtyByProduct[product.id] ?? 0
+                const meta = [product.metal, product.purity, product.size, formatWeight(product.netWeight)]
                   .filter(Boolean)
-                  .join(' · ')}
-              </span>
-            </button>
-          ))}
-          {showNoMatch ? (
-            <button type="button" className="billing-customer-option billing-customer-no-match" onClick={openAddModal}>
-              No product found — Add new
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+                  .join(' · ')
+                const availability = stockAvailabilityLabel(product.stockQty, used)
+                const unavailable = used >= product.stockQty
+                return (
+                  <button
+                    key={product.id}
+                    type="button"
+                    className={`billing-customer-option${unavailable ? ' billing-customer-option--unavailable' : ''}`}
+                    role="option"
+                    aria-disabled={unavailable}
+                    title={availability}
+                    disabled={unavailable}
+                    onClick={() => pick(product)}
+                  >
+                    <span className="billing-customer-option-name" title={variantDisplayName(product)}>
+                      {variantDisplayName(product)}
+                    </span>
+                    <span className="billing-customer-option-meta" title={meta}>
+                      {meta}
+                      {meta ? ' · ' : ''}
+                      <span className="billing-customer-option-stock">{availability}</span>
+                    </span>
+                  </button>
+                )
+              })}
+              {showNoMatch ? (
+                <button
+                  type="button"
+                  className="billing-customer-option billing-customer-no-match"
+                  onClick={openAddModal}
+                >
+                  No product found — Add new
+                </button>
+              ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
 
       {modalOpen ? (
         <ProductFormModal

@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { huidRemovalRange } from '@shared/itemTypes'
 import { stockAdjustmentInputSchema } from '@shared/schemas'
 import type { StockAdjustment, StockAdjustmentInput, StockAdjustmentLine } from '@shared/types'
 import { getDatabase } from '../db'
@@ -35,16 +36,33 @@ function applyAdjustmentHuids(
 ): void {
   for (const line of lines) {
     if (line.productId == null) continue
+    const product = db
+      .prepare('SELECT metal, stock_qty FROM products WHERE id = ?')
+      .get(line.productId) as { metal: string; stock_qty: number } | undefined
+    if (!product) {
+      throw new Error(`Product ${line.productId} not found`)
+    }
     const huids = line.huids ?? []
     if (line.qtyDelta > 0) {
-      requireHuidsForNewPieces(huids, line.qtyDelta)
+      requireHuidsForNewPieces(product.metal, huids, line.qtyDelta)
       appendHuids(db, line.productId, huids)
     } else if (line.qtyDelta < 0) {
       const existing = listHuids(db, line.productId)
       if (existing.length === 0) continue
-      const needed = Math.min(Math.abs(line.qtyDelta), existing.length)
-      if (huids.length !== needed) {
-        throw new Error(needed === 1 ? 'Select 1 HUID to remove' : `Select ${needed} HUIDs to remove`)
+      const { min, max } = huidRemovalRange(
+        product.metal,
+        existing.length,
+        product.stock_qty,
+        Math.abs(line.qtyDelta),
+      )
+      if (min === max && huids.length !== max) {
+        throw new Error(max === 1 ? 'Select 1 HUID to remove' : `Select ${max} HUIDs to remove`)
+      }
+      if (huids.length < min) {
+        throw new Error(min === 1 ? 'Select at least 1 HUID to remove' : `Select at least ${min} HUIDs to remove`)
+      }
+      if (huids.length > max) {
+        throw new Error(max === 1 ? 'Select at most 1 HUID to remove' : `Select at most ${max} HUIDs to remove`)
       }
       removeHuids(db, line.productId, huids)
     }

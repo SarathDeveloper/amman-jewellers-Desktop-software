@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Search, X } from 'lucide-react'
 import type { GoldSavingAccount } from '@shared/types'
 import { api } from '../../lib/api'
+import { useAnchoredPanel } from '../../lib/useAnchoredPanel'
 
 export function GsAccountSearch({
   selected,
@@ -16,6 +18,8 @@ export function GsAccountSearch({
   const [open, setOpen] = useState(false)
   const [results, setResults] = useState<GoldSavingAccount[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const panelStyle = useAnchoredPanel(rootRef, open)
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -26,7 +30,9 @@ export function GsAccountSearch({
 
   useEffect(() => {
     function onDocClick(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+      const target = event.target as Node
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
@@ -74,33 +80,36 @@ export function GsAccountSearch({
           {selected.schemeName} · {selected.customerPhone || 'No mobile'}
         </p>
       ) : null}
-      {open && !selected ? (
-        <div className="billing-customer-dropdown">
-          {shown.length === 0 ? (
-            <div className="billing-customer-option">
-              <span className="billing-customer-option-meta">No matching accounts</span>
-            </div>
-          ) : (
-            shown.map((account) => (
-              <button
-                key={account.id}
-                type="button"
-                className="billing-customer-option"
-                onClick={() => {
-                  onSelect(account)
-                  setOpen(false)
-                  setQuery('')
-                }}
-              >
-                <span className="billing-customer-option-name">{account.customerName}</span>
-                <span className="billing-customer-option-meta">
-                  {account.accountNo} · {account.schemeName} · {account.customerPhone}
-                </span>
-              </button>
-            ))
-          )}
-        </div>
-      ) : null}
+      {open && !selected
+        ? createPortal(
+            <div ref={panelRef} className="billing-customer-dropdown" style={panelStyle}>
+              {shown.length === 0 ? (
+                <div className="billing-customer-option">
+                  <span className="billing-customer-option-meta">No matching accounts</span>
+                </div>
+              ) : (
+                shown.map((account) => (
+                  <button
+                    key={account.id}
+                    type="button"
+                    className="billing-customer-option"
+                    onClick={() => {
+                      onSelect(account)
+                      setOpen(false)
+                      setQuery('')
+                    }}
+                  >
+                    <span className="billing-customer-option-name">{account.customerName}</span>
+                    <span className="billing-customer-option-meta">
+                      {account.accountNo} · {account.schemeName} · {account.customerPhone}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

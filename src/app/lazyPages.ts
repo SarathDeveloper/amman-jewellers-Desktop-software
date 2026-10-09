@@ -45,6 +45,11 @@ export const OldGoldPurchasesPage = lazy(() =>
     default: module.OldGoldPurchasesPage,
   })),
 )
+export const OldGoldLotPage = lazy(() =>
+  import('../features/oldGoldPurchases/OldGoldLotPage').then((module) => ({
+    default: module.OldGoldLotPage,
+  })),
+)
 export const SuppliersPage = lazy(() =>
   import('../features/suppliers/SuppliersPage').then((module) => ({
     default: module.SuppliersPage,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildCustomerProfile } from '../../src/features/customers/customerProfile'
-import type { CustomerDuesColumn, DueEntry, Invoice } from '../../shared/types'
+import type { CustomerDuesColumn, DueEntry, Invoice, OldGoldPurchase } from '../../shared/types'
 
 function bill(overrides: Partial<Invoice> = {}): Invoice {
   return {
@@ -66,6 +66,51 @@ function column(overrides: Partial<CustomerDuesColumn> = {}): CustomerDuesColumn
     customerPhone: '999',
     balance: 0,
     entries: [],
+    ...overrides,
+  }
+}
+
+function oldGold(overrides: Partial<OldGoldPurchase> = {}): OldGoldPurchase {
+  return {
+    id: 1,
+    purchaseNo: 'OGP-2026-0001',
+    purchaseDate: '2026-09-24',
+    customerId: 1,
+    customerName: 'Test',
+    customerPhone: '999',
+    totalAmount: 45000,
+    notes: '',
+    status: 'final',
+    createdAt: '',
+    finalizedAt: null,
+    cancelledAt: null,
+    cancelReason: '',
+    items: [
+      {
+        id: 1,
+        purchaseId: 1,
+        description: 'Old chain',
+        grossWeight: 10,
+        stoneWeight: 0,
+        netWeight: 10,
+        purity: '22K',
+        ratePerGram: 5000,
+        deductionPct: 10,
+        touchPct: 0,
+        fineWeight: 10,
+        metal: 'Gold',
+        grossValue: 50000,
+        deductionAmount: 5000,
+        finalValue: 45000,
+      },
+    ],
+    paidOut: 5000,
+    applied: 10000,
+    balance: 30000,
+    links: [],
+    payouts: [],
+    linkedInvoiceId: null,
+    linkedInvoiceNo: null,
     ...overrides,
   }
 }
@@ -206,5 +251,22 @@ describe('buildCustomerProfile', () => {
     expect(profile.outstanding).toBe(1400)
     expect(profile.dues).toEqual([])
     expect(profile.purchases.map((row) => row.invoiceId)).toEqual([9, 8])
+  })
+
+  it('summarises old gold sold with net weight and open balance', () => {
+    const purchases = [
+      oldGold(),
+      oldGold({ id: 2, purchaseNo: 'OGP-2026-0002', status: 'draft' }),
+      oldGold({ id: 3, purchaseNo: 'OGP-2026-0003', customerId: 2 }),
+    ]
+
+    const profile = buildCustomerProfile(1, [], undefined, purchases)
+
+    expect(profile.oldGold).toHaveLength(1)
+    expect(profile.oldGold[0].purchaseNo).toBe('OGP-2026-0001')
+    expect(profile.oldGold[0].paidOut).toBe(5000)
+    expect(profile.oldGoldAmount).toBe(45000)
+    expect(profile.oldGoldNetWeight).toBe(10)
+    expect(profile.oldGoldOpenBalance).toBe(30000)
   })
 })

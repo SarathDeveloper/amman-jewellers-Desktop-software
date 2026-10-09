@@ -1,6 +1,6 @@
 import { ChartNoAxesCombined } from 'lucide-react'
 import type { MetalRates } from '@shared/types'
-import { formatCurrency, formatDisplayDate } from '../../lib/format'
+import { formatCurrency, formatDisplayDate, formatDisplayDayMonth } from '../../lib/format'
 
 const RATE_TREND_PERIODS = [
   { days: 30, label: '1 Month' },
@@ -36,12 +36,6 @@ function formatAxisAmount(value: number): string {
     return `₹${(value / 1000).toFixed(1)}K`
   }
   return formatCurrency(value)
-}
-
-function formatChartDate(isoDate: string): string {
-  const formatted = formatDisplayDate(isoDate)
-  const parts = formatted.split(' ')
-  return parts.length >= 2 ? `${parts[0]} ${parts[1]}` : formatted
 }
 
 function xAt(index: number, count: number, innerW: number): number {
@@ -174,7 +168,7 @@ export function RateTrendChart({
               textAnchor="middle"
               className="rates-trend-axis"
             >
-              {formatChartDate(points[index].effectiveDate)}
+              {formatDisplayDayMonth(points[index].effectiveDate)}
             </text>
           ))}
         </svg>

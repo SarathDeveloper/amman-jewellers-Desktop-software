@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, FileText, Handshake, Percent, Plus, XCircle } from 'lucide-react'
+import { ExternalLink, FileText, Gavel, Handshake, Megaphone, Percent, Plus, RotateCcw } from 'lucide-react'
 import type { AdaguDueSummary } from '@shared/types'
 
 export function AdaguQuickActions({
@@ -9,7 +9,10 @@ export function AdaguQuickActions({
   onCollectInterest,
   onTopup,
   onRedeem,
-  onClose,
+  onRenew,
+  onAuctionNotice,
+  onRecordAuction,
+  onPrintNotice,
   onViewBill,
   onReleaseReceipt,
 }: {
@@ -19,7 +22,10 @@ export function AdaguQuickActions({
   onCollectInterest: () => void
   onTopup: () => void
   onRedeem: () => void
-  onClose: () => void
+  onRenew?: () => void
+  onAuctionNotice: () => void
+  onRecordAuction: () => void
+  onPrintNotice?: () => void
   onViewBill?: () => void
   onReleaseReceipt?: () => void
 }) {
@@ -81,14 +87,45 @@ export function AdaguQuickActions({
             {panel ? <Handshake size={16} strokeWidth={1.75} aria-hidden /> : null}
             Redeem
           </button>
+          {onRenew ? (
+            <button
+              type="button"
+              className={panel ? 'btn secondary' : 'btn ghost'}
+              disabled={disabled}
+              onClick={onRenew}
+            >
+              {panel ? <RotateCcw size={16} strokeWidth={1.75} aria-hidden /> : null}
+              Renew
+            </button>
+          ) : null}
           <button
             type="button"
             className={panel ? 'btn secondary' : 'btn ghost'}
             disabled={disabled}
-            onClick={onClose}
+            onClick={onAuctionNotice}
           >
-            {panel ? <XCircle size={16} strokeWidth={1.75} aria-hidden /> : null}
-            Close
+            {panel ? <Megaphone size={16} strokeWidth={1.75} aria-hidden /> : null}
+            Notice
+          </button>
+          {summary.auctionNoticeDate && onPrintNotice ? (
+            <button
+              type="button"
+              className={panel ? 'btn secondary' : 'btn ghost'}
+              disabled={disabled}
+              onClick={onPrintNotice}
+            >
+              {panel ? <FileText size={16} strokeWidth={1.75} aria-hidden /> : null}
+              Print notice
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={panel ? 'btn secondary' : 'btn ghost'}
+            disabled={disabled}
+            onClick={onRecordAuction}
+          >
+            {panel ? <Gavel size={16} strokeWidth={1.75} aria-hidden /> : null}
+            Auction
           </button>
         </>
       ) : null}

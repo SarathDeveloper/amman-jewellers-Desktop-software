@@ -13,6 +13,7 @@ export const emptyCustomerInput: CustomerInput = {
   gstin: '',
   aadhaar: '',
   pan: '',
+  idProofType: '',
 }
 
 export function looksLikePhone(query: string): boolean {
@@ -66,6 +67,7 @@ export function CustomerFormModal({
         gstin: editing.gstin ?? '',
         aadhaar: editing.aadhaar ?? '',
         pan: editing.pan ?? '',
+        idProofType: editing.idProofType ?? '',
       })
     } else {
       setForm(initialValues ?? emptyCustomerInput)
@@ -82,6 +84,7 @@ export function CustomerFormModal({
       gstin: (form.gstin ?? '').trim(),
       aadhaar: digitsOnly(form.aadhaar ?? '', 12),
       pan: (form.pan ?? '').trim().toUpperCase(),
+      idProofType: (form.idProofType ?? '').trim(),
     }
 
     const parsed = customerInputSchema.safeParse(payload)
@@ -187,6 +190,22 @@ export function CustomerFormModal({
             placeholder="Optional"
             aria-label="PAN"
           />
+        </label>
+        <label>
+          <span className="field-label">ID proof type</span>
+          <select
+            className="input"
+            value={form.idProofType ?? ''}
+            onChange={(e) => setForm({ ...form, idProofType: e.target.value })}
+            aria-label="ID proof type"
+          >
+            <option value="">Not recorded</option>
+            <option value="Aadhaar">Aadhaar</option>
+            <option value="PAN">PAN</option>
+            <option value="Voter ID">Voter ID</option>
+            <option value="Driving Licence">Driving Licence</option>
+            <option value="Other">Other</option>
+          </select>
         </label>
         <label className="full">
           <span className="field-label">

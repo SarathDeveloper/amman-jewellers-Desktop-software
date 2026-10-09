@@ -5,6 +5,7 @@ import {
   Coins,
   IndianRupee,
   LayoutDashboard,
+  MessageCircle,
   PiggyBank,
   Plus,
   UserPlus,
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type {
+  GoldSavingAccount,
   GoldSavingAgingBucket,
   GoldSavingDashboard,
   GoldSavingMaturityPipelineBucket,
@@ -20,6 +22,8 @@ import { PageHeader } from '../../components/PageHeader'
 import { LoadingState } from '../../components/LoadingState'
 import { formatCurrency, formatDisplayDate, formatWeight } from '../../lib/format'
 import { api } from '../../lib/api'
+import { goldSavingsReminderMessage, whatsappLink } from '../../lib/whatsapp'
+import { useShopBranding } from '../settings/shopBrandingContext'
 import { GsStatusBadge } from './GsStatusBadge'
 
 type KpiTone = 'brand' | 'success' | 'danger' | 'info'
@@ -27,6 +31,21 @@ type KpiTone = 'brand' | 'success' | 'danger' | 'info'
 function monthProgressPct(collected: number, target: number): number {
   if (target <= 0) return collected > 0 ? 100 : 0
   return Math.round((collected / target) * 100)
+}
+
+/** WhatsApp reminder for an account whose next installment is due soon. */
+function dueReminderHref(account: GoldSavingAccount, shopName: string): string | null {
+  if (!account.customerPhone || !account.nextDueDate) return null
+  return whatsappLink(
+    account.customerPhone,
+    goldSavingsReminderMessage({
+      shopName,
+      customerName: account.customerName,
+      accountNo: account.accountNo,
+      dueDate: account.nextDueDate,
+      amount: account.monthlyAmount,
+    }),
+  )
 }
 
 function KpiCard({
@@ -70,6 +89,7 @@ export function GoldSavingsDashboardPage() {
   const [data, setData] = useState<GoldSavingDashboard | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const { shopName } = useShopBranding()
 
   useEffect(() => {
     let active = true
@@ -290,14 +310,31 @@ export function GoldSavingsDashboardPage() {
 
       <div className="dashboard-lower-grid">
         <ListCard title="Upcoming dues" empty="No dues in the next 7 days" to="/gold-savings/collections">
-          {upcomingDues.map((account) => (
-            <Link key={account.id} to={`/gold-savings/accounts/${account.id}`} className="dashboard-due-row">
-              <span className="dashboard-due-name">{account.customerName}</span>
-              <span className="muted">
-                {account.accountNo} · {account.nextDueDate ? formatDisplayDate(account.nextDueDate) : '—'}
-              </span>
-            </Link>
-          ))}
+          {upcomingDues.map((account) => {
+            const href = dueReminderHref(account, shopName)
+            return (
+              <div key={account.id} className="dashboard-due-row">
+                <Link to={`/gold-savings/accounts/${account.id}`} className="dashboard-due-main">
+                  <span className="dashboard-due-name">{account.customerName}</span>
+                  <span className="muted">
+                    {account.accountNo} · {account.nextDueDate ? formatDisplayDate(account.nextDueDate) : '—'}
+                  </span>
+                </Link>
+                {href ? (
+                  <a
+                    className="btn ghost btn-sm"
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Send a WhatsApp reminder"
+                  >
+                    <MessageCircle size={15} strokeWidth={1.75} aria-hidden />
+                    Remind
+                  </a>
+                ) : null}
+              </div>
+            )
+          })}
         </ListCard>
         <ListCard title="Recent collections" empty="No collections yet" to="/gold-savings/collections">
           {recentCollections.map((payment) => (

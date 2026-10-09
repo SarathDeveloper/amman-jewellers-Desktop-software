@@ -168,13 +168,132 @@ describe('inward and metal day close', () => {
         },
       ],
     })
-    expect(duplicate.ok).toBe(true)
-    if (!duplicate.ok) return
-    const finalized = await invokeIpcForTests(IPC_CHANNELS.INWARDS_FINALIZE, duplicate.data.id)
-    expect(finalized.ok).toBe(false)
-    if (!finalized.ok) {
-      expect(finalized.error).toMatch(/already used/)
+    expect(duplicate.ok).toBe(false)
+    if (!duplicate.ok) {
+      expect(duplicate.error).toMatch(/already used/)
     }
+
+    const acrossLines = await invokeIpcForTests(IPC_CHANNELS.INWARDS_CREATE, {
+      supplierId: supplier.id,
+      inwardDate: '2026-09-25',
+      items: [1, 2].map(() => ({
+        productId: product.id,
+        metal: 'Gold',
+        category: 'Ring',
+        purity: '22K',
+        qty: 1,
+        netWeight: 2.5,
+        rate: 100,
+        huids: ['ZZZZZ2'],
+      })),
+    })
+    expect(acrossLines.ok).toBe(false)
+    if (!acrossLines.ok) {
+      expect(acrossLines.error).toMatch(/more than one line/)
+    }
+  })
+
+  it('saves a draft before HUIDs are known and requires them only for gold at finalize', async () => {
+    const supplier = await ipc<{ id: number }>(IPC_CHANNELS.SUPPLIERS_CREATE, {
+      name: 'Draft Supplier',
+      phone: '',
+      address: '',
+      notes: '',
+    })
+    const gold = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+      name: 'Gold stud pending hallmark',
+      category: 'Stud',
+      metal: 'Gold',
+      purity: '22K',
+      grossWeight: 2,
+      netWeight: 2,
+      makingCharges: 0,
+      stockQty: 0,
+      imagePath: '',
+    })
+    const silver = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+      name: 'Silver anklet',
+      category: 'Chain',
+      metal: 'Silver',
+      purity: '925',
+      grossWeight: 20,
+      netWeight: 20,
+      makingCharges: 0,
+      stockQty: 0,
+      imagePath: '',
+    })
+
+    const draft = await ipc<{ id: number; status: string }>(IPC_CHANNELS.INWARDS_CREATE, {
+      supplierId: supplier.id,
+      inwardDate: '2026-09-29',
+      items: [
+        { productId: gold.id, metal: 'Gold', category: 'Stud', purity: '22K', qty: 2, netWeight: 2, rate: 100 },
+        { productId: silver.id, metal: 'Silver', category: 'Chain', purity: '925', qty: 3, netWeight: 20, rate: 1 },
+      ],
+    })
+    expect(draft.status).toBe('draft')
+
+    const blocked = await invokeIpcForTests(IPC_CHANNELS.INWARDS_FINALIZE, draft.id)
+    expect(blocked.ok).toBe(false)
+    if (!blocked.ok) {
+      expect(blocked.error).toMatch(/Gold stud pending hallmark: Add 2 HUIDs for the new pieces/)
+    }
+
+    const goldHuids = testHuids(2)
+    await ipc(IPC_CHANNELS.INWARDS_UPDATE, {
+      id: draft.id,
+      supplierId: supplier.id,
+      inwardDate: '2026-09-29',
+      items: [
+        {
+          productId: gold.id,
+          metal: 'Gold',
+          category: 'Stud',
+          purity: '22K',
+          qty: 2,
+          netWeight: 2,
+          rate: 100,
+          huids: goldHuids,
+        },
+        { productId: silver.id, metal: 'Silver', category: 'Chain', purity: '925', qty: 3, netWeight: 20, rate: 1 },
+      ],
+    })
+    const finalized = await ipc<{ status: string }>(IPC_CHANNELS.INWARDS_FINALIZE, draft.id)
+    expect(finalized.status).toBe('final')
+
+    const goldAfter = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, gold.id)
+    expect(goldAfter.stockQty).toBe(2)
+    expect(goldAfter.huids).toEqual(goldHuids)
+    const silverAfter = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, silver.id)
+    expect(silverAfter.stockQty).toBe(3)
+    expect(silverAfter.huids).toEqual([])
+  })
+
+  it('numbers a purchase from its own date and renumbers a draft moved to another year', async () => {
+    const supplier = await ipc<{ id: number }>(IPC_CHANNELS.SUPPLIERS_CREATE, {
+      name: 'Year Supplier',
+      phone: '',
+      address: '',
+      notes: '',
+    })
+    const line = { metal: 'Gold', category: 'Chain', purity: '22K', qty: 1, netWeight: 1, rate: 0 }
+    const older = await ipc<{ id: number; inwardNo: string }>(IPC_CHANNELS.INWARDS_CREATE, {
+      supplierId: supplier.id,
+      inwardDate: '2025-12-31',
+      items: [line],
+    })
+    expect(older.inwardNo).toMatch(/^IN-2025-\d{4}$/)
+
+    const moved = await ipc<{ inwardNo: string }>(IPC_CHANNELS.INWARDS_UPDATE, {
+      id: older.id,
+      supplierId: supplier.id,
+      inwardDate: '2024-06-01',
+      items: [line],
+    })
+    expect(moved.inwardNo).toBe('IN-2024-0001')
+
+    const listed = await ipc<Array<{ id: number; items: unknown[] }>>(IPC_CHANNELS.INWARDS_LIST)
+    expect(listed.find((row) => row.id === older.id)?.items).toHaveLength(1)
   })
 
   it('closes a metal day into a snapshot and blocks further finalize', async () => {

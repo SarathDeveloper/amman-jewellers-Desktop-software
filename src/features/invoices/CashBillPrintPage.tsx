@@ -28,10 +28,13 @@ export function CashBillPrintPage() {
         }
         // Everything except the customer can start immediately; the customer id
         // only becomes known once the invoice arrives, so that request is
-        // chained off it rather than awaited in sequence.
+        // chained off it rather than awaited in sequence. A finalized bill
+        // carries its own customer snapshot, so the lookup is skipped then.
         const invoicePromise = api.getInvoice(invoiceId)
         const customerPromise = invoicePromise.then((invoice) =>
-          api.getCustomer(invoice.customerId).catch(() => undefined),
+          invoice.customerSnapshot
+            ? undefined
+            : api.getCustomer(invoice.customerId).catch(() => undefined),
         )
         const [invoice, customer, settings, rates] = await Promise.all([
           invoicePromise,
@@ -43,7 +46,12 @@ export function CashBillPrintPage() {
         setShop(shopSettingsToDisplay(settings))
         setPaperSize(settings.paperSizeCash)
         applyPaperDataset(settings.paperSizeCash)
-        setData(buildCashBillData(invoice, { customer, rates }))
+        setData(
+          buildCashBillData(invoice, {
+            customer: invoice.customerSnapshot ?? customer,
+            rates: invoice.ratesSnapshot ?? rates,
+          }),
+        )
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : 'Failed to load cash bill')

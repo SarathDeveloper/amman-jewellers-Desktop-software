@@ -1,4 +1,4 @@
-import type { PaymentMode } from "@shared/types";
+import type { BillPrintWatermark, PaymentMode } from "@shared/types";
 import type { BillDiscountLine } from "./cashBillTypes";
 
 export interface TaxInvoiceLine {
@@ -42,6 +42,8 @@ export interface TaxInvoiceData {
   total: number;
   oldGoldTotal: number;
   oldGoldLines: Array<{ particulars: string; weight: number; amount: number }>;
+  schemeCreditTotal: number;
+  schemeCreditLines: Array<{ particulars: string; weight: number; amount: number }>;
   roundOff: number;
   amountPayable: number;
   amountPaid: number;
@@ -51,4 +53,6 @@ export interface TaxInvoiceData {
   paymentMode: PaymentMode;
   balanceDue: number;
   payments: Array<{ date: string; mode: string; amount: number; note: string }>;
+  /** Diagonal stamp on non-final prints; null for a real bill. */
+  watermark: BillPrintWatermark | null;
 }

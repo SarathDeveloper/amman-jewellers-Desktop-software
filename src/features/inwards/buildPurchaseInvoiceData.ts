@@ -52,5 +52,6 @@ export function buildPurchaseInvoiceData(inward: Inward): PurchaseInvoiceData {
     amountInWords: amountInWords(inward.total),
     paymentMode: inward.paymentMode,
     notes: inward.notes,
+    watermark: inward.status === 'draft' ? 'DRAFT' : null,
   }
 }

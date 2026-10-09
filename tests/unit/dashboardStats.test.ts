@@ -1,15 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyInvoiceStats,
+  buildDashboardAlerts,
   clampCustomRange,
   computeDashboardStats,
+  DUE_OVERDUE_DAYS,
   periodGranularity,
   resolvePeriodRange,
   weekBounds,
   weekRange,
   yearRange,
 } from '../../src/features/dashboard/dashboardStats'
-import type { DueEntry, DuesLedger, Invoice, ItemStockRow } from '../../shared/types'
+import type {
+  DueEntry,
+  DuesLedger,
+  GoldSavingDashboard,
+  Invoice,
+  ItemStockRow,
+  StockReconciliationRow,
+} from '../../shared/types'
 
 const today = '2026-09-24'
 const yesterday = '2026-09-23'
@@ -334,6 +343,31 @@ describe('computeDashboardStats', () => {
     expect(stats.dueCollections[0].daysOverdue).toBe(12)
   })
 
+  it('carries the old gold today stats and defaults to zeros', () => {
+    const stats = computeDashboardStats([], emptyLedger, [], [], today, {}, {
+      count: 2,
+      netWeight: 12.5,
+      amount: 70000,
+      paidOut: 20000,
+      openBalance: 50000,
+    })
+    expect(stats.oldGoldToday).toEqual({
+      count: 2,
+      netWeight: 12.5,
+      amount: 70000,
+      paidOut: 20000,
+      openBalance: 50000,
+    })
+    const fallback = computeDashboardStats([], emptyLedger, [], [], today)
+    expect(fallback.oldGoldToday).toEqual({
+      count: 0,
+      netWeight: 0,
+      amount: 0,
+      paidOut: 0,
+      openBalance: 0,
+    })
+  })
+
   it('resolves week, month, year, and swapped custom ranges', () => {
     expect(weekBounds(today)).toEqual({ from: '2026-09-21', to: '2026-09-27' })
     expect(weekRange(today)).toEqual({ from: '2026-09-21', to: today })
@@ -467,6 +501,7 @@ describe('applyInvoiceStats', () => {
         customersBilled: 0,
         totalItemsSold: 0,
         chart: undefined as unknown as [],
+        collectionsChart: undefined as unknown as [],
       },
       undefined as unknown as Invoice[],
       null,
@@ -476,6 +511,30 @@ describe('applyInvoiceStats', () => {
     )
     expect(stats.recentBills).toEqual([])
     expect(stats.salesOverview.chartBuckets.length).toBeGreaterThan(0)
+    expect(stats.salesOverview.collectionTotals.every((value) => value === 0)).toBe(true)
+  })
+
+  it('maps the collections chart into collectionTotals', () => {
+    const stats = applyInvoiceStats(
+      {
+        sales: 1000,
+        collections: 600,
+        draftCount: 0,
+        billsGenerated: 1,
+        customersBilled: 1,
+        totalItemsSold: 1,
+        chart: [{ key: '10', total: 1000 }],
+        collectionsChart: [{ key: '10', total: 600 }],
+      },
+      [baseInvoice()],
+      null,
+      [],
+      [],
+      today,
+    )
+    const index = stats.salesOverview.chartBuckets.findIndex((bucket) => bucket.key === '10')
+    expect(index).toBeGreaterThanOrEqual(0)
+    expect(stats.salesOverview.collectionTotals[index]).toBe(600)
   })
 
   it('skips invoices with a missing date when computing overview', () => {
@@ -487,5 +546,68 @@ describe('applyInvoiceStats', () => {
       today,
     )
     expect(stats.todaySales).toBe(0)
+  })
+})
+
+describe('buildDashboardAlerts', () => {
+  const olderThan30Days = '2026-08-01'
+
+  function ledgerWithDue(daysAgoDate: string, balance = 5000): DuesLedger {
+    const entry = paymentEntry({ kind: 'due', entryDate: daysAgoDate, amount: balance })
+    return {
+      columns: [
+        { customerId: 1, customerName: 'Ram', customerPhone: '', balance, entries: [entry] },
+      ],
+      totalOutstanding: balance,
+    }
+  }
+
+  function flaggedRow(): StockReconciliationRow {
+    return {
+      metal: 'Gold',
+      category: 'Chain',
+      ledgerClosing: 100,
+      pieceImpliedWeight: 90,
+      rawMetalInward: 0,
+      expectedDelta: 10,
+      actualDelta: 20,
+      unexplained: 10,
+      flagged: true,
+    }
+  }
+
+  it('returns no alerts for empty inputs', () => {
+    expect(buildDashboardAlerts(null, [], null, today)).toEqual([])
+  })
+
+  it('flags dues older than the threshold', () => {
+    const alerts = buildDashboardAlerts(ledgerWithDue(olderThan30Days), [], null, today)
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0].id).toBe('dues-overdue')
+    expect(alerts[0].to).toBe('/dues')
+    expect(alerts[0].title).toContain(String(DUE_OVERDUE_DAYS))
+  })
+
+  it('ignores dues within the threshold', () => {
+    const alerts = buildDashboardAlerts(ledgerWithDue(today), [], null, today)
+    expect(alerts).toEqual([])
+  })
+
+  it('flags stock reconciliation rows', () => {
+    const alerts = buildDashboardAlerts(null, [flaggedRow()], null, today)
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0].id).toBe('stock-reconciliation')
+    expect(alerts[0].to).toBe('/inventory/stock')
+  })
+
+  it('raises Gold Savings maturity and overdue alerts', () => {
+    const goldSavings = {
+      upcomingMaturities: 2,
+      overdueInstallments: 3,
+    } as GoldSavingDashboard
+    const alerts = buildDashboardAlerts(null, [], goldSavings, today)
+    expect(alerts.map((alert) => alert.id)).toEqual(['gs-overdue', 'gs-maturity'])
+    expect(alerts[0].to).toBe('/gold-savings/overdue')
+    expect(alerts[1].to).toBe('/gold-savings/maturity')
   })
 })

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
+  Ban,
   Check,
   Circle,
   CircleDot,
@@ -20,18 +21,21 @@ import {
   Save,
   Sparkles,
   Trash2,
+  TriangleAlert,
   User,
   Wallet,
   X,
 } from 'lucide-react'
 import { paymentStatusFor, suggestRoundOff } from '@shared/billing/billSummary'
+import { invoiceNoLabel } from '@shared/billing/invoiceNumber'
 import { DEFAULT_BILL_TEMPLATE } from '@shared/billTemplate'
 import { roundMoney } from '@shared/billing/pricing'
 import { localTodayIso } from '@shared/localDate'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { DateInput } from '../../components/DateInput'
+import { LoadingState } from '../../components/LoadingState'
 import { useToast } from '../../components/toastContext'
-import { formatCurrency, formatDisplayDate, formatDisplayDateTime, formatInr, formatPaymentMode } from '../../lib/format'
+import { formatCurrency, formatDisplayDate, formatDisplayDateTime, formatPaymentMode } from '../../lib/format'
 import type {
   BillFormat,
   Customer,
@@ -42,9 +46,11 @@ import type {
   OldGoldPurchaseLink,
   PaymentMode,
   Product,
+  GoldSavingSchemeCreditPreview,
 } from '@shared/types'
 import { api } from '../../lib/api'
 import { InvoicePreviewModal } from './InvoicePreviewModal'
+import { CancelBillModal } from './CancelBillModal'
 import { billPrintPath } from './billingPrint'
 import { downloadPrintPdf } from '../print/downloadPrintPdf'
 import { InvoiceSuccessModal } from './InvoiceSuccessModal'
@@ -53,6 +59,8 @@ import { MixedPaymentEditor } from './MixedPaymentEditor'
 import { BILL_PAYMENT_MODES, PaymentModeSelect } from './PaymentModeSelect'
 import { RecordPaymentModal } from './RecordPaymentModal'
 import { OldGoldBillLinker } from './OldGoldBillLinker'
+import { GoldSavingBillLinker } from './GoldSavingBillLinker'
+import { useAuth } from '../auth/authContext'
 import { numericFieldToNumber, parseNumericField, type NumericField } from '../../lib/numericField'
 import {
   billingTypeFromPath,
@@ -66,26 +74,33 @@ import { BillProductSearch } from './BillProductSearch'
 import {
   applyCurrentMetalRate,
   applyProductToLine,
+  availableHuidsForLine,
   computeEditorLineTotal,
   computeEditorTotals,
   computeSaleBreakdown,
   editorLineFromInvoiceItem,
   ensureTrailingEmptyLine,
   forgetHeldBill,
+  huidsUsedByOtherLines,
   isEmptyEditorLine,
+  lineNeedsHuid,
+  lineOffersHuid,
+  linesMissingHuid,
   newEditorLine,
   puritiesForMetal,
+  qtyByProduct,
   rateForSalePurity,
   inferSalePurity,
+  stockShortageMessage,
+  stockShortages,
   toInvoiceItems,
   vamcPatch,
   vamcValue,
   type EditorLine,
 } from './invoiceEditorHelpers'
 
-function pageTitle(billingType: SaleBillingType, invoiceNo?: string, editingExisting?: boolean): string {
-  if (invoiceNo) return invoiceNo
-  if (editingExisting) return 'Bill'
+function pageTitle(billingType: SaleBillingType, invoiceNo?: string, isEstimate = false): string {
+  if (invoiceNo) return invoiceNoLabel(invoiceNo, isEstimate) ?? invoiceNo
   return billingType === 'tax_invoice' ? 'New Tax Invoice' : 'New Quotation'
 }
 
@@ -121,11 +136,13 @@ export function InvoiceEditorPage() {
   const { id } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const isNew = !id
   const billingType = saleTypeFromPath(location.pathname)
   const billFormat: BillFormat = billingType === 'tax_invoice' ? 'tax_invoice' : 'cash_bill'
   const listPath = '/billing'
   const { showToast } = useToast()
+  const { isAdmin } = useAuth()
 
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -145,6 +162,9 @@ export function InvoiceEditorPage() {
   const [amountPaid, setAmountPaid] = useState<number | ''>('')
   const [mixedPayments, setMixedPayments] = useState<MixedPaymentPart[]>([])
   const [oldGoldLinks, setOldGoldLinks] = useState<OldGoldPurchaseLink[]>([])
+  const [schemeAccounts, setSchemeAccounts] = useState<GoldSavingSchemeCreditPreview[]>([])
+  const [schemeAccountId, setSchemeAccountId] = useState<number | null>(null)
+  const [acceptRateDate, setAcceptRateDate] = useState(false)
   const [legacyOldGold, setLegacyOldGold] = useState<OldGoldItem[]>([])
   const [roundOff, setRoundOff] = useState(0)
   const [roundOffTouched, setRoundOffTouched] = useState(false)
@@ -154,19 +174,31 @@ export function InvoiceEditorPage() {
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [savingAction, setSavingAction] = useState<'draft' | 'finalize' | null>(null)
   const [previewing, setPreviewing] = useState(false)
   const [savingPdf, setSavingPdf] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [previewInvoiceNo, setPreviewInvoiceNo] = useState('')
+  const [invoiceLoading, setInvoiceLoading] = useState(!isNew)
+  const loadedInvoiceIdRef = useRef<string | null>(null)
 
   const isDetailView = location.pathname.endsWith('/detail')
-  const isDraft = invoice?.status !== 'final'
+  const isCancelled = invoice?.status === 'cancelled'
+  const isDraft = !invoice || invoice.status === 'draft'
   const canEdit = isDraft && !isDetailView
   const busy = saving || previewing || savingPdf
   const selectedCustomer = customers.find((c) => c.id === customerId)
-  const displayBillNo = invoice?.invoiceNo || previewInvoiceNo || '…'
+  const provisionalLabel = invoice ? invoiceNoLabel(invoice.invoiceNo, invoice.isEstimate) : null
+  const numberPending = isNew || provisionalLabel !== null
+  const displayBillNo = provisionalLabel ?? invoice?.invoiceNo ?? (isNew ? 'Assigned on finalize' : '…')
+  const billNoTitle = numberPending
+    ? previewInvoiceNo && isNew
+      ? `${previewInvoiceNo} will be assigned when the bill is finalized`
+      : 'The bill number is assigned when the bill is finalized'
+    : ''
 
   const oldGoldInputs = useMemo(
     () =>
@@ -186,20 +218,39 @@ export function InvoiceEditorPage() {
     () => oldGoldLinks.reduce((sum, link) => sum + link.amountApplied, 0),
     [oldGoldLinks],
   )
-  const totalsBase = useMemo(
-    () =>
-      computeEditorTotals(
-        lines,
-        numericFieldToNumber(discount),
-        autoTax && billFormat === 'tax_invoice',
-        useIgst,
-        numericFieldToNumber(tax),
-        oldGoldInputs,
-        0,
-        linkedOldGoldTotal,
-      ),
-    [lines, discount, autoTax, billFormat, useIgst, tax, oldGoldInputs, linkedOldGoldTotal],
+  const stockUsed = useMemo(() => qtyByProduct(lines), [lines])
+  const overStockLines = useMemo(() => stockShortages(lines, products), [lines, products])
+  const staleRates = Boolean(metalRates && metalRates.effectiveDate !== localTodayIso())
+  const selectedScheme = useMemo(
+    () => schemeAccounts.find((account) => account.accountId === schemeAccountId) ?? null,
+    [schemeAccounts, schemeAccountId],
   )
+  const totalsBase = useMemo(() => {
+    const base = computeEditorTotals(
+      lines,
+      numericFieldToNumber(discount),
+      autoTax && billFormat === 'tax_invoice',
+      useIgst,
+      numericFieldToNumber(tax),
+      oldGoldInputs,
+      0,
+      linkedOldGoldTotal,
+      0,
+    )
+    const available = Math.max(0, roundMoney(base.invoiceTotal - base.oldGoldTotal))
+    const schemeCredit = Math.min(selectedScheme?.credit ?? 0, available)
+    return computeEditorTotals(
+      lines,
+      numericFieldToNumber(discount),
+      autoTax && billFormat === 'tax_invoice',
+      useIgst,
+      numericFieldToNumber(tax),
+      oldGoldInputs,
+      0,
+      linkedOldGoldTotal,
+      schemeCredit,
+    )
+  }, [lines, discount, autoTax, billFormat, useIgst, tax, oldGoldInputs, linkedOldGoldTotal, selectedScheme])
   const appliedRoundOff = roundOffTouched ? roundOff : suggestRoundOff(totalsBase.amountBeforeRoundOff)
   const totals = useMemo(
     () => ({
@@ -281,12 +332,19 @@ export function InvoiceEditorPage() {
   }, [])
 
   useEffect(() => {
-    if (isNew || !id) return
+    if (isNew || !id) {
+      setInvoiceLoading(false)
+      return
+    }
+    // Deps include customers/products, so only gate when the bill id actually changes.
+    const openingNewBill = loadedInvoiceIdRef.current !== String(id)
+    if (openingNewBill) setInvoiceLoading(true)
     let active = true
     void (async () => {
       try {
         const data = await api.getInvoice(Number(id))
         if (!active) return
+        loadedInvoiceIdRef.current = String(id)
         setInvoice(data)
         setCustomerId(data.customerId)
         setCustomerName(data.customerName ?? '')
@@ -302,15 +360,16 @@ export function InvoiceEditorPage() {
         setRoundOffTouched(true)
         if (data.billFormat !== billFormat) {
           const format = data.billFormat === 'tax_invoice' ? 'tax_invoice' : 'cash_bill'
+          const finalized = data.status === 'final' || data.status === 'cancelled'
           navigate(
-            isDetailView || data.status === 'final'
+            isDetailView || finalized
               ? saleDetailPathForFormat(format, data.id)
               : salePathForFormat(format, data.id),
             { replace: true },
           )
           return
         }
-        if (!isDetailView && data.status === 'final') {
+        if (!isDetailView && (data.status === 'final' || data.status === 'cancelled')) {
           navigate(saleDetailPathForFormat(data.billFormat, data.id), { replace: true })
           return
         }
@@ -322,7 +381,8 @@ export function InvoiceEditorPage() {
 
         const saleItems = data.items.filter((item) => item.lineKind !== 'exchange')
         const exchangeItems = data.items.filter((item) => item.lineKind === 'exchange')
-        const canFillRates = data.status !== 'final' && !isDetailView
+        const settled = data.status === 'final' || data.status === 'cancelled'
+        const canFillRates = !settled && !isDetailView
         const mappedLines =
           saleItems.length > 0
             ? saleItems.map((item) => {
@@ -333,8 +393,9 @@ export function InvoiceEditorPage() {
                 return canFillRates ? applyCurrentMetalRate(line, metalRates) : line
               })
             : [newEditorLine()]
-        setLines(data.status !== 'final' ? ensureTrailingEmptyLine(mappedLines) : mappedLines)
+        setLines(settled ? mappedLines : ensureTrailingEmptyLine(mappedLines))
         setOldGoldLinks(data.oldGoldLinks ?? [])
+        setSchemeAccountId(data.goldSavingLinks?.[0]?.accountId ?? null)
         if ((data.oldGold ?? []).length > 0) {
           setLegacyOldGold(data.oldGold)
         } else if (exchangeItems.length > 0) {
@@ -363,12 +424,46 @@ export function InvoiceEditorPage() {
         if (active) {
           setError(err instanceof Error ? err.message : 'Failed to load invoice')
         }
+      } finally {
+        if (active) setInvoiceLoading(false)
       }
     })()
     return () => {
       active = false
     }
   }, [isNew, id, billFormat, navigate, customers, products, isDetailView])
+
+  useEffect(() => {
+    let active = true
+    if (!customerId) {
+      setSchemeAccounts([])
+      setSchemeAccountId(null)
+      return
+    }
+    void (async () => {
+      try {
+        const rows = await api.previewGsBillingCredit(customerId, invoice?.id ?? null, invoiceDate)
+        if (active) {
+          setSchemeAccounts(rows)
+          setAcceptRateDate(false)
+        }
+      } catch {
+        if (active) setSchemeAccounts([])
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [customerId, invoice?.id, invoiceDate])
+
+  useEffect(() => {
+    if (!isNew || customerId !== 0) return
+    const preset = Number(searchParams.get('customerId') ?? 0)
+    if (!preset) return
+    const customer = customers.find((row) => row.id === preset)
+    if (customer) applyCustomerBorrower(customer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew, searchParams, customers, customerId])
 
   function markDirty() {
     setDirty(true)
@@ -418,9 +513,12 @@ export function InvoiceEditorPage() {
     markDirty()
   }
 
-  function applyProduct(product: Product) {
+  function applyProduct(product: Product, huid?: string) {
     setLines((current) => {
-      const patch = applyProductToLine(product, 1, metalRates)
+      const used = huidsUsedByOtherLines(current, '')
+      const requested = (huid ?? '').trim().toUpperCase()
+      const safeHuid = requested && !used.has(requested) ? requested : undefined
+      const patch = applyProductToLine(product, 1, metalRates, safeHuid)
       const emptyIndex = current.findIndex(isEmptyEditorLine)
       const next =
         emptyIndex >= 0
@@ -455,6 +553,7 @@ export function InvoiceEditorPage() {
         gstin: existing.gstin ?? '',
         aadhaar: existing.aadhaar ?? '',
         pan: existing.pan ?? '',
+        idProofType: existing.idProofType ?? '',
       })
       setCustomers((current) => current.map((row) => (row.id === updated.id ? updated : row)))
       setCustomerId(updated.id)
@@ -470,6 +569,7 @@ export function InvoiceEditorPage() {
       gstin: '',
       aadhaar: '',
       pan: '',
+      idProofType: '',
     })
     setCustomers((current) => [created, ...current])
     setCustomerId(created.id)
@@ -492,7 +592,12 @@ export function InvoiceEditorPage() {
       useIgst,
       isEstimate: isEstimateFlag,
       oldGold: oldGoldInputs,
-      oldGoldLinks: oldGoldLinks.map((link) => ({ purchaseId: link.purchaseId })),
+      oldGoldLinks: oldGoldLinks.map((link) => ({
+        purchaseId: link.purchaseId,
+        amount: link.amountApplied,
+      })),
+      goldSavingLinks: schemeAccountId ? [{ accountId: schemeAccountId }] : undefined,
+      acceptRateDate: acceptRateDate || undefined,
       roundOff: appliedRoundOff,
       mixedPayments: paymentMode === 'mixed' ? mixedPayments.filter((part) => part.amount > 0) : undefined,
     }
@@ -502,6 +607,12 @@ export function InvoiceEditorPage() {
     const payload = await buildPayload()
     if (!payload.customerId || payload.items.length === 0) {
       throw new Error('Select a customer and add at least one item')
+    }
+    const appliedScheme = schemeAccounts.find((account) => account.accountId === schemeAccountId)
+    if (appliedScheme?.rateStale && (!isAdmin || !acceptRateDate)) {
+      throw new Error(
+        `No gold rate is saved for ${invoiceDate}. Confirm the rate from ${appliedScheme.rateDate} before saving.`,
+      )
     }
     if (totals.amountPayable < -0.009) {
       throw new Error('Amount payable cannot be negative')
@@ -535,6 +646,7 @@ export function InvoiceEditorPage() {
     setInvoice(saved)
     setOldGoldLinks(saved.oldGoldLinks ?? [])
     setLegacyOldGold(saved.oldGold ?? [])
+    setSchemeAccountId(saved.goldSavingLinks?.[0]?.accountId ?? null)
   }
 
   async function persistDraft(): Promise<Invoice> {
@@ -555,6 +667,7 @@ export function InvoiceEditorPage() {
 
   async function saveDraft() {
     try {
+      setSavingAction('draft')
       setSaving(true)
       setError(null)
       await persistDraft()
@@ -563,13 +676,25 @@ export function InvoiceEditorPage() {
       setError(err instanceof Error ? err.message : 'Failed to save invoice')
     } finally {
       setSaving(false)
+      setSavingAction(null)
     }
   }
 
   async function finalize(): Promise<Invoice | null> {
     try {
+      setSavingAction('finalize')
       setSaving(true)
       setError(null)
+      const missing = linesMissingHuid(lines, products)
+      if (missing.length > 0) {
+        const first = missing[0]
+        throw new Error(
+          `Pick a HUID for ${first.description || 'the tagged item'} before finalizing`,
+        )
+      }
+      if (overStockLines.length > 0) {
+        throw new Error(stockShortageMessage(overStockLines[0]))
+      }
       const payload = await validatePayload()
 
       let targetId = invoice?.id ?? (id ? Number(id) : 0)
@@ -595,6 +720,7 @@ export function InvoiceEditorPage() {
       return null
     } finally {
       setSaving(false)
+      setSavingAction(null)
     }
   }
 
@@ -644,6 +770,14 @@ export function InvoiceEditorPage() {
     }
   }
 
+  function handleCancelled(updated: Invoice) {
+    setInvoice(updated)
+    setCancelOpen(false)
+    setDirty(false)
+    forgetHeldBill(billFormat, updated.id)
+    showToast('Bill cancelled', 'success')
+  }
+
   function resetBill() {
     setCustomerId(0)
     setCustomerName('')
@@ -663,8 +797,9 @@ export function InvoiceEditorPage() {
     setDirty(true)
   }
 
-  const statusLabel =
-    invoice?.status === 'final'
+  const statusLabel = isCancelled
+    ? 'Cancelled'
+    : invoice?.status === 'final'
       ? payStatus === 'paid'
         ? 'Paid'
         : payStatus === 'partial'
@@ -674,6 +809,19 @@ export function InvoiceEditorPage() {
         ? 'Estimate'
         : 'Draft'
 
+  if (invoiceLoading) {
+    return (
+      <div className="adagu-editor-container sale-bill-editor">
+        <div className="adagu-page-header sale-bill-toolbar">
+          <div className="adagu-header-titles">
+            <h1>Loading bill…</h1>
+          </div>
+        </div>
+        <LoadingState rows={6} />
+      </div>
+    )
+  }
+
   return (
     <div className="adagu-editor-container sale-bill-editor">
       <header className="adagu-page-header sale-bill-toolbar">
@@ -682,7 +830,7 @@ export function InvoiceEditorPage() {
             {billingType === 'tax_invoice' ? <Percent size={18} strokeWidth={1.75} /> : <Wallet size={18} strokeWidth={1.75} />}
           </div>
           <div className="adagu-header-titles">
-            <h1>{pageTitle(billingType, invoice?.invoiceNo, !isNew)}</h1>
+            <h1>{pageTitle(billingType, invoice?.invoiceNo, invoice?.isEstimate ?? false)}</h1>
           </div>
           <div className="sale-bill-meta">
             <label className="sale-bill-meta-field">
@@ -697,9 +845,10 @@ export function InvoiceEditorPage() {
                 }}
               />
             </label>
-            <div className="sale-bill-meta-field">
+            <div className="sale-bill-meta-field" title={billNoTitle || undefined}>
               <span>Bill No.</span>
               <input type="text" value={displayBillNo} disabled />
+              {numberPending ? <em className="sale-bill-meta-hint">at finalize</em> : null}
             </div>
             <div className="sale-bill-meta-field">
               <span>Status</span>
@@ -711,7 +860,7 @@ export function InvoiceEditorPage() {
         <div className="adagu-header-actions">
           <span className="sale-bill-mobile-total">
             <span>Total</span>
-            <strong>{formatInr(totals.amountPayable)}</strong>
+            <strong>{formatCurrency(totals.amountPayable)}</strong>
           </span>
           <Link to={listPath} className="btn ghost">
             <ArrowLeft size={16} strokeWidth={1.75} aria-hidden /> Back
@@ -737,14 +886,24 @@ export function InvoiceEditorPage() {
           {canEdit && (
             <>
               <button type="button" className="btn secondary" disabled={busy} onClick={() => void saveDraft()}>
-                <Save size={16} strokeWidth={1.75} aria-hidden /> Save draft
+                <Save size={16} strokeWidth={1.75} aria-hidden /> {savingAction === 'draft' ? 'Saving…' : 'Save draft'}
               </button>
               <button type="button" className="btn" disabled={busy || isEstimate} onClick={() => void finalize()}>
-                <Check size={16} strokeWidth={2} aria-hidden /> Finalize
+                <Check size={16} strokeWidth={2} aria-hidden /> {savingAction === 'finalize' ? 'Finalizing…' : 'Finalize'}
               </button>
             </>
           )}
-          {!isDraft && invoice && invoice.balanceDue > 0 && (
+          {invoice?.status === 'final' && !invoice.isHistorical && (
+            <button
+              type="button"
+              className="btn ghost sale-bill-cancel-btn"
+              disabled={busy}
+              onClick={() => setCancelOpen(true)}
+            >
+              <Ban size={16} strokeWidth={1.75} aria-hidden /> Cancel bill
+            </button>
+          )}
+          {invoice?.status === 'final' && invoice.balanceDue > 0 && (
             <button type="button" className="btn" disabled={busy} onClick={() => setRecordPaymentOpen(true)}>
               <IndianRupee size={16} strokeWidth={1.75} aria-hidden /> Record Payment
             </button>
@@ -753,9 +912,30 @@ export function InvoiceEditorPage() {
       </header>
 
       {error && <div className="error-banner">{error}</div>}
+      {isCancelled && invoice ? (
+        <div className="sale-bill-cancelled-banner" role="status">
+          <Ban size={16} strokeWidth={1.75} aria-hidden />
+          <span>
+            This bill was cancelled
+            {invoice.cancelledAt ? ` on ${formatDisplayDate(invoice.cancelledAt.slice(0, 10))}` : ''}
+            {invoice.cancelReason ? ` — ${invoice.cancelReason}` : ''}
+          </span>
+        </div>
+      ) : null}
       {lookupsLoaded && !metalRates && !error ? (
         <div className="error-banner">
           Metal rates not configured. Go to the Metal Rates page to set today&apos;s gold and silver rates.
+        </div>
+      ) : null}
+      {staleRates && canEdit && metalRates ? (
+        <div className="sale-bill-rate-banner" role="status">
+          <TriangleAlert size={16} strokeWidth={1.75} aria-hidden />
+          <span>
+            Rates last updated {formatDisplayDate(metalRates.effectiveDate)}. Update today&apos;s rates
+          </span>
+          <Link to="/rates" className="btn ghost">
+            Metal Rates
+          </Link>
         </div>
       ) : null}
 
@@ -837,6 +1017,7 @@ export function InvoiceEditorPage() {
               <div className="sale-bill-items-search-wrap">
                 <BillProductSearch
                   products={products}
+                  usedQtyByProduct={stockUsed}
                   disabled={!canEdit || busy}
                   hideLabel
                   hideAddButton
@@ -876,6 +1057,10 @@ export function InvoiceEditorPage() {
                   {lines.map((line, index) => {
                     const empty = isEmptyEditorLine(line)
                     const purity = line.purity || inferSalePurity(line.metal)
+                    const offersHuid = lineOffersHuid(line, products)
+                    const needsHuid = lineNeedsHuid(line, products)
+                    const lineHuids = availableHuidsForLine(line, products, lines)
+                    const shortage = overStockLines.find((row) => row.key === line.key)
                     return (
                       <tr
                         key={line.key}
@@ -899,6 +1084,32 @@ export function InvoiceEditorPage() {
                                 <div className="sale-bill-product-meta">
                                   <span>{line.category || line.metal || 'Item'}</span>
                                 </div>
+                                {offersHuid ? (
+                                  <label className="sale-bill-huid">
+                                    <Hash size={12} strokeWidth={1.75} aria-hidden />
+                                    <select
+                                      className={`sale-bill-huid-select${line.huid.trim() || !needsHuid ? '' : ' is-missing'}`}
+                                      disabled={!canEdit || busy}
+                                      aria-label="Hallmark Unique ID"
+                                      value={line.huid}
+                                      onChange={(event) =>
+                                        updateLine(line.key, { huid: event.target.value })
+                                      }
+                                    >
+                                      <option value="">{needsHuid ? 'Select HUID…' : 'No HUID'}</option>
+                                      {lineHuids.map((huid) => (
+                                        <option key={huid} value={huid}>
+                                          {huid}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                ) : null}
+                                {shortage ? (
+                                  <span className="sale-bill-line-warning" role="alert">
+                                    {stockShortageMessage(shortage)}
+                                  </span>
+                                ) : null}
                               </div>
                             </div>
                         </td>
@@ -1041,7 +1252,7 @@ export function InvoiceEditorPage() {
                           </div>
                         </td>
                         <td className="adagu-col-amount" data-label={DEFAULT_BILL_TEMPLATE.taxColAmount}>
-                          {formatInr(computeEditorLineTotal(line))}
+                          {formatCurrency(computeEditorLineTotal(line))}
                         </td>
                         <td className="adagu-col-action">
                           <button
@@ -1067,6 +1278,9 @@ export function InvoiceEditorPage() {
             legacyItems={legacyOldGold}
             disabled={!canEdit || busy}
             currentInvoiceId={invoice?.id ?? null}
+            customerId={customerId}
+            customerName={customerName}
+            maxCredit={roundMoney(totalsBase.invoiceTotal - (selectedScheme?.credit ?? 0))}
             onChange={(next) => {
               setOldGoldLinks(next)
               markDirty()
@@ -1076,6 +1290,35 @@ export function InvoiceEditorPage() {
               markDirty()
             }}
           />
+
+          <GoldSavingBillLinker
+            accounts={schemeAccounts}
+            links={invoice?.goldSavingLinks ?? []}
+            selectedAccountId={schemeAccountId}
+            disabled={!canEdit || busy}
+            onSelect={(accountId) => {
+              setSchemeAccountId(accountId)
+              markDirty()
+            }}
+          />
+          {selectedScheme?.rateStale ? (
+            isAdmin ? (
+              <label className="gs-check gs-rate-warning">
+                <input
+                  type="checkbox"
+                  checked={acceptRateDate}
+                  onChange={(event) => setAcceptRateDate(event.target.checked)}
+                />
+                No rate is saved for {formatDisplayDate(invoiceDate)}. The rate from{' '}
+                {formatDisplayDate(selectedScheme.rateDate)} will be used — confirm to continue.
+              </label>
+            ) : (
+              <div className="error-banner">
+                No gold rate is saved for {formatDisplayDate(invoiceDate)}. Ask an administrator to set
+                it on the <Link to="/rates">rates page</Link>.
+              </div>
+            )
+          ) : null}
         </div>
 
         <div className="adagu-grid-col sale-bill-rail">
@@ -1189,7 +1432,7 @@ export function InvoiceEditorPage() {
                       <p>Ledger payments against this bill</p>
                     </div>
                   </div>
-                  {invoice.balanceDue > 0 ? (
+                  {invoice.status === 'final' && invoice.balanceDue > 0 ? (
                     <button type="button" className="adagu-btn-add-item" onClick={() => setRecordPaymentOpen(true)}>
                       <Plus size={14} /> Record Payment
                     </button>
@@ -1329,6 +1572,14 @@ export function InvoiceEditorPage() {
           initialFormat={billFormat}
           pdfFilename={`${invoice.invoiceNo}.pdf`}
           onClose={() => setPreviewOpen(false)}
+        />
+      )}
+
+      {cancelOpen && invoice && (
+        <CancelBillModal
+          invoice={invoice}
+          onClose={() => setCancelOpen(false)}
+          onCancelled={handleCancelled}
         />
       )}
 

@@ -88,7 +88,18 @@ export async function addProductToBill(page: Page, productName: string) {
   await search.fill(productName)
   await page.getByRole('option', { name: new RegExp(productName) }).click()
   await expect(rows).toHaveCount(before + 1)
-  return rows.nth(before)
+  const row = rows.nth(before)
+  await pickFirstHuid(row)
+  return row
+}
+
+/** Tagged products require a HUID on the line before the bill can be finalized. */
+export async function pickFirstHuid(row: Locator) {
+  const select = row.locator('.sale-bill-huid-select')
+  if ((await select.count()) === 0) return
+  const options = select.locator('option')
+  const first = (await options.nth(1).getAttribute('value')) ?? ''
+  if (first) await select.selectOption(first)
 }
 
 export async function setLineMetalRate(row: Locator, rate: string) {
@@ -151,7 +162,8 @@ export function calculatedValue(page: Page, label: string) {
   return page.locator('.adagu-calculated-row').filter({ hasText: label }).locator('.value')
 }
 
-export async function setAdaguInterestPct(page: Page, pct: string) {
+/** Settings → Invoice Settings → Adagu Bill, ready to edit. */
+export async function openAdaguPosSettings(page: Page) {
   await sidebarLink(page, 'Settings').click()
   const invoiceTab = page.getByRole('tab', { name: 'Invoice Settings' })
   await expect(invoiceTab).toBeVisible()
@@ -160,12 +172,42 @@ export async function setAdaguInterestPct(page: Page, pct: string) {
   }
   await expect(page.getByRole('heading', { name: 'Invoice Settings' })).toBeVisible()
   await page.getByRole('button', { name: 'Adagu Bill' }).click()
-  const rate = page.getByLabel('Adagu monthly interest (%)')
-  await expect(rate).toBeVisible()
-  await rate.fill(pct)
-  const invoiceCard = page.locator('.card.padded').filter({ hasText: 'Invoice Settings' })
-  await invoiceCard.getByRole('button', { name: 'Save Changes' }).click()
+  const card = page.locator('.card.padded').filter({ hasText: 'Invoice Settings' })
+  await expect(card.getByRole('heading', { name: 'Adagu POS Settings' })).toBeVisible()
+  return card
+}
+
+/** Fill any of the Adagu POS settings and save them once. */
+export async function setAdaguSettings(
+  page: Page,
+  values: {
+    interestPct?: string
+    ltvPct?: string
+    noticeDays?: string
+    requireKyc?: boolean
+  },
+) {
+  const card = await openAdaguPosSettings(page)
+  if (values.interestPct != null) {
+    await page.getByLabel('Adagu monthly interest (%)').fill(values.interestPct)
+  }
+  if (values.ltvPct != null) {
+    await page.getByLabel('Adagu LTV (% of assessed value)').fill(values.ltvPct)
+  }
+  if (values.noticeDays != null) {
+    await page.getByLabel('Auction notice period (days)').fill(values.noticeDays)
+  }
+  if (values.requireKyc != null) {
+    await page
+      .getByLabel('Require KYC (Aadhaar or PAN) before sanctioning')
+      .setChecked(values.requireKyc)
+  }
+  await card.getByRole('button', { name: 'Save Changes' }).click()
   await expect(page.getByText('Invoice settings saved')).toBeVisible()
+}
+
+export async function setAdaguInterestPct(page: Page, pct: string) {
+  await setAdaguSettings(page, { interestPct: pct })
 }
 
 export async function openNewAdaguBill(page: Page) {

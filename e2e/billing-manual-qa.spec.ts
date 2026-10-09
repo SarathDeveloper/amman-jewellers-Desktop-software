@@ -6,6 +6,7 @@ import { expect, test } from './fixtures/web-app'
 import { localTodayIso } from './helpers/dates'
 import { openInventoryTab, sidebarLink, expectPrintPreviewModal } from './helpers/nav'
 import { fillProductDialog, saveProductDialog } from './helpers/productForm'
+import { pickFirstHuid } from './helpers/inventoryBilling'
 
 test.describe('Manual QA: New bill generation', () => {
   test('full new bill flow — UI, customer, lines, draft, finalize', async ({ window }) => {
@@ -59,6 +60,7 @@ test.describe('Manual QA: New bill generation', () => {
       has: window.locator(`.sale-bill-product-name[value*="${productName}"]`),
     })
     await expect(itemRow).toBeVisible()
+    await pickFirstHuid(itemRow)
     await itemRow.getByLabel('Gold rate').fill('6200')
     await expect(window.locator('.sale-bill-summary-stat', { hasText: 'Total Items' }).locator('strong')).toHaveText('1')
 

@@ -143,6 +143,10 @@ test.describe('Old gold purchase — live Tauri scenarios', () => {
 
     await window.getByPlaceholder('OGP-2026-0001').fill(sharedPurchaseNo)
     await window.locator('.old-gold-link-form').getByRole('button', { name: 'Add' }).click()
+    // The purchase belongs to a different customer than the bill, so confirm it.
+    const mismatch = window.getByRole('dialog', { name: 'Different customer' })
+    await expect(mismatch).toBeVisible()
+    await mismatch.getByRole('button', { name: 'Apply anyway' }).click()
     await expect(window.getByText('Old gold total').locator('..').getByRole('strong')).toHaveText(inr(82_360))
     await expect(
       window.locator('.adagu-calculated-row').filter({ hasText: 'Old gold exchange' }).locator('.value'),
@@ -160,5 +164,62 @@ test.describe('Old gold purchase — live Tauri scenarios', () => {
     await window.locator('.old-gold-link-form').getByRole('button', { name: 'Add' }).click()
     await expect(window.locator('.old-gold-link-error')).toContainText('is already applied to')
     await expect(window.locator('.old-gold-link-error')).toContainText(invoiceNo)
+  })
+
+  test('S11 — buy old gold inside the bill, apply partially and pay the balance', async ({ window }) => {
+    const stamp = Date.now()
+    const productName = `Gold Ring ${stamp}`
+    const customerName = `Inline OGP ${stamp}`
+
+    await addProduct(window, {
+      name: productName,
+      category: 'Ring',
+      grossWeight: '5.5',
+      netWeight: '5',
+      makingCharges: '1000',
+      stockQty: '2',
+    })
+
+    await openNewBill(window, 'cash')
+    await addCustomerOnBill(window, customerName, `9${String(stamp).slice(-9)}`)
+    const saleRow = await addProductToBill(window, productName)
+    await setLineMetalRate(saleRow, SALE_RATE)
+    // 5 × 5800 + 1,000 = 30,000
+    await expectLineAmount(saleRow, 30_000)
+
+    // Buy old gold from inside the bill. The purchase form is prefilled with the bill's customer.
+    await window.getByRole('button', { name: 'New old gold' }).click()
+    const ogp = window.getByRole('dialog', { name: 'New old gold purchase' })
+    await expect(ogp).toBeVisible()
+    await expect(ogp.getByPlaceholder('Name')).toHaveValue(customerName)
+
+    const ogpRow = ogp.locator('.old-gold-table tbody tr').first()
+    await fillOldGoldRow(ogpRow, {
+      description: `Inline chain ${stamp}`,
+      grossWeight: '20',
+      stoneWeight: '0',
+      ratePerGram: OG_RATE,
+      deductionPct: '0',
+    })
+    // 20 × 5800 = 1,16,000 — far more than the bill.
+    await expect(ogpRow.locator('.old-gold-col-amount')).toHaveText(inr(116_000))
+
+    await ogp.getByRole('button', { name: 'Save & finalize' }).click()
+    const confirm = window.getByRole('dialog', { name: 'Finalize old gold purchase?' })
+    await confirm.getByRole('button', { name: 'Finalize' }).click()
+
+    // Finalizing auto-links it: the bill takes only what it needs and the rest stays as the balance.
+    await expect(window.getByText('Old gold total').locator('..').getByRole('strong')).toHaveText(inr(30_000))
+    await expectGrandTotal(window, 0)
+    const linkRow = window.locator('.old-gold-table--links tbody tr').first()
+    await expect(linkRow.locator('.adagu-col-amount').nth(1)).toHaveText(inr(86_000))
+
+    // Pay the leftover balance out to the customer without leaving the bill.
+    await linkRow.getByRole('button', { name: /Pay out balance of OGP-/ }).click()
+    const payout = window.getByRole('dialog', { name: /^Pay out OGP-/ })
+    await expect(payout).toBeVisible()
+    await payout.getByLabel('Amount').fill('86000')
+    await payout.getByRole('button', { name: 'Record payout' }).click()
+    await expect(window.getByText('Payout recorded')).toBeVisible()
   })
 })

@@ -5,7 +5,7 @@ import {
   resolveMetalRateForProduct,
   roundMoney,
 } from '@shared/billing/pricing'
-import { GOLD_PURITIES, SILVER_PURITIES } from '@shared/itemTypes'
+import { GOLD_PURITIES, huidRemovalRange, SILVER_PURITIES } from '@shared/itemTypes'
 import type {
   InvoiceItem,
   InvoiceItemInput,
@@ -37,6 +37,8 @@ export type EditorLine = Omit<InvoiceItemInput, EditorLineNumericKey> & {
   category?: string
   purity?: string
   productId: number | null
+  /** Hallmark Unique ID picked for this piece (only for tagged products). */
+  huid: string
   /** True until the cashier types a rate. Empty lines then follow today's metal rate. */
   metalRateAuto?: boolean
 }
@@ -81,7 +83,7 @@ export function inferSalePurity(metal?: string, productPurity?: string): string 
 
 export function puritiesForMetal(metal?: string, purity?: string): string[] {
   const value = metal?.toLowerCase() ?? ''
-  const base = value.includes('silver')
+  const base: string[] = value.includes('silver')
     ? [...SILVER_PURITIES]
     : value.includes('gold')
       ? [...GOLD_PURITIES]
@@ -139,6 +141,7 @@ export function newEditorLine(): EditorLine {
     lineKind: 'sale',
     description: '',
     purity: '',
+    huid: '',
   }
 }
 
@@ -163,6 +166,7 @@ export function newExchangeLine(metalRates: MetalRates | null): EditorLine {
     metal: 'Gold',
     category: '',
     purity: '22K',
+    huid: '',
   }
 }
 
@@ -186,7 +190,8 @@ export function editorLineFromInvoiceItem(item: InvoiceItem, product?: Product |
     description: item.description || item.productName,
     metal: item.metal,
     category: item.category,
-    purity: inferSalePurity(item.metal, product?.purity),
+    purity: item.purity || inferSalePurity(item.metal, product?.purity),
+    huid: item.huid ?? '',
     metalRateAuto: !(item.metalRate > 0),
   }
 }
@@ -209,6 +214,7 @@ export function applyProductToLine(
   product: Product,
   qty: number,
   metalRates: MetalRates | null,
+  huid?: string,
 ): Partial<EditorLine> {
   const snapshot = {
     gold22k: metalRates?.gold22k ?? 0,
@@ -238,6 +244,7 @@ export function applyProductToLine(
     metal: product.metal,
     category: product.category,
     purity: product.purity,
+    huid: (huid ?? '').trim().toUpperCase(),
     metalRateAuto: true,
   }
 }
@@ -277,6 +284,7 @@ export function computeEditorTotals(
   oldGold: BillSummaryInput['oldGold'] = [],
   roundOff = 0,
   extraOldGoldCredit = 0,
+  schemeCredit = 0,
 ) {
   const active = lines.filter(
     (line) =>
@@ -295,6 +303,7 @@ export function computeEditorTotals(
     manualTax,
     oldGold,
     extraOldGoldCredit: exchangeCredit + Math.max(0, extraOldGoldCredit),
+    schemeCredit,
     roundOff,
   })
 
@@ -383,12 +392,125 @@ export function toInvoiceItems(lines: EditorLine[]): InvoiceItemInput[] {
         description: line.description,
         metal: line.metal,
         category: line.category,
+        purity: line.purity,
+        huid: (line.productId ?? 0) > 0 && line.huid.trim() ? line.huid.trim().toUpperCase() : undefined,
       }
     })
 }
 
-export const OLD_GOLD_PURITIES = ['24K', '22K', '20K', '18K', '999', '925'] as const
+export function productForLine(line: EditorLine, products: Product[]): Product | null {
+  if (!line.productId) return null
+  return products.find((product) => product.id === line.productId) ?? null
+}
 
+/** HUIDs already claimed by the other lines of the same bill. */
+export function huidsUsedByOtherLines(lines: EditorLine[], exceptKey: string): Set<string> {
+  const used = new Set<string>()
+  for (const line of lines) {
+    if (line.key === exceptKey) continue
+    const value = line.huid.trim().toUpperCase()
+    if (value) used.add(value)
+  }
+  return used
+}
+
+/** HUIDs a line may pick: the product's tagged HUIDs, minus ones used on other lines. */
+export function availableHuidsForLine(
+  line: EditorLine,
+  products: Product[],
+  lines: EditorLine[],
+): string[] {
+  const product = productForLine(line, products)
+  if (!product) return []
+  const used = huidsUsedByOtherLines(lines, line.key)
+  const selected = line.huid.trim().toUpperCase()
+  return (product.huids ?? []).filter((huid) => !used.has(huid) || huid === selected)
+}
+
+/** True when a single-piece product line can pick a HUID because the product has tagged pieces. */
+export function lineOffersHuid(line: EditorLine, products: Product[]): boolean {
+  if (line.lineKind === 'exchange' || isEmptyEditorLine(line)) return false
+  if (numericFieldToNumber(line.qty, 1) !== 1) return false
+  const product = productForLine(line, products)
+  if (!product) return false
+  return (product.huids ?? []).length > 0
+}
+
+/** True when the line must pick a HUID: always for tagged gold, and for silver once every piece is tagged. */
+export function lineNeedsHuid(line: EditorLine, products: Product[]): boolean {
+  if (!lineOffersHuid(line, products)) return false
+  const product = productForLine(line, products)
+  if (!product) return false
+  return huidRemovalRange(product.metal, (product.huids ?? []).length, product.stockQty, 1).min > 0
+}
+
+/** Product lines that must pick a HUID but have none chosen yet. */
+export function linesMissingHuid(lines: EditorLine[], products: Product[]): EditorLine[] {
+  return lines.filter((line) => lineNeedsHuid(line, products) && !line.huid.trim())
+}
+
+/** Pieces of each product asked for by the bill, counting every line. */
+export function qtyByProduct(lines: EditorLine[]): Record<number, number> {
+  const totals: Record<number, number> = {}
+  for (const line of lines) {
+    const productId = line.productId ?? 0
+    if (!productId || isEmptyEditorLine(line)) continue
+    totals[productId] = (totals[productId] ?? 0) + numericFieldToNumber(line.qty)
+  }
+  return totals
+}
+
+export type StockShortage = {
+  key: string
+  productId: number
+  productName: string
+  /** Pieces asked for once this line is included. */
+  requested: number
+  available: number
+}
+
+/**
+ * Lines that ask for more pieces than the product has in stock. Lines are walked
+ * in bill order so the first line that pushes a product past its stock is the one
+ * flagged. Mirrors the server's `Insufficient stock` failure at finalize.
+ */
+export function stockShortages(lines: EditorLine[], products: Product[]): StockShortage[] {
+  const stock = new Map(products.map((row) => [row.id, row.stockQty]))
+  const used = new Map<number, number>()
+  const shortages: StockShortage[] = []
+  for (const line of lines) {
+    const productId = line.productId ?? 0
+    if (!productId || isEmptyEditorLine(line)) continue
+    const requested = (used.get(productId) ?? 0) + numericFieldToNumber(line.qty)
+    used.set(productId, requested)
+    const available = stock.get(productId) ?? 0
+    if (requested > available) {
+      shortages.push({
+        key: line.key,
+        productId,
+        productName: line.description.trim() || 'this product',
+        requested,
+        available,
+      })
+    }
+  }
+  return shortages
+}
+
+/** The message the editor and the server both use when a line beats stock. */
+export function stockShortageMessage(shortage: StockShortage): string {
+  return `Insufficient stock for ${shortage.productName} (${shortage.available} available, ${shortage.requested} on this bill)`
+}
+
+/** `3 in stock` / `Out of stock` for a product search option. */
+export function stockAvailabilityLabel(stockQty: number, usedQty = 0): string {
+  if (stockQty <= 0) return 'Out of stock'
+  const remaining = stockQty - usedQty
+  if (remaining <= 0) return `All ${stockQty} on this bill`
+  return `${remaining} in stock`
+}
+
+export const OLD_GOLD_PURITIES = ['24K', '22K', '20K', '18K', '999', '925'] as const
 export function oldGoldPurityOptions(current: string): string[] {
   const base = [...OLD_GOLD_PURITIES]
   if (current && !base.includes(current as (typeof OLD_GOLD_PURITIES)[number])) {
@@ -406,28 +528,41 @@ export type OldGoldEditorRow = {
   purity: string
   ratePerGram: NumericField
   deductionPct: NumericField
+  touchPct: NumericField
 }
 
+/** Old gold buying rate for a purity, falling back to the selling rate when unset. */
 export function rateForOldGoldPurity(purity: string, rates: MetalRates | null): number {
+  if (!rates) return 0
   const value = purity.toLowerCase()
-  if (value.includes('925')) return rates?.silver925 ?? 0
-  if (value.includes('999') || value.includes('silver')) return rates?.silverFine ?? 0
-  if (value.includes('24')) return rates?.gold24k ?? 0
-  if (value.includes('20')) return rates?.gold20k ?? 0
-  if (value.includes('18')) return rates?.gold18k ?? 0
-  return rates?.gold22k ?? 0
+  const sell = (buy: number | undefined, selling: number) => ((buy ?? 0) > 0 ? buy! : selling)
+  if (value.includes('925')) return sell(rates.silver925Buy, rates.silver925)
+  if (value.includes('999') || value.includes('silver')) return sell(rates.silverFineBuy, rates.silverFine)
+  if (value.includes('24')) return sell(rates.gold24kBuy, rates.gold24k)
+  if (value.includes('20')) return sell(rates.gold20kBuy, rates.gold20k)
+  if (value.includes('18')) return sell(rates.gold18kBuy, rates.gold18k)
+  return sell(rates.gold22kBuy, rates.gold22k)
 }
 
-export function newOldGoldRow(rates: MetalRates | null = null): OldGoldEditorRow {
+export function metalForOldGoldPurity(purity: string): 'Gold' | 'Silver' {
+  const value = purity.toLowerCase()
+  return value.includes('925') || value.includes('silver') || value.includes('999') ? 'Silver' : 'Gold'
+}
+
+export function newOldGoldRow(
+  rates: MetalRates | null = null,
+  description = 'Old gold exchange',
+): OldGoldEditorRow {
   return {
     key: crypto.randomUUID(),
-    description: 'Old gold exchange',
+    description,
     grossWeight: '',
     stoneWeight: '',
     netWeight: '',
     purity: '22K',
-    ratePerGram: rates?.gold22k ?? '',
+    ratePerGram: rateForOldGoldPurity('22K', rates) || '',
     deductionPct: '',
+    touchPct: '',
   }
 }
 
@@ -441,6 +576,7 @@ export function oldGoldRowFromItem(item: OldGoldItem): OldGoldEditorRow {
     purity: item.purity || '22K',
     ratePerGram: item.ratePerGram || '',
     deductionPct: item.deductionPct || '',
+    touchPct: '',
   }
 }
 
@@ -459,6 +595,8 @@ export function toOldGoldInputs(rows: OldGoldEditorRow[]): OldGoldItemInput[] {
         purity: row.purity,
         ratePerGram: numericFieldToNumber(row.ratePerGram),
         deductionPct: numericFieldToNumber(row.deductionPct),
+        touchPct: numericFieldToNumber(row.touchPct),
+        metal: metalForOldGoldPurity(row.purity),
       }
     })
     .filter((item) => item.grossWeight > 0 && item.netWeight > 0)

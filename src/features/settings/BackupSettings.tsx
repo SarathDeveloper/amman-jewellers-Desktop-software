@@ -1,19 +1,27 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Download, FileSpreadsheet, FolderOpen, ShieldAlert, ShieldCheck, Upload } from 'lucide-react'
-import type { BackupFile, BackupStatus } from '@shared/types'
+import type { BackupFile, BackupInspection, BackupKind, BackupStatus } from '@shared/types'
+import { daysSinceBackup, healthTitle, healthTone, offsiteCopyCurrent } from '@shared/backupHealth'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { Modal } from '../../components/Modal'
 import { TimeInput } from '../../components/DateInput'
 import { LoadingState } from '../../components/LoadingState'
 import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
 import { formatDisplayClock, formatDisplayDateTime } from '../../lib/format'
 
-type HealthTone = 'ok' | 'warn' | 'stale'
-
 type PendingAction =
   | { type: 'restore-file'; file: File }
   | { type: 'restore-local'; name: string }
   | { type: 'delete'; name: string }
+
+const KIND_LABEL: Record<BackupKind, string> = {
+  daily: 'Auto',
+  manual: 'Manual',
+  dayclose: 'Day close',
+  prerestore: 'Before restore',
+  premigrate: 'Before update',
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -23,40 +31,6 @@ function formatBytes(bytes: number): string {
   }
   const mb = bytes / (1024 * 1024)
   return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`
-}
-
-function startOfLocalDay(date: Date): number {
-  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
-}
-
-function daysSinceBackup(iso: string | null): number | null {
-  if (!iso) return null
-  const last = new Date(iso)
-  if (Number.isNaN(last.getTime())) return null
-  return Math.round((startOfLocalDay(new Date()) - startOfLocalDay(last)) / 86_400_000)
-}
-
-function offsiteCopyCurrent(offsiteDir: string, lastOffsiteAt: string | null, lastOffsiteError: string | null): boolean {
-  if (!offsiteDir.trim()) return true
-  return !lastOffsiteError && Boolean(lastOffsiteAt)
-}
-
-function healthTone(days: number | null, offsiteCurrent: boolean): HealthTone {
-  if (!offsiteCurrent) {
-    if (days === null || days >= 8) return 'stale'
-    return 'warn'
-  }
-  if (days === null || days >= 8) return 'stale'
-  if (days >= 1) return 'warn'
-  return 'ok'
-}
-
-function healthTitle(days: number | null, offsiteCurrent: boolean): string {
-  if (!offsiteCurrent) return 'Off-machine copy is not current'
-  if (days === null) return 'No backup yet'
-  if (days === 0) return 'Backed up today'
-  if (days === 1) return 'Last backup 1 day ago'
-  return `Last backup ${days} days ago`
 }
 
 export function BackupSettings() {
@@ -73,6 +47,7 @@ export function BackupSettings() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingAction | null>(null)
+  const [inspection, setInspection] = useState<BackupInspection | null>(null)
   const canBrowse = Boolean(window.desktopAPI?.chooseBackupFolder)
 
   function applyStatus(status: BackupStatus) {
@@ -117,6 +92,20 @@ export function BackupSettings() {
       setError(null)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Backup failed'
+      setError(message)
+      showToast(message, 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function checkBackup(name: string) {
+    setBusy(true)
+    try {
+      setInspection(await api.inspectBackup(name))
+      setError(null)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not read the backup'
       setError(message)
       showToast(message, 'error')
     } finally {
@@ -361,8 +350,9 @@ export function BackupSettings() {
             <h2 className="settings-section-title">Off-machine copy</h2>
             <p className="muted settings-card-subtitle">
               After each local backup, the newest database file and its Excel workbook are copied
-              here. The .db copy is opened to prove it can restore. Use a USB drive or another disk,
-              not this computer&apos;s app data folder.
+              here, together with any shop images that are not already present. The .db copy is
+              hashed and opened to prove it can restore. Use a USB drive or another disk, not this
+              computer&apos;s app data folder.
             </p>
           </div>
         </div>
@@ -419,9 +409,10 @@ export function BackupSettings() {
           <div>
             <h2 className="settings-section-title">Saved backups</h2>
             <p className="muted settings-card-subtitle">
-              Automatic backups run on the schedule above and the last 14 copies are kept. Manual
-              backups are never auto-deleted. Restore uses the .db file. Excel is a readable copy of
-              every table.
+              Automatic backups run on the schedule above, after each metal day close, and the
+              newest 14 daily copies are kept along with weekly and monthly copies. The newest 30
+              manual backups are kept. Restore uses the .db file. Excel is a readable copy of every
+              table.
             </p>
           </div>
         </div>
@@ -441,12 +432,20 @@ export function BackupSettings() {
                   <td>{formatDisplayDateTime(file.createdAt)}</td>
                   <td>
                     <span className={`backup-kind backup-kind--${file.kind}`}>
-                      {file.kind === 'daily' ? 'Auto' : 'Manual'}
+                      {KIND_LABEL[file.kind]}
                     </span>
                   </td>
                   <td className="num">{formatBytes(file.sizeBytes)}</td>
                   <td className="backup-list-actions-col">
                     <div className="backup-list-actions">
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        disabled={busy}
+                        onClick={() => void checkBackup(file.name)}
+                      >
+                        Check
+                      </button>
                       <button
                         type="button"
                         className="btn ghost"
@@ -496,6 +495,54 @@ export function BackupSettings() {
           onConfirm={() => void confirmPending()}
           onCancel={() => setPending(null)}
         />
+      )}
+      {inspection && (
+        <Modal title="Backup check" onClose={() => setInspection(null)}>
+          <div className="backup-inspect">
+            <p className="muted backup-inspect-name">{inspection.name}</p>
+            <ul className="backup-inspect-list">
+              <li>
+                <span>Can be restored</span>
+                <strong>{inspection.restorable ? 'Yes' : 'No'}</strong>
+              </li>
+              <li>
+                <span>Schema version</span>
+                <strong>
+                  {inspection.schemaVersion} of {inspection.appSchemaVersion}
+                </strong>
+              </li>
+              <li>
+                <span>Customers</span>
+                <strong>{inspection.counts.customers}</strong>
+              </li>
+              <li>
+                <span>Invoices</span>
+                <strong>{inspection.counts.invoices}</strong>
+              </li>
+              <li>
+                <span>Pledges</span>
+                <strong>{inspection.counts.pledges}</strong>
+              </li>
+              <li>
+                <span>Products</span>
+                <strong>{inspection.counts.products}</strong>
+              </li>
+              <li>
+                <span>Gold saving accounts</span>
+                <strong>{inspection.counts.goldSavingAccounts}</strong>
+              </li>
+              <li>
+                <span>Latest bill</span>
+                <strong>
+                  {inspection.latestInvoiceAt ? formatDisplayDateTime(inspection.latestInvoiceAt) : '—'}
+                </strong>
+              </li>
+            </ul>
+            {inspection.issues.length > 0 ? (
+              <div className="error-banner">{inspection.issues.join('. ')}</div>
+            ) : null}
+          </div>
+        </Modal>
       )}
     </>
   )

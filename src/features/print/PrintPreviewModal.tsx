@@ -164,6 +164,7 @@ export function PrintPreviewModal({
     <Modal
       title={title}
       className="modal-print"
+      noBodyWrapper
       onClose={onClose}
       footer={
         <div className="modal-actions">

@@ -6,9 +6,11 @@ import type {
   GoldSavingAccountStatus,
   GoldSavingAuditLog,
   GoldSavingBonusType,
+  GoldSavingCancelDeductionType,
   GoldSavingGoldRateSource,
   GoldSavingInstallment,
   GoldSavingInstallmentStatus,
+  GoldSavingLateFeeType,
   GoldSavingLedgerEntry,
   GoldSavingLedgerType,
   GoldSavingPayment,
@@ -17,6 +19,7 @@ import type {
   GoldSavingRedemption,
   GoldSavingRedemptionKind,
   GoldSavingRedemptionType,
+  GoldSavingRefund,
   GoldSavingScheme,
   GoldSavingSchemeStatus,
 } from '@shared/types'
@@ -49,6 +52,10 @@ export type SchemeRow = {
   available_to: string | null
   terms: string
   status: GoldSavingSchemeStatus
+  cancel_deduction_type: GoldSavingCancelDeductionType
+  cancel_deduction_value: number
+  late_fee_type: GoldSavingLateFeeType
+  late_fee_value: number
   created_at: string
   updated_at: string
 }
@@ -119,6 +126,7 @@ export type PaymentRow = {
   status: GoldSavingPaymentStatus
   reversed_payment_id: number | null
   idempotency_key: string | null
+  batch_no: string | null
   created_by: number | null
   created_at: string
   account_no: string
@@ -184,6 +192,28 @@ export type AuditRow = {
   created_at: string
 }
 
+export type RefundRow = {
+  id: number
+  account_id: number
+  voucher_no: string
+  refund_date: string
+  total_paid: number
+  deduction: number
+  refund_amount: number
+  payment_mode: GoldSavingPaymentMode
+  transaction_ref: string
+  gold_forfeited: number
+  reason: string
+  created_by: number | null
+  created_at: string
+  account_no: string
+  customer_id: number
+  customer_name: string
+  customer_phone: string
+  scheme_name: string
+  duration_months: number
+}
+
 export function asBool(value: number): boolean {
   return value === 1
 }
@@ -217,6 +247,10 @@ export function mapScheme(row: SchemeRow): GoldSavingScheme {
     availableTo: row.available_to,
     terms: row.terms,
     status: row.status,
+    cancelDeductionType: row.cancel_deduction_type ?? 'none',
+    cancelDeductionValue: row.cancel_deduction_value ?? 0,
+    lateFeeType: row.late_fee_type ?? 'none',
+    lateFeeValue: row.late_fee_value ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -306,6 +340,7 @@ export function mapPayment(row: PaymentRow, totals?: { paid: number; gold: numbe
     transactionRef: row.transaction_ref,
     remarks: row.remarks,
     status: row.status,
+    batchNo: row.batch_no ?? '',
     createdAt: row.created_at,
     totalPaidToDate: totals?.paid ?? 0,
     goldAccumulatedToDate: totals?.gold ?? 0,
@@ -367,6 +402,29 @@ export function mapAudit(row: AuditRow): GoldSavingAuditLog {
     changedBy: row.changed_by,
     beforeJson: row.before_json,
     afterJson: row.after_json,
+    createdAt: row.created_at,
+  }
+}
+
+export function mapRefund(row: RefundRow): GoldSavingRefund {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    accountNo: row.account_no,
+    customerId: row.customer_id,
+    customerName: row.customer_name,
+    customerPhone: row.customer_phone,
+    schemeName: row.scheme_name,
+    durationMonths: row.duration_months,
+    voucherNo: row.voucher_no,
+    refundDate: row.refund_date,
+    totalPaid: row.total_paid,
+    deduction: row.deduction,
+    refundAmount: row.refund_amount,
+    paymentMode: row.payment_mode,
+    transactionRef: row.transaction_ref,
+    goldForfeited: row.gold_forfeited,
+    reason: row.reason,
     createdAt: row.created_at,
   }
 }
@@ -434,6 +492,20 @@ export const REDEMPTION_SELECT = `
   LEFT JOIN invoices inv ON inv.id = r.invoice_id
 `
 
+export const REFUND_SELECT = `
+  SELECT r.*,
+    a.account_no,
+    a.duration_months,
+    c.id AS customer_id,
+    c.name AS customer_name,
+    c.phone AS customer_phone,
+    s.name AS scheme_name
+  FROM gold_saving_refunds r
+  JOIN gold_saving_accounts a ON a.id = r.account_id
+  JOIN customers c ON c.id = a.customer_id
+  JOIN gold_saving_schemes s ON s.id = a.scheme_id
+`
+
 export function loadScheme(db: Database.Database, id: number): SchemeRow {
   const row = db.prepare('SELECT * FROM gold_saving_schemes WHERE id = ?').get(id) as SchemeRow | undefined
   if (!row) throw new Error('Scheme not found')
@@ -449,6 +521,12 @@ export function loadAccount(db: Database.Database, id: number): AccountRow {
 export function loadPayment(db: Database.Database, id: number): PaymentRow {
   const row = db.prepare(`${PAYMENT_SELECT} WHERE p.id = ?`).get(id) as PaymentRow | undefined
   if (!row) throw new Error('Payment not found')
+  return row
+}
+
+export function loadRefund(db: Database.Database, id: number): RefundRow {
+  const row = db.prepare(`${REFUND_SELECT} WHERE r.id = ?`).get(id) as RefundRow | undefined
+  if (!row) throw new Error('Refund not found')
   return row
 }
 
@@ -496,6 +574,20 @@ export function nextAccountNo(db: Database.Database, enrollmentDate: string): st
   return `${prefix}${String(next).padStart(4, '0')}`
 }
 
+export function nextBatchNo(db: Database.Database): string {
+  const year = new Date().getFullYear()
+  const full = `GSB-${year}-`
+  const last = db
+    .prepare(
+      `SELECT batch_no AS no FROM gold_saving_payments
+       WHERE batch_no LIKE ? ORDER BY batch_no DESC LIMIT 1`,
+    )
+    .get(`${full}%`) as { no: string } | undefined
+  const lastSeq = last ? Number.parseInt(last.no.replace(full, ''), 10) : 0
+  const next = (Number.isNaN(lastSeq) ? 0 : lastSeq) + 1
+  return `${full}${String(next).padStart(4, '0')}`
+}
+
 export function nextReceiptNo(db: Database.Database, prefix: string): string {
   const year = new Date().getFullYear()
   const full = `${prefix}-${year}-`
@@ -504,9 +596,11 @@ export function nextReceiptNo(db: Database.Database, prefix: string): string {
       `SELECT receipt_no AS no FROM gold_saving_payments WHERE receipt_no LIKE ?
        UNION ALL
        SELECT receipt_no AS no FROM gold_saving_redemptions WHERE receipt_no LIKE ?
+       UNION ALL
+       SELECT voucher_no AS no FROM gold_saving_refunds WHERE voucher_no LIKE ?
        ORDER BY no DESC LIMIT 1`,
     )
-    .get(`${full}%`, `${full}%`) as { no: string } | undefined
+    .get(`${full}%`, `${full}%`, `${full}%`) as { no: string } | undefined
   const lastSeq = last ? Number.parseInt(last.no.replace(full, ''), 10) : 0
   const next = (Number.isNaN(lastSeq) ? 0 : lastSeq) + 1
   return `${full}${String(next).padStart(4, '0')}`

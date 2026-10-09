@@ -1,5 +1,6 @@
 import {
   GOLD_PURITIES,
+  isHuidMandatory,
   SILVER_PURITIES,
   STOCK_ITEM_NAMES,
   STOCK_METALS,
@@ -9,7 +10,15 @@ import { numericFieldToNumber, type NumericField } from '../../lib/numericField'
 import { resizeHuidRows } from './HuidEntryList'
 import { isGold, isSilver, stockTone, type StockTone } from './productDisplay'
 
-export type ProductAttributeRow = { key: string; value: string }
+export type ProductAttributeRow = { id: string; key: string; value: string }
+
+let attributeIdSeq = 0
+
+/** Stable row id so React keeps input focus when a row in the middle is removed. */
+export function newAttributeRow(key = '', value = ''): ProductAttributeRow {
+  attributeIdSeq += 1
+  return { id: `attr-${attributeIdSeq}`, key, value }
+}
 
 export type ProductFormState = Omit<
   ProductInput,
@@ -58,7 +67,7 @@ export function defaultPurityForMetal(metal: string): string {
 }
 
 function attributesToRows(attributes: Product['attributes'] | undefined): ProductAttributeRow[] {
-  return Object.entries(attributes ?? {}).map(([key, value]) => ({ key, value }))
+  return Object.entries(attributes ?? {}).map(([key, value]) => newAttributeRow(key, value))
 }
 
 export function productToForm(product: Product | null, parent?: Product | null): ProductFormState {
@@ -221,8 +230,12 @@ export function validateProductForm(
 
   const filledHuidCount = form.huids.filter((value) => value.trim()).length
   const stockQty = Math.max(0, Math.trunc(numericFieldToNumber(form.stockQty)))
-  if (!errors.huids && filledHuidCount !== stockQty) {
-    errors.huids = 'Add one HUID for each piece in stock'
+  if (!errors.huids) {
+    if (isHuidMandatory(form.metal) && filledHuidCount !== stockQty) {
+      errors.huids = 'Add one HUID for each piece in stock'
+    } else if (filledHuidCount > stockQty) {
+      errors.huids = 'A product cannot have more HUIDs than pieces in stock'
+    }
   }
 
   return errors

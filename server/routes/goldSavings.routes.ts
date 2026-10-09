@@ -3,15 +3,26 @@ import {
   goldSavingAccountInputSchema,
   goldSavingCancelAccountSchema,
   goldSavingPaymentInputSchema,
+  goldSavingPuritySchema,
   goldSavingRedemptionInputSchema,
   goldSavingReportIdSchema,
   goldSavingReversePaymentSchema,
   goldSavingSchemeInputSchema,
+  goldSavingWaiveInstallmentSchema,
 } from '@shared/schemas'
-import { cancelAccount, enrollAccount, getAccountDetail, listAccounts } from '../goldSavings/accountService'
+import {
+  cancelAccount,
+  enrollAccount,
+  getAccountDetail,
+  getRefund,
+  listAccounts,
+  waiveInstallment,
+} from '../goldSavings/accountService'
+import { previewSchemeCredits } from '../goldSavings/billingCredit'
 import { collectPayment, getPayment, reversePayment } from '../goldSavings/collectionService'
 import { getDashboard } from '../goldSavings/dashboardService'
 import { getPassbook, listAudit, listLedger } from '../goldSavings/ledgerService'
+import { datedRateForPurity } from '../goldSavings/rateGuard'
 import { listRedemptions, processRedemption } from '../goldSavings/maturityService'
 import { runGoldSavingReport } from '../goldSavings/reportService'
 import { createScheme, getScheme, listSchemes, updateScheme } from '../goldSavings/schemeService'
@@ -52,6 +63,7 @@ router.get(
 router.post(
   '/schemes',
   asyncHandler((req, res) => {
+    requireAdmin(req)
     const input = parseBody(goldSavingSchemeInputSchema, req.body)
     res.status(201).json(createScheme(getDatabase(), input, actor(req).id))
   }),
@@ -60,6 +72,7 @@ router.post(
 router.put(
   '/schemes/:id',
   asyncHandler((req, res) => {
+    requireAdmin(req)
     const input = parseBody(goldSavingSchemeInputSchema, req.body)
     res.json(updateScheme(getDatabase(), parseIdParam(routeParam(req.params.id)), input, actor(req).id))
   }),
@@ -70,6 +83,43 @@ router.get(
   asyncHandler((req, res) => {
     const q = typeof req.query.q === 'string' ? req.query.q : undefined
     res.json(listAccounts(getDatabase(), q))
+  }),
+)
+
+router.get(
+  '/billing-preview',
+  asyncHandler((req, res) => {
+    const customerId = req.query.customerId ? Number(req.query.customerId) : undefined
+    if (!customerId || !Number.isInteger(customerId)) {
+      throw new HttpError(400, 'A customer is required to preview scheme credit')
+    }
+    const invoiceId = req.query.invoiceId ? Number(req.query.invoiceId) : undefined
+    const date = typeof req.query.date === 'string' && req.query.date ? req.query.date : undefined
+    res.json(
+      previewSchemeCredits(
+        getDatabase(),
+        customerId,
+        Number.isInteger(invoiceId) ? invoiceId : undefined,
+        date,
+      ),
+    )
+  }),
+)
+
+router.get(
+  '/rate',
+  asyncHandler((req, res) => {
+    const date = typeof req.query.date === 'string' ? req.query.date : ''
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new HttpError(400, 'A date in YYYY-MM-DD format is required')
+    }
+    const purity = goldSavingPuritySchema.safeParse(
+      typeof req.query.purity === 'string' && req.query.purity ? req.query.purity : '22K',
+    )
+    if (!purity.success) {
+      throw new HttpError(400, 'A valid gold purity is required')
+    }
+    res.json(datedRateForPurity(getDatabase(), date, purity.data))
   }),
 )
 
@@ -116,7 +166,25 @@ router.post(
   asyncHandler((req, res) => {
     requireAdmin(req)
     const input = parseBody(goldSavingCancelAccountSchema, req.body)
-    res.json(cancelAccount(getDatabase(), parseIdParam(routeParam(req.params.id)), input.reason, actor(req).id))
+    res.json(cancelAccount(getDatabase(), parseIdParam(routeParam(req.params.id)), input, actor(req)))
+  }),
+)
+
+router.get(
+  '/refunds/:id',
+  asyncHandler((req, res) => {
+    res.json(getRefund(getDatabase(), parseIdParam(routeParam(req.params.id))))
+  }),
+)
+
+router.post(
+  '/installments/:id/waive',
+  asyncHandler((req, res) => {
+    requireAdmin(req)
+    const input = parseBody(goldSavingWaiveInstallmentSchema, req.body)
+    res.json(
+      waiveInstallment(getDatabase(), parseIdParam(routeParam(req.params.id)), input.reason, actor(req)),
+    )
   }),
 )
 
@@ -156,6 +224,9 @@ router.post(
   '/redemptions',
   asyncHandler((req, res) => {
     const input = parseBody(goldSavingRedemptionInputSchema, req.body)
+    if (input.redemptionKind === 'invoice') {
+      throw new HttpError(400, 'Apply the scheme on the sale bill to redeem against an invoice')
+    }
     res.status(201).json(processRedemption(getDatabase(), input, actor(req).id))
   }),
 )

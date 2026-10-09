@@ -53,6 +53,11 @@ describe('purchase invoice data', () => {
     expect(data.lines[0]?.item).toBe('Gold chain')
     expect(data.lines[0]?.grossWeight).toBe(8.5)
     expect(data.amountInWords).toContain('Six Hundred Eighteen')
+    expect(data.watermark).toBeNull()
+  })
+
+  it('stamps a draft purchase so it is not mistaken for a final invoice', () => {
+    expect(buildPurchaseInvoiceData({ ...baseInward, status: 'draft' }).watermark).toBe('DRAFT')
   })
 
   it('falls back to category and net weight when product or gross is missing', () => {

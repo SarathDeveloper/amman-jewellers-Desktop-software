@@ -27,8 +27,11 @@ export function TaxInvoicePrintPage() {
         }
         // Settings, rates, and the customer id do not depend on each other, so
         // only the invoice itself has to arrive before its customer is known.
+        // A finalized bill carries its own snapshots, so those are preferred.
         const invoicePromise = api.getInvoice(invoiceId)
-        const customerPromise = invoicePromise.then((invoice) => api.getCustomer(invoice.customerId))
+        const customerPromise = invoicePromise.then((invoice) =>
+          invoice.customerSnapshot ? undefined : api.getCustomer(invoice.customerId),
+        )
         const [invoice, customer, settings, rates] = await Promise.all([
           invoicePromise,
           customerPromise,
@@ -39,7 +42,13 @@ export function TaxInvoicePrintPage() {
         setShop(shopSettingsToDisplay(settings))
         setPaperSize(settings.paperSizeTax)
         applyPaperDataset(settings.paperSizeTax)
-        setData(buildTaxInvoiceData(invoice, customer, rates))
+        setData(
+          buildTaxInvoiceData(
+            invoice,
+            invoice.customerSnapshot ?? customer!,
+            invoice.ratesSnapshot ?? rates,
+          ),
+        )
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : 'Failed to load tax invoice')

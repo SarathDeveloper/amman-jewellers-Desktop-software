@@ -1,7 +1,9 @@
 import { amountInWords } from '@shared/billing/amountInWords'
-import type { Customer, Invoice, MetalRates } from '@shared/types'
+import { invoicePrintWatermark } from '@shared/billing/invoiceNumber'
+import type { BillCustomerInfo, Invoice, MetalRates } from '@shared/types'
 import type { BillDiscountLine, CashBillData } from './cashBillTypes'
 import { oldGoldPrintLines } from './oldGoldPrintLines'
+import { schemeCreditPrintLines } from './schemeCreditPrintLines'
 
 function splitAddress(address: string | undefined): string[] {
   const trimmed = address?.trim() ?? ''
@@ -19,7 +21,7 @@ function discountBreakdown(invoice: Invoice): BillDiscountLine[] {
 
 export function buildCashBillData(
   invoice: Invoice,
-  extras?: { customer?: Customer; rates?: MetalRates | null },
+  extras?: { customer?: BillCustomerInfo; rates?: MetalRates | null },
 ): CashBillData {
   const saleItems =
     invoice.items.filter((item) => item.lineKind !== 'exchange').length > 0
@@ -42,9 +44,12 @@ export function buildCashBillData(
             lineTotal: invoice.subtotal,
             lineKind: 'sale' as const,
             description: '',
+            purity: '',
+            huid: '',
           },
         ]
   const oldGoldLines = oldGoldPrintLines(invoice)
+  const schemeCreditLines = schemeCreditPrintLines(invoice)
   const amountPayable = invoice.amountPayable ?? invoice.total
 
   return {
@@ -58,6 +63,8 @@ export function buildCashBillData(
     discountBreakdown: discountBreakdown(invoice),
     oldGoldTotal: oldGoldLines.reduce((sum, item) => sum + item.amount, 0),
     oldGoldLines,
+    schemeCreditTotal: schemeCreditLines.reduce((sum, item) => sum + item.amount, 0),
+    schemeCreditLines,
     roundOff: invoice.roundOff ?? 0,
     amountPayable,
     amountPaid: invoice.amountPaid,
@@ -71,10 +78,15 @@ export function buildCashBillData(
       mode: payment.mode,
       amount: payment.amount,
     })),
+    watermark: invoicePrintWatermark(invoice),
     lines: sourceItems.map((item, index) => {
       const name = item.productName
       const qty = item.qty || 1
-      const particulars = qty > 1 ? `${name} × ${qty}` : name
+      const huid = (item.huid ?? '').trim().toUpperCase()
+      const purity = (item.purity ?? '').trim()
+      const baseParticulars = qty > 1 ? `${name} × ${qty}` : name
+      const withPurity = purity ? `${baseParticulars} (${purity})` : baseParticulars
+      const particulars = huid ? `${withPurity} · HUID ${huid}` : withPurity
       const netWeight = item.netWeight * qty
       const stoneWeight = (item.stoneWeight || 0) * qty
       const grossWeight = (item.grossWeight || item.netWeight) * qty

@@ -1,4 +1,4 @@
-import { ClipboardList, Coins, Gem, Scale, Truck } from 'lucide-react'
+import { Boxes, ClipboardList, Coins, Gem, Scale, Truck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { FeatureKey } from '@shared/types'
 
@@ -12,6 +12,7 @@ export const INVENTORY_TABS: {
   { to: '/inventory/stock', label: 'Gold & Silver', feature: 'stock', icon: Scale },
   { to: '/inventory/inwards', label: 'Purchase', feature: 'inward', icon: ClipboardList },
   { to: '/inventory/old-gold', label: 'Old Gold Purchase', feature: 'inward', icon: Coins },
+  { to: '/inventory/old-gold-lot', label: 'Old Gold Lot', feature: 'inward', icon: Boxes },
   { to: '/inventory/suppliers', label: 'Suppliers', feature: 'inward', icon: Truck },
 ]
 

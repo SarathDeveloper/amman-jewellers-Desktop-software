@@ -15,6 +15,7 @@ import type {
   DuesLedger,
   HistoricalInvoiceInput,
   Invoice,
+  InvoiceCancelInput,
   InvoiceInput,
   InvoiceListQuery,
   InvoiceListStats,
@@ -32,6 +33,8 @@ import type {
   PledgeForfeitInput,
   PledgeInput,
   PledgeListQuery,
+  PledgePayment,
+  PledgePayoff,
   PledgeRedeemInput,
   PledgeTopup,
   PledgeTopupInput,
@@ -58,6 +61,7 @@ import type {
   GoldSavingAccountDetail,
   GoldSavingAccountInput,
   GoldSavingAuditLog,
+  GoldSavingCancelInput,
   GoldSavingDashboard,
   GoldSavingLedgerEntry,
   GoldSavingPassbook,
@@ -65,6 +69,7 @@ import type {
   GoldSavingPaymentInput,
   GoldSavingRedemption,
   GoldSavingRedemptionInput,
+  GoldSavingRefund,
   GoldSavingReportId,
   GoldSavingReportResult,
   GoldSavingScheme,
@@ -168,6 +173,7 @@ export interface JewelTrackerProApi {
   recordHistoricalInvoice: (input: HistoricalInvoiceInput) => Promise<Invoice>
   updateInvoice: (input: InvoiceUpdateInput) => Promise<Invoice>
   finalizeInvoice: (id: number) => Promise<Invoice>
+  cancelInvoice: (id: number, input: InvoiceCancelInput) => Promise<Invoice>
   recordInvoicePayment: (id: number, input: InvoicePaymentInput) => Promise<Invoice>
   deleteInvoice: (id: number) => Promise<void>
   getTaxReport: () => Promise<TaxReportRow[]>
@@ -183,6 +189,8 @@ export interface JewelTrackerProApi {
   forfeitPledge: (input: PledgeForfeitInput) => Promise<Pledge>
   listPledgeTopups: (id: number) => Promise<PledgeTopup[]>
   addPledgeTopup: (input: PledgeTopupInput) => Promise<Pledge>
+  listPledgePayments: (id: number) => Promise<PledgePayment[]>
+  getPledgePayoff: (id: number, date?: string) => Promise<PledgePayoff>
 
   getShopSettings: () => Promise<ShopSettings>
   getRecordCounts: () => Promise<RecordCounts>
@@ -213,10 +221,12 @@ export interface JewelTrackerProApi {
   listGsAccounts: (search?: string) => Promise<GoldSavingAccount[]>
   getGsAccount: (id: number) => Promise<GoldSavingAccountDetail>
   createGsAccount: (input: GoldSavingAccountInput) => Promise<GoldSavingAccountDetail>
-  cancelGsAccount: (id: number, reason: string) => Promise<GoldSavingAccountDetail>
+  cancelGsAccount: (id: number, input: GoldSavingCancelInput) => Promise<GoldSavingAccountDetail>
+  getGsRefund: (id: number) => Promise<GoldSavingRefund>
   collectGsPayment: (input: GoldSavingPaymentInput) => Promise<GoldSavingPayment>
   getGsPayment: (id: number) => Promise<GoldSavingPayment>
   reverseGsPayment: (id: number, reason: string) => Promise<GoldSavingPayment>
+  waiveGsInstallment: (installmentId: number, reason: string) => Promise<GoldSavingAccountDetail>
   getGsLedger: (accountId: number, query?: { from?: string; to?: string }) => Promise<GoldSavingLedgerEntry[]>
   getGsPassbook: (accountId: number) => Promise<GoldSavingPassbook>
   getGsAudit: (accountId: number) => Promise<GoldSavingAuditLog[]>

@@ -389,15 +389,19 @@ describe('gold savings schemes', () => {
     expect(aging.body.columns).toEqual([
       'Account',
       'Customer',
+      'Mobile',
       'Scheme',
       'Installment',
       'Due',
       'Days overdue',
       'Amount',
+      'Overdue count',
       'Bucket',
     ])
     for (const row of aging.body.rows as Array<Record<string, string | number>>) {
       expect(row['Days overdue']).toBeGreaterThanOrEqual(1)
+      expect(row['Overdue count']).toBeGreaterThanOrEqual(1)
+      expect(row.Mobile).toBe('9876500100')
       expect(['1-7 days', '8-15 days', '16-30 days', '30+ days']).toContain(row.Bucket)
     }
   })
@@ -474,6 +478,8 @@ describe('gold savings schemes', () => {
 
     it('record 3: rejects late collection after grace and accepts payment on the last grace day', async () => {
       await seedRate()
+      await seedRate('2026-08-01')
+      await seedRate('2026-09-04')
       const customer = await seedCustomer('Late Payer', '9876501103')
       const scheme = await createScheme({
         name: 'No Late Payments',
@@ -1051,6 +1057,916 @@ describe('gold savings schemes', () => {
       expect(staffLogin.status).toBe(200)
       const denied = await getTestAgent().get('/api/gold-savings/dashboard')
       expect(denied.status).toBe(403)
+    })
+  })
+
+  describe('phase 0 hardening', () => {
+    it('record 11: re-collects a reversed payment with a fresh key and rejects the reused key', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Reverse Recollect', '9876501118')
+      const scheme = await createScheme({ name: 'Reverse Recollect', durationMonths: 2 })
+      const enrolled = await enrollAndPay(customer.id, scheme.id, TODAY, { skipInitialPayment: true })
+      expect(enrolled.status).toBe(201)
+      const first = installmentOf(enrolled.body, 1)
+
+      const collected = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: first.id,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+        idempotencyKey: 'rr-key-1',
+      })
+      expect(collected.status).toBe(201)
+
+      const reversed = await getTestAgent()
+        .post(`/api/gold-savings/payments/${collected.body.id}/reverse`)
+        .send({ reason: 'Wrong payment mode' })
+      expect(reversed.status).toBe(200)
+
+      const retry = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: first.id,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+        idempotencyKey: 'rr-key-1',
+      })
+      expect(retry.status).toBe(400)
+      expect(retry.body.error).toMatch(/reversed/)
+
+      const fresh = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: first.id,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'card',
+        idempotencyKey: 'rr-key-2',
+      })
+      expect(fresh.status).toBe(201)
+      expect(fresh.body.id).not.toBe(collected.body.id)
+
+      const detail = await getTestAgent().get(`/api/gold-savings/accounts/${enrolled.body.account.id}`)
+      const posted = (detail.body.payments as PaymentRow[]).filter((row) => row.status === 'posted')
+      expect(posted).toHaveLength(1)
+      expect((detail.body.installments as Installment[]).find((row) => row.installmentNo === 1)?.status).toBe('paid')
+    })
+
+    it('record 12: blocks reversing a payment after redemption', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Reverse After Redeem', '9876501119')
+      const scheme = await createScheme({ name: 'Reverse After Redeem', durationMonths: 2 })
+      const enrolled = await enrollAndPay(customer.id, scheme.id)
+      expect(enrolled.status).toBe(201)
+      const second = installmentOf(enrolled.body, 2)
+      const paySecond = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: second.id,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+      expect(paySecond.status).toBe(201)
+
+      const redeemed = await getTestAgent().post('/api/gold-savings/redemptions').send({
+        accountId: enrolled.body.account.id,
+        redemptionDate: TODAY,
+        redemptionKind: 'gold',
+      })
+      expect(redeemed.status).toBe(201)
+      expect(redeemed.body.closesAccount).toBe(true)
+
+      const reversed = await getTestAgent()
+        .post(`/api/gold-savings/payments/${paySecond.body.id}/reverse`)
+        .send({ reason: 'Too late' })
+      expect(reversed.status).toBe(400)
+      expect(reversed.body.error).toMatch(/redeemed|closed scheme account/)
+
+      const after = await getTestAgent().get(`/api/gold-savings/accounts/${enrolled.body.account.id}`)
+      expect(after.body.account.goldAccumulated).toBe(0)
+      expect(after.body.account.status).toBe('redeemed')
+    })
+
+    it('record 13: credits bonus only once across partial redemptions', async () => {
+      await seedRate()
+
+      const additionalCustomer = await seedCustomer('Bonus Once Additional', '9876501120')
+      const additionalScheme = await createScheme({
+        name: 'Bonus Once Additional',
+        durationMonths: 2,
+        bonusType: 'additional_gold',
+        bonusValue: 0.5,
+        allowPartialRedemption: true,
+        allowEarlyClosure: true,
+      })
+      const additional = await enrollAndPay(additionalCustomer.id, additionalScheme.id)
+      const additionalSecond = installmentOf(additional.body, 2)
+      await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: additional.body.account.id,
+        installmentId: additionalSecond.id,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+
+      const additionalFirstRedeem = await getTestAgent().post('/api/gold-savings/redemptions').send({
+        accountId: additional.body.account.id,
+        redemptionDate: TODAY,
+        redemptionKind: 'gold',
+        goldWeight: 0.2,
+      })
+      expect(additionalFirstRedeem.status).toBe(201)
+      expect(additionalFirstRedeem.body.bonusGoldWeight).toBe(0.5)
+      expect(additionalFirstRedeem.body.closesAccount).toBe(false)
+
+      const additionalRemainder = await getTestAgent().post('/api/gold-savings/redemptions').send({
+        accountId: additional.body.account.id,
+        redemptionDate: TODAY,
+        redemptionKind: 'gold',
+      })
+      expect(additionalRemainder.status).toBe(201)
+      expect(additionalRemainder.body.bonusGoldWeight).toBe(0)
+      expect(additionalRemainder.body.closesAccount).toBe(true)
+
+      const percentCustomer = await seedCustomer('Bonus Once Percent', '9876501121')
+      const percentScheme = await createScheme({
+        name: 'Bonus Once Percent',
+        durationMonths: 2,
+        bonusType: 'percentage',
+        bonusValue: 10,
+        allowPartialRedemption: true,
+        allowEarlyClosure: true,
+      })
+      const percent = await enrollAndPay(percentCustomer.id, percentScheme.id)
+      const percentSecond = installmentOf(percent.body, 2)
+      await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: percent.body.account.id,
+        installmentId: percentSecond.id,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+
+      const percentFirstRedeem = await getTestAgent().post('/api/gold-savings/redemptions').send({
+        accountId: percent.body.account.id,
+        redemptionDate: TODAY,
+        redemptionKind: 'gold',
+        goldWeight: 0.2,
+      })
+      expect(percentFirstRedeem.status).toBe(201)
+      expect(percentFirstRedeem.body.bonusGoldWeight).toBe(0.04)
+
+      const percentRemainder = await getTestAgent().post('/api/gold-savings/redemptions').send({
+        accountId: percent.body.account.id,
+        redemptionDate: TODAY,
+        redemptionKind: 'gold',
+      })
+      expect(percentRemainder.status).toBe(201)
+      expect(percentRemainder.body.bonusGoldWeight).toBe(0)
+    })
+
+    it('record 14: denies scheme create and update to staff', async () => {
+      await seedRate()
+      const scheme = await createScheme({ name: 'Admin Owned Scheme', durationMonths: 2 })
+
+      const staff = await getTestAgent().post('/api/users').send({
+        username: 'gs-scheme-staff',
+        password: 'staff123',
+        role: 'staff',
+        features: ['gold_savings'],
+      })
+      expect(staff.status).toBe(201)
+      await getTestAgent().post('/api/auth/logout')
+      const login = await getTestAgent().post('/api/auth/login').send({
+        username: 'gs-scheme-staff',
+        password: 'staff123',
+      })
+      expect(login.status).toBe(200)
+
+      const created = await getTestAgent().post('/api/gold-savings/schemes').send({
+        name: 'Staff Created Scheme',
+        monthlyAmount: 2000,
+        durationMonths: 11,
+      })
+      expect(created.status).toBe(403)
+
+      const updated = await getTestAgent()
+        .put(`/api/gold-savings/schemes/${scheme.id}`)
+        .send(schemeToInput(scheme, { name: 'Staff Edited Scheme' }))
+      expect(updated.status).toBe(403)
+
+      const listed = await getTestAgent().get('/api/gold-savings/schemes')
+      expect(listed.status).toBe(200)
+    })
+  })
+
+  describe('phase 1: scheme credit on a sale bill', () => {
+    async function paySecondInstallment(accountId: number, installmentId: number) {
+      const paid = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId,
+        installmentId,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+      expect(paid.status).toBe(201)
+    }
+
+    async function createInvoiceWithScheme(
+      customerId: number,
+      accountId: number | null,
+      netWeight = 2,
+    ) {
+      return getTestAgent().post('/api/invoices').send({
+        customerId,
+        invoiceDate: TODAY,
+        tax: 0,
+        autoTax: false,
+        items: [{ qty: 1, rate: 5000, metalRate: 5000, netWeight, description: 'Bill line' }],
+        goldSavingLinks: accountId ? [{ accountId }] : undefined,
+      })
+    }
+
+    async function maturedAccount(customerId: number, schemeId: number) {
+      const enrolled = await enrollAndPay(customerId, schemeId)
+      expect(enrolled.status).toBe(201)
+      await paySecondInstallment(enrolled.body.account.id, installmentOf(enrolled.body, 2).id)
+      return enrolled.body.account.id as number
+    }
+
+    it('record 15: applies a scheme credit and creates one redemption at finalize', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Bill Credit', '9876501122')
+      const scheme = await createScheme({ name: 'Bill Credit Scheme', durationMonths: 2 })
+      const accountId = await maturedAccount(customer.id, scheme.id)
+
+      const draft = await createInvoiceWithScheme(customer.id, accountId, 2)
+      expect(draft.status).toBe(201)
+      expect(draft.body.subtotal).toBe(10000)
+      expect(draft.body.amountPayable).toBe(6000)
+      expect(draft.body.goldSavingLinks).toHaveLength(1)
+      expect(draft.body.goldSavingLinks[0].amountApplied).toBe(4000)
+      expect(draft.body.goldSavingLinks[0].goldWeight).toBe(0.4)
+      expect(draft.body.goldSavingLinks[0].redemptionId).toBeNull()
+
+      const beforeFinal = await getTestAgent().get(`/api/gold-savings/accounts/${accountId}`)
+      expect(beforeFinal.body.redemptions).toHaveLength(0)
+
+      const finalized = await getTestAgent().post(`/api/invoices/${draft.body.id}/finalize`)
+      expect(finalized.status).toBe(200)
+      expect(finalized.body.status).toBe('final')
+      expect(finalized.body.goldSavingLinks[0].redemptionId).toBeTruthy()
+
+      const detail = await getTestAgent().get(`/api/gold-savings/accounts/${accountId}`)
+      expect(detail.body.account.status).toBe('redeemed')
+      expect(detail.body.redemptions).toHaveLength(1)
+      expect(detail.body.redemptions[0].redemptionKind).toBe('invoice')
+      expect(detail.body.redemptions[0].invoiceId).toBe(draft.body.id)
+      expect(detail.body.account.goldAccumulated).toBe(0)
+      expect(stockMovementCount()).toBe(0)
+
+      // A bill that redeemed a scheme must never be cancelled, or the redemption
+      // would be silently orphaned.
+      const blocked = await getTestAgent()
+        .post(`/api/invoices/${draft.body.id}/cancel`)
+        .send({ reason: 'Try to undo the redemption' })
+      expect(blocked.status).toBe(400)
+      expect(blocked.body.error).toMatch(/gold savings scheme/i)
+      const stillFinal = await getTestAgent().get(`/api/invoices/${draft.body.id}`)
+      expect(stillFinal.body.status).toBe('final')
+    })
+
+    it('record 16: deleting a draft leaves no redemption or link behind', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Draft Delete Credit', '9876501123')
+      const scheme = await createScheme({ name: 'Draft Delete Scheme', durationMonths: 2 })
+      const accountId = await maturedAccount(customer.id, scheme.id)
+
+      const draft = await createInvoiceWithScheme(customer.id, accountId, 2)
+      expect(draft.status).toBe(201)
+
+      const deleted = await getTestAgent().delete(`/api/invoices/${draft.body.id}`)
+      expect(deleted.status).toBe(204)
+
+      const detail = await getTestAgent().get(`/api/gold-savings/accounts/${accountId}`)
+      expect(detail.body.redemptions).toHaveLength(0)
+      expect(detail.body.account.status).toBe('matured')
+      const linkCount = (
+        getDatabase()
+          .prepare('SELECT COUNT(*) AS count FROM invoice_gold_saving_links WHERE account_id = ?')
+          .get(accountId) as { count: number }
+      ).count
+      expect(linkCount).toBe(0)
+    })
+
+    it('record 17: rejects another customer account and a doubly linked account', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Link Guard', '9876501124')
+      const scheme = await createScheme({ name: 'Link Guard Scheme', durationMonths: 2 })
+      const accountId = await maturedAccount(customer.id, scheme.id)
+
+      const otherCustomer = await seedCustomer('Other Holder', '9876501125')
+      const otherEnrolled = await enrollAndPay(otherCustomer.id, scheme.id)
+      expect(otherEnrolled.status).toBe(201)
+
+      const foreign = await createInvoiceWithScheme(customer.id, otherEnrolled.body.account.id, 2)
+      expect(foreign.status).toBe(400)
+      expect(foreign.body.error).toMatch(/does not belong/)
+
+      const first = await createInvoiceWithScheme(customer.id, accountId, 2)
+      expect(first.status).toBe(201)
+
+      const second = await createInvoiceWithScheme(customer.id, accountId, 2)
+      expect(second.status).toBe(400)
+      expect(second.body.error).toMatch(/already applied/)
+    })
+
+    it('record 18: caps the credit at the bill total when partial redemption is allowed', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Partial Cap', '9876501126')
+      const scheme = await createScheme({
+        name: 'Partial Cap Scheme',
+        durationMonths: 2,
+        allowPartialRedemption: true,
+        allowEarlyClosure: true,
+      })
+      const accountId = await maturedAccount(customer.id, scheme.id)
+
+      // Line total 2000, scheme credit 4000: capped to 0.2 g and a zero payable.
+      const draft = await createInvoiceWithScheme(customer.id, accountId, 0.4)
+      expect(draft.status).toBe(201)
+      expect(draft.body.subtotal).toBe(2000)
+      expect(draft.body.amountPayable).toBe(0)
+      expect(draft.body.goldSavingLinks[0].goldWeight).toBe(0.2)
+      expect(draft.body.goldSavingLinks[0].amountApplied).toBe(2000)
+    })
+  })
+
+  describe('phase 2: cancellation with a refund', () => {
+    async function payInstallment(accountId: number, installmentId: number) {
+      const paid = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId,
+        installmentId,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+      expect(paid.status).toBe(201)
+    }
+
+    it('record 19: percentage deduction refunds the balance and zeroes the ledger', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Refund Percentage', '9876501130')
+      const scheme = await createScheme({
+        name: 'Refund Percentage Scheme',
+        durationMonths: 3,
+        cancelDeductionType: 'percentage',
+        cancelDeductionValue: 10,
+      })
+      const enrolled = await enrollAndPay(customer.id, scheme.id)
+      expect(enrolled.status).toBe(201)
+      await payInstallment(enrolled.body.account.id, installmentOf(enrolled.body, 2).id)
+
+      const cancelled = await getTestAgent()
+        .post(`/api/gold-savings/accounts/${enrolled.body.account.id}/cancel`)
+        .send({
+          reason: 'Customer relocated',
+          refundDate: TODAY,
+          paymentMode: 'bank_transfer',
+          transactionRef: 'UTR-77',
+        })
+      expect(cancelled.status).toBe(200)
+      expect(cancelled.body.account.status).toBe('cancelled')
+      expect(cancelled.body.refund).toBeTruthy()
+      expect(cancelled.body.refund.totalPaid).toBe(4000)
+      expect(cancelled.body.refund.deduction).toBe(400)
+      expect(cancelled.body.refund.refundAmount).toBe(3600)
+      expect(cancelled.body.refund.goldForfeited).toBeCloseTo(0.4, 5)
+      expect(cancelled.body.refund.paymentMode).toBe('bank_transfer')
+      expect(cancelled.body.refund.transactionRef).toBe('UTR-77')
+      expect(cancelled.body.refund.voucherNo).toMatch(/^GSRF-/)
+      expect(cancelled.body.account.goldAccumulated).toBe(0)
+
+      const refundEntry = cancelled.body.ledger[cancelled.body.ledger.length - 1]
+      expect(refundEntry.entryType).toBe('refund')
+      expect(refundEntry.cumulativeGold).toBe(0)
+
+      const voucher = await getTestAgent().get(`/api/gold-savings/refunds/${cancelled.body.refund.id}`)
+      expect(voucher.status).toBe(200)
+      expect(voucher.body.voucherNo).toBe(cancelled.body.refund.voucherNo)
+      expect(voucher.body.customerName).toBe('Refund Percentage')
+      expect(voucher.body.refundAmount).toBe(3600)
+      expect(stockMovementCount()).toBe(0)
+    })
+
+    it('record 20: applies a fixed deduction and lets an admin override it', async () => {
+      await seedRate()
+      const fixedScheme = await createScheme({
+        name: 'Refund Fixed Scheme',
+        durationMonths: 2,
+        cancelDeductionType: 'fixed',
+        cancelDeductionValue: 500,
+      })
+
+      const fixedCustomer = await seedCustomer('Refund Fixed', '9876501131')
+      const fixedEnroll = await enrollAndPay(fixedCustomer.id, fixedScheme.id)
+      const fixedCancel = await getTestAgent()
+        .post(`/api/gold-savings/accounts/${fixedEnroll.body.account.id}/cancel`)
+        .send({ reason: 'Fixed deduction' })
+      expect(fixedCancel.status).toBe(200)
+      expect(fixedCancel.body.refund.deduction).toBe(500)
+      expect(fixedCancel.body.refund.refundAmount).toBe(1500)
+
+      const overrideCustomer = await seedCustomer('Refund Override', '9876501132')
+      const overrideEnroll = await enrollAndPay(overrideCustomer.id, fixedScheme.id)
+      const overrideCancel = await getTestAgent()
+        .post(`/api/gold-savings/accounts/${overrideEnroll.body.account.id}/cancel`)
+        .send({ reason: 'Admin override', deductionOverride: 1000 })
+      expect(overrideCancel.status).toBe(200)
+      expect(overrideCancel.body.refund.deduction).toBe(1000)
+      expect(overrideCancel.body.refund.refundAmount).toBe(1000)
+    })
+
+    it('record 21: denies cancellation and a deduction override to staff', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Refund Staff', '9876501133')
+      const scheme = await createScheme({
+        name: 'Refund Staff Scheme',
+        durationMonths: 2,
+        cancelDeductionType: 'percentage',
+        cancelDeductionValue: 5,
+      })
+      const enrolled = await enrollAndPay(customer.id, scheme.id)
+
+      const staff = await getTestAgent().post('/api/users').send({
+        username: 'gs-refund-staff',
+        password: 'staff123',
+        role: 'staff',
+        features: ['gold_savings'],
+      })
+      expect(staff.status).toBe(201)
+      await getTestAgent().post('/api/auth/logout')
+      const login = await getTestAgent().post('/api/auth/login').send({
+        username: 'gs-refund-staff',
+        password: 'staff123',
+      })
+      expect(login.status).toBe(200)
+
+      const denied = await getTestAgent()
+        .post(`/api/gold-savings/accounts/${enrolled.body.account.id}/cancel`)
+        .send({ reason: 'Staff attempt' })
+      expect(denied.status).toBe(403)
+
+      const deniedOverride = await getTestAgent()
+        .post(`/api/gold-savings/accounts/${enrolled.body.account.id}/cancel`)
+        .send({ reason: 'Staff override', deductionOverride: 0 })
+      expect(deniedOverride.status).toBe(403)
+    })
+
+    it('record 22: blocks cancellation once a redemption exists', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Refund Blocked', '9876501134')
+      const scheme = await createScheme({
+        name: 'Refund Blocked Scheme',
+        durationMonths: 2,
+        allowPartialRedemption: true,
+        allowEarlyClosure: true,
+      })
+      const enrolled = await enrollAndPay(customer.id, scheme.id)
+      expect(enrolled.status).toBe(201)
+      await payInstallment(enrolled.body.account.id, installmentOf(enrolled.body, 2).id)
+
+      const redeemed = await getTestAgent().post('/api/gold-savings/redemptions').send({
+        accountId: enrolled.body.account.id,
+        redemptionDate: TODAY,
+        redemptionKind: 'gold',
+        goldWeight: 0.1,
+      })
+      expect(redeemed.status).toBe(201)
+
+      const cancelled = await getTestAgent()
+        .post(`/api/gold-savings/accounts/${enrolled.body.account.id}/cancel`)
+        .send({ reason: 'Cannot cancel after redemption' })
+      expect(cancelled.status).toBe(400)
+      expect(cancelled.body.error).toMatch(/not allowed after a redemption/)
+    })
+  })
+
+  describe('phase 3: waive installments and late-fee rules', () => {
+    it('record 23: computes fixed and per-day late fees across the grace boundary', async () => {
+      await seedRate()
+      await seedRate('2026-09-11')
+      const fixedCustomer = await seedCustomer('Late Fee Fixed', '9876501140')
+      const fixedScheme = await createScheme({
+        name: 'Late Fee Fixed Scheme',
+        durationMonths: 2,
+        gracePeriodDays: 5,
+        lateFeeType: 'fixed',
+        lateFeeValue: 250,
+      })
+      const fixedEnroll = await enrollAndPay(fixedCustomer.id, fixedScheme.id, TODAY, {
+        firstInstallmentDate: '2026-09-01',
+        paymentDate: '2026-09-30',
+      })
+      expect(fixedEnroll.status).toBe(201)
+      expect(fixedEnroll.body.payments[0].dueDate).toBe('2026-09-01')
+      expect(fixedEnroll.body.payments[0].lateFee).toBe(250)
+      expect(fixedEnroll.body.payments[0].totalReceived).toBe(2250)
+
+      const perDayCustomer = await seedCustomer('Late Fee Per Day', '9876501141')
+      const perDayScheme = await createScheme({
+        name: 'Late Fee Per Day Scheme',
+        durationMonths: 2,
+        gracePeriodDays: 0,
+        lateFeeType: 'per_day',
+        lateFeeValue: 10,
+      })
+      const perDayEnroll = await enrollAndPay(perDayCustomer.id, perDayScheme.id, TODAY, {
+        firstInstallmentDate: '2026-09-01',
+        skipInitialPayment: true,
+      })
+      const perDayPay = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: perDayEnroll.body.account.id,
+        installmentId: installmentOf(perDayEnroll.body, 1).id,
+        paymentDate: '2026-09-11',
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+      expect(perDayPay.status).toBe(201)
+      expect(perDayPay.body.lateFee).toBe(100)
+      expect(perDayPay.body.totalReceived).toBe(2100)
+    })
+
+    it('record 24: denies a staff late-fee reduction but lets an admin waive it', async () => {
+      await seedRate()
+      await seedRate('2026-09-11')
+      const staffCustomer = await seedCustomer('Late Fee Staff', '9876501142')
+      const scheme = await createScheme({
+        name: 'Late Fee Staff Scheme',
+        durationMonths: 2,
+        gracePeriodDays: 0,
+        lateFeeType: 'per_day',
+        lateFeeValue: 10,
+      })
+      const staffEnroll = await enrollAndPay(staffCustomer.id, scheme.id, TODAY, {
+        firstInstallmentDate: '2026-09-01',
+        skipInitialPayment: true,
+      })
+
+      const staff = await getTestAgent().post('/api/users').send({
+        username: 'gs-late-staff',
+        password: 'staff123',
+        role: 'staff',
+        features: ['gold_savings'],
+      })
+      expect(staff.status).toBe(201)
+      await getTestAgent().post('/api/auth/logout')
+      const login = await getTestAgent().post('/api/auth/login').send({
+        username: 'gs-late-staff',
+        password: 'staff123',
+      })
+      expect(login.status).toBe(200)
+
+      const denied = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: staffEnroll.body.account.id,
+        installmentId: installmentOf(staffEnroll.body, 1).id,
+        paymentDate: '2026-09-11',
+        amount: 2000,
+        lateFee: 0,
+        paymentMode: 'cash',
+      })
+      expect(denied.status).toBe(400)
+      expect(denied.body.error).toMatch(/Only administrators can reduce the late fee/)
+
+      await getTestAgent().post('/api/auth/logout')
+      await loginAsAdmin()
+
+      const adminCustomer = await seedCustomer('Late Fee Admin', '9876501143')
+      const adminEnroll = await enrollAndPay(adminCustomer.id, scheme.id, TODAY, {
+        firstInstallmentDate: '2026-09-01',
+        skipInitialPayment: true,
+      })
+      const waived = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: adminEnroll.body.account.id,
+        installmentId: installmentOf(adminEnroll.body, 1).id,
+        paymentDate: '2026-09-11',
+        amount: 2000,
+        lateFee: 0,
+        paymentMode: 'cash',
+      })
+      expect(waived.status).toBe(201)
+      expect(waived.body.lateFee).toBe(0)
+    })
+
+    it('record 25: a waived installment matures the account without a bonus', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Waive Maturity', '9876501144')
+      const scheme = await createScheme({
+        name: 'Waive Maturity Scheme',
+        durationMonths: 2,
+        bonusType: 'additional_gold',
+        bonusValue: 1,
+      })
+      const enrolled = await enrollAndPay(customer.id, scheme.id, TODAY, { skipInitialPayment: true })
+      const first = installmentOf(enrolled.body, 1)
+      const second = installmentOf(enrolled.body, 2)
+
+      const paid = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: first.id,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+      expect(paid.status).toBe(201)
+
+      const waived = await getTestAgent()
+        .post(`/api/gold-savings/installments/${second.id}/waive`)
+        .send({ reason: 'Goodwill waiver' })
+      expect(waived.status).toBe(200)
+      expect(waived.body.account.status).toBe('matured')
+      expect(
+        waived.body.installments.find((item: Installment) => item.installmentNo === 2).status,
+      ).toBe('waived')
+      expect(waived.body.audit.some((entry: { action: string }) => entry.action === 'waive')).toBe(true)
+
+      const redeemed = await getTestAgent().post('/api/gold-savings/redemptions').send({
+        accountId: enrolled.body.account.id,
+        redemptionDate: TODAY,
+        redemptionKind: 'gold',
+      })
+      expect(redeemed.status).toBe(201)
+      expect(redeemed.body.bonusGoldWeight).toBe(0)
+    })
+
+    it('record 26: denies the waive action to staff', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Waive Staff', '9876501145')
+      const scheme = await createScheme({ name: 'Waive Staff Scheme', durationMonths: 2 })
+      const enrolled = await enrollAndPay(customer.id, scheme.id, TODAY, { skipInitialPayment: true })
+      const second = installmentOf(enrolled.body, 2)
+
+      const staff = await getTestAgent().post('/api/users').send({
+        username: 'gs-waive-staff',
+        password: 'staff123',
+        role: 'staff',
+        features: ['gold_savings'],
+      })
+      expect(staff.status).toBe(201)
+      await getTestAgent().post('/api/auth/logout')
+      const login = await getTestAgent().post('/api/auth/login').send({
+        username: 'gs-waive-staff',
+        password: 'staff123',
+      })
+      expect(login.status).toBe(200)
+
+      const denied = await getTestAgent()
+        .post(`/api/gold-savings/installments/${second.id}/waive`)
+        .send({ reason: 'Staff attempt' })
+      expect(denied.status).toBe(403)
+    })
+  })
+
+  describe('phase 4: rate safety', () => {
+    it("record 27: a backdated payment uses that date's rate", async () => {
+      await seedRate('2026-09-15', 8000)
+      await seedRate()
+      const customer = await seedCustomer('Rate Backdate', '9876501146')
+      const scheme = await createScheme({ name: 'Rate Backdate Scheme', durationMonths: 2 })
+      const enrolled = await enrollAndPay(customer.id, scheme.id, TODAY, {
+        firstInstallmentDate: '2026-09-15',
+        skipInitialPayment: true,
+      })
+      expect(enrolled.status).toBe(201)
+
+      const rate = await getTestAgent().get('/api/gold-savings/rate?date=2026-09-15&purity=22K')
+      expect(rate.status).toBe(200)
+      expect(rate.body.rate).toBe(8000)
+      expect(rate.body.effectiveDate).toBe('2026-09-15')
+      expect(rate.body.matchesDate).toBe(true)
+
+      const paid = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: installmentOf(enrolled.body, 1).id,
+        paymentDate: '2026-09-15',
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+      expect(paid.status).toBe(201)
+      expect(paid.body.goldRate).toBe(8000)
+      expect(paid.body.goldWeight).toBe(0.25)
+    })
+
+    it('record 28: blocks a stale rate for staff and lets an admin confirm it', async () => {
+      await seedRate('2026-09-01', 9000)
+      await seedRate()
+      const customer = await seedCustomer('Rate Stale', '9876501147')
+      const scheme = await createScheme({ name: 'Rate Stale Scheme', durationMonths: 2 })
+      const enrolled = await enrollAndPay(customer.id, scheme.id, TODAY, {
+        firstInstallmentDate: '2026-09-01',
+        skipInitialPayment: true,
+      })
+      expect(enrolled.status).toBe(201)
+      const first = installmentOf(enrolled.body, 1)
+
+      const staff = await getTestAgent().post('/api/users').send({
+        username: 'gs-rate-staff',
+        password: 'staff123',
+        role: 'staff',
+        features: ['gold_savings'],
+      })
+      expect(staff.status).toBe(201)
+      await getTestAgent().post('/api/auth/logout')
+      const login = await getTestAgent().post('/api/auth/login').send({
+        username: 'gs-rate-staff',
+        password: 'staff123',
+      })
+      expect(login.status).toBe(200)
+
+      const blocked = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: first.id,
+        paymentDate: '2026-09-11',
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+      expect(blocked.status).toBe(400)
+      expect(blocked.body.error).toMatch(/ask an administrator to confirm it/)
+
+      await getTestAgent().post('/api/auth/logout')
+      await loginAsAdmin()
+
+      const adminBlocked = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: first.id,
+        paymentDate: '2026-09-11',
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+      expect(adminBlocked.status).toBe(400)
+      expect(adminBlocked.body.error).toMatch(/Confirm the rate date/)
+
+      const adminAccepted = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: first.id,
+        paymentDate: '2026-09-11',
+        amount: 2000,
+        paymentMode: 'cash',
+        acceptRateDate: true,
+      })
+      expect(adminAccepted.status).toBe(201)
+      expect(adminAccepted.body.goldRate).toBe(9000)
+    })
+  })
+
+  describe('phase 5: payment reminders and call list', () => {
+    it('record 29: the overdue-aging report carries the mobile and the overdue count', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Call List Ravi', '9876501149')
+      const scheme = await createScheme({ name: 'Call List Scheme', durationMonths: 6 })
+      const enrolled = await enrollAndPay(customer.id, scheme.id, TODAY)
+      expect(enrolled.status).toBe(201)
+      const accountNo = enrolled.body.account.accountNo as string
+
+      // Enroll today pays installment 1. Backdate installments 2 and 3 so the
+      // account has two overdue dues, independent of the wall clock.
+      const unpaid = (enrolled.body.installments as Installment[]).filter(
+        (row) => row.installmentNo === 2 || row.installmentNo === 3,
+      )
+      expect(unpaid).toHaveLength(2)
+      const db = getDatabase()
+      for (const row of unpaid) {
+        db.prepare('UPDATE gold_saving_installments SET due_date = ? WHERE id = ?').run('2020-01-01', row.id)
+      }
+
+      const report = await getTestAgent().get('/api/gold-savings/reports/overdue-aging')
+      expect(report.status).toBe(200)
+      expect(report.body.columns).toContain('Mobile')
+      expect(report.body.columns).toContain('Overdue count')
+
+      const row = (report.body.rows as Array<Record<string, string | number>>).find(
+        (entry) => entry.Account === accountNo,
+      )
+      expect(row).toBeTruthy()
+      expect(row?.Mobile).toBe('9876501149')
+      expect(Number(row?.['Overdue count'])).toBe(2)
+      expect(row?.Bucket).toBe('30+ days')
+
+      // The same report powers call-list search by mobile.
+      const byMobile = await getTestAgent()
+        .get('/api/gold-savings/reports/overdue-aging')
+        .query({ q: '9876501149' })
+      expect(byMobile.status).toBe(200)
+      expect(
+        (byMobile.body.rows as Array<Record<string, string | number>>).some((entry) => entry.Account === accountNo),
+      ).toBe(true)
+    })
+  })
+
+  describe('phase 6: counter collection speed', () => {
+    it('record 30: collecting several installments shares one batch and one receipt', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Batch Collector', '9876501150')
+      const scheme = await createScheme({ name: 'Batch Scheme', durationMonths: 6 })
+      const enrolled = await enrollAndPay(customer.id, scheme.id, TODAY, { skipInitialPayment: true })
+      expect(enrolled.status).toBe(201)
+      const accountId = enrolled.body.account.id as number
+
+      // Make the first three installments overdue, then collect all three.
+      const db = getDatabase()
+      const firstThree = (enrolled.body.installments as Installment[]).filter(
+        (row) => row.installmentNo <= 3,
+      )
+      for (const row of firstThree) {
+        db.prepare('UPDATE gold_saving_installments SET due_date = ? WHERE id = ?').run('2020-01-01', row.id)
+      }
+
+      const paid = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId,
+        installmentId: firstThree[0].id,
+        installmentCount: 3,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+        idempotencyKey: 'batch-collect-1',
+      })
+      expect(paid.status).toBe(201)
+      expect(paid.body.batchNo).toMatch(/^GSB-\d{4}-\d{4}$/)
+      const batch = paid.body.batchPayments as Array<{ id: number; installmentNo: number }>
+      expect(batch).toHaveLength(3)
+      expect(batch.map((row) => row.installmentNo)).toEqual([1, 2, 3])
+
+      // Three posted rows, one shared batch number.
+      const rows = db
+        .prepare(
+          `SELECT id, installment_id, batch_no, status FROM gold_saving_payments
+           WHERE account_id = ? ORDER BY id`,
+        )
+        .all(accountId) as Array<{ id: number; batch_no: string; status: string }>
+      expect(rows).toHaveLength(3)
+      expect(rows.every((row) => row.status === 'posted')).toBe(true)
+      expect(new Set(rows.map((row) => row.batch_no))).toEqual(new Set([paid.body.batchNo]))
+
+      const paidStatuses = db
+        .prepare(
+          `SELECT installment_no, status FROM gold_saving_installments
+           WHERE account_id = ? ORDER BY installment_no`,
+        )
+        .all(accountId) as Array<{ installment_no: number; status: string }>
+      expect(paidStatuses.slice(0, 3).map((row) => row.status)).toEqual(['paid', 'paid', 'paid'])
+      expect(paidStatuses[3].status).not.toBe('paid')
+
+      // A receipt fetched by any row of the batch lists all three.
+      const middle = batch[1]
+      const fetched = await getTestAgent().get(`/api/gold-savings/payments/${middle.id}`)
+      expect(fetched.status).toBe(200)
+      expect((fetched.body.batchPayments as unknown[]).length).toBe(3)
+
+      // Reversing one row reopens only that installment.
+      const reversed = await getTestAgent()
+        .post(`/api/gold-savings/payments/${middle.id}/reverse`)
+        .send({ reason: 'E2E batch reverse' })
+      expect(reversed.status).toBe(200)
+      const afterReverse = db
+        .prepare(
+          `SELECT installment_no, status FROM gold_saving_installments
+           WHERE account_id = ? ORDER BY installment_no`,
+        )
+        .all(accountId) as Array<{ installment_no: number; status: string }>
+      expect(afterReverse[0].status).toBe('paid')
+      expect(afterReverse[1].status).toBe('due')
+      expect(afterReverse[2].status).toBe('paid')
+    })
+
+    it('record 31: refuses to collect more installments than remain', async () => {
+      await seedRate()
+      const customer = await seedCustomer('Batch Limit', '9876501151')
+      const scheme = await createScheme({ name: 'Batch Limit Scheme', durationMonths: 2 })
+      const enrolled = await enrollAndPay(customer.id, scheme.id, TODAY, { skipInitialPayment: true })
+      expect(enrolled.status).toBe(201)
+
+      const tooMany = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: installmentOf(enrolled.body, 1).id,
+        installmentCount: 5,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+      expect(tooMany.status).toBe(400)
+      expect(tooMany.body.error).toMatch(/installment\(s\) remain/)
+
+      const single = await getTestAgent().post('/api/gold-savings/payments').send({
+        accountId: enrolled.body.account.id,
+        installmentId: installmentOf(enrolled.body, 1).id,
+        installmentCount: 1,
+        paymentDate: TODAY,
+        amount: 2000,
+        paymentMode: 'cash',
+      })
+      expect(single.status).toBe(201)
+      expect(single.body.batchNo).toBe('')
+      expect(single.body.batchPayments).toBeUndefined()
     })
   })
 })

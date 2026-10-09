@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Eye, Pencil, Plus, Printer, Trash2 } from 'lucide-react'
 import type { Inward, InwardStatus } from '@shared/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { DateInput } from '../../components/DateInput'
 import { DataTable, TablePager } from '../../components/DataTable'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingState } from '../../components/LoadingState'
@@ -9,7 +10,7 @@ import { PageHeader } from '../../components/PageHeader'
 import { SearchBar } from '../../components/SearchBar'
 import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
-import { formatCurrency, formatDisplayDate, paginate, TABLE_PAGE_SIZE } from '../../lib/format'
+import { formatCurrency, formatDisplayDate, formatWeight, paginate, TABLE_PAGE_SIZE } from '../../lib/format'
 import { InwardEditorModal } from './InwardEditorModal'
 import { PrintPreviewModal } from '../print/PrintPreviewModal'
 import { printPreviewPaths } from '../print/printPreviewPaths'
@@ -21,6 +22,9 @@ export function InwardsPage() {
   const [inwards, setInwards] = useState<Inward[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const [supplierFilter, setSupplierFilter] = useState<number | ''>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -60,17 +64,45 @@ export function InwardsPage() {
     }
   }, [])
 
+  const supplierOptions = useMemo(() => {
+    const byId = new Map<number, string>()
+    for (const inward of inwards) byId.set(inward.supplierId, inward.supplierName)
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [inwards])
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
     return inwards.filter((inward) => {
       if (statusFilter !== 'all' && inward.status !== statusFilter) return false
+      if (supplierFilter !== '' && inward.supplierId !== supplierFilter) return false
+      if (fromDate && inward.inwardDate < fromDate) return false
+      if (toDate && inward.inwardDate > toDate) return false
       if (!query) return true
       return (
         inward.inwardNo.toLowerCase().includes(query) ||
         inward.supplierName.toLowerCase().includes(query)
       )
     })
-  }, [inwards, search, statusFilter])
+  }, [inwards, search, statusFilter, supplierFilter, fromDate, toDate])
+
+  const summary = useMemo(() => {
+    let total = 0
+    let weight = 0
+    let drafts = 0
+    for (const inward of filtered) {
+      if (inward.status === 'draft') {
+        drafts += 1
+        continue
+      }
+      total += inward.total
+      for (const item of inward.items) weight += item.netWeight * item.qty
+    }
+    return { total, weight, drafts, finals: filtered.length - drafts }
+  }, [filtered])
+
+  const hasExtraFilters = fromDate !== '' || toDate !== '' || supplierFilter !== ''
 
   const paged = useMemo(() => paginate(filtered, page, TABLE_PAGE_SIZE), [filtered, page])
 
@@ -136,6 +168,74 @@ export function InwardsPage() {
           </button>
         ))}
       </div>
+
+      <div className="filter-bar reports-filters purchase-filters" role="group" aria-label="Purchase filters">
+        <label>
+          From
+          <DateInput
+            className="input"
+            ariaLabel="From date"
+            value={fromDate}
+            max={toDate || undefined}
+            onChange={(value) => {
+              setFromDate(value)
+              setPage(1)
+            }}
+          />
+        </label>
+        <label>
+          To
+          <DateInput
+            className="input"
+            ariaLabel="To date"
+            value={toDate}
+            min={fromDate || undefined}
+            onChange={(value) => {
+              setToDate(value)
+              setPage(1)
+            }}
+          />
+        </label>
+        <label>
+          Supplier
+          <select
+            className="select"
+            value={supplierFilter}
+            onChange={(event) => {
+              setSupplierFilter(event.target.value ? Number(event.target.value) : '')
+              setPage(1)
+            }}
+          >
+            <option value="">All suppliers</option>
+            {supplierOptions.map((supplier) => (
+              <option key={supplier.id} value={supplier.id}>
+                {supplier.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {hasExtraFilters ? (
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => {
+              setFromDate('')
+              setToDate('')
+              setSupplierFilter('')
+              setPage(1)
+            }}
+          >
+            Clear filters
+          </button>
+        ) : null}
+      </div>
+
+      {!loading && filtered.length > 0 ? (
+        <p className="muted">
+          {summary.finals} final · {formatCurrency(summary.total)} · {formatWeight(summary.weight)}
+          {summary.drafts > 0 ? ` · ${summary.drafts} draft${summary.drafts === 1 ? '' : 's'} not in stock yet` : ''}
+        </p>
+      ) : null}
 
       {error ? <div className="error-banner">{error}</div> : null}
       {loading ? (

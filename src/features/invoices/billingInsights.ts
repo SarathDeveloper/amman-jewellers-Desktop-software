@@ -111,7 +111,7 @@ export function computeBillingDaySummary(
       summary.estimateCount += 1
     } else if (invoice.status === 'draft') {
       summary.draftCount += 1
-    } else {
+    } else if (invoice.status === 'final') {
       summary.finalCount += 1
     }
     if (isFinalSale(invoice)) {

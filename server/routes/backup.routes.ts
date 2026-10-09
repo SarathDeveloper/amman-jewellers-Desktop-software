@@ -1,9 +1,9 @@
-import { existsSync } from 'node:fs'
+import { existsSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Router } from 'express'
 import multer from 'multer'
-import { backupSettingsSchema, restoreBackupNameSchema } from '@shared/schemas'
+import { backupSettingsSchema, inspectBackupSchema, restoreBackupNameSchema } from '@shared/schemas'
 import {
   backupDatabaseTo,
   copyNewestBackupOffsite,
@@ -11,12 +11,14 @@ import {
   deleteBackup,
   getBackupStatus,
   getOffsiteDir,
+  inspectBackup,
   listBackups,
   restoreBackupByName,
   restoreDatabaseFrom,
   updateBackupSchedule,
+  withBackupLock,
 } from '../db/backup'
-import { writeExcelBackupFromDatabase } from '../db/excelBackup'
+import { writeExcelBackupFromDatabaseYielding } from '../db/excelBackup'
 import { getDatabase, getDbPath } from '../db'
 import { asyncHandler, HttpError, parseBody } from '../lib/http'
 
@@ -26,6 +28,17 @@ const upload = multer({
 })
 
 const router = Router()
+
+function removeTempFile(filePath: string | undefined): void {
+  if (!filePath) return
+  try {
+    if (existsSync(filePath)) {
+      unlinkSync(filePath)
+    }
+  } catch {
+    // A leftover temp file is not worth failing the request over.
+  }
+}
 
 router.get(
   '/status',
@@ -46,6 +59,14 @@ router.get(
   '/list',
   asyncHandler((_req, res) => {
     res.json(listBackups())
+  }),
+)
+
+router.post(
+  '/inspect',
+  asyncHandler((req, res) => {
+    const { name } = parseBody(inspectBackupSchema, req.body)
+    res.json(inspectBackup(name))
   }),
 )
 
@@ -75,38 +96,46 @@ router.get(
   asyncHandler(async (_req, res) => {
     const filename = `jeweltrackerpro-backup-${new Date().toISOString().slice(0, 10)}.db`
     const destination = join(tmpdir(), filename)
-    await backupDatabaseTo(destination)
-    res.download(destination, filename)
+    await withBackupLock(async () => {
+      await backupDatabaseTo(destination)
+    })
+    res.download(destination, filename, () => removeTempFile(destination))
   }),
 )
 
 router.get(
   '/export-excel',
-  asyncHandler((_req, res) => {
+  asyncHandler(async (_req, res) => {
     const filename = `jeweltrackerpro-tables-${new Date().toISOString().slice(0, 10)}.xlsx`
     const destination = join(tmpdir(), filename)
-    writeExcelBackupFromDatabase(getDatabase(), destination)
-    res.download(destination, filename)
+    await withBackupLock(async () => {
+      await writeExcelBackupFromDatabaseYielding(getDatabase(), destination)
+    })
+    res.download(destination, filename, () => removeTempFile(destination))
   }),
 )
 
 router.post(
   '/restore',
   upload.single('file'),
-  asyncHandler((req, res) => {
+  asyncHandler(async (req, res) => {
     if (!req.file) {
       throw new HttpError(400, 'Backup file is required')
     }
-    const status = restoreDatabaseFrom(req.file.path)
-    res.json(status)
+    try {
+      const status = await restoreDatabaseFrom(req.file.path)
+      res.json(status)
+    } finally {
+      removeTempFile(req.file.path)
+    }
   }),
 )
 
 router.post(
   '/restore-local',
-  asyncHandler((req, res) => {
+  asyncHandler(async (req, res) => {
     const { name } = parseBody(restoreBackupNameSchema, req.body)
-    res.json(restoreBackupByName(name))
+    res.json(await restoreBackupByName(name))
   }),
 )
 

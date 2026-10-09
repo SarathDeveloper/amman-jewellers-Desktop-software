@@ -51,6 +51,8 @@ export const IPC_CHANNELS = {
   SUPPLIERS_LIST: 'suppliers:list',
   SUPPLIERS_CREATE: 'suppliers:create',
   INWARDS_CREATE: 'inwards:create',
+  INWARDS_LIST: 'inwards:list',
+  INWARDS_UPDATE: 'inwards:update',
   INWARDS_FINALIZE: 'inwards:finalize',
   INWARDS_GET: 'inwards:get',
   OLD_GOLD_PURCHASES_LIST: 'oldGoldPurchases:list',
@@ -60,6 +62,18 @@ export const IPC_CHANNELS = {
   OLD_GOLD_PURCHASES_FINALIZE: 'oldGoldPurchases:finalize',
   OLD_GOLD_PURCHASES_DELETE: 'oldGoldPurchases:delete',
   OLD_GOLD_PURCHASES_BY_NO: 'oldGoldPurchases:byNo',
+  OLD_GOLD_PURCHASES_PAYOUT: 'oldGoldPurchases:payout',
+  OLD_GOLD_PURCHASES_VOID_PAYOUT: 'oldGoldPurchases:voidPayout',
+  OLD_GOLD_PURCHASES_CANCEL: 'oldGoldPurchases:cancel',
+  OLD_GOLD_PURCHASES_STATS: 'oldGoldPurchases:stats',
+  OLD_GOLD_BATCHES_LOT: 'oldGoldBatches:lot',
+  OLD_GOLD_BATCHES_LIST: 'oldGoldBatches:list',
+  OLD_GOLD_BATCHES_GET: 'oldGoldBatches:get',
+  OLD_GOLD_BATCHES_CREATE: 'oldGoldBatches:create',
+  OLD_GOLD_BATCHES_MELT: 'oldGoldBatches:melt',
+  OLD_GOLD_BATCHES_SEND: 'oldGoldBatches:send',
+  OLD_GOLD_BATCHES_SETTLE: 'oldGoldBatches:settle',
+  OLD_GOLD_BATCHES_CANCEL: 'oldGoldBatches:cancel',
   DUES_LIST: 'dues:list',
   DUES_CREATE: 'dues:create',
   DUES_UPDATE: 'dues:update',
@@ -72,6 +86,7 @@ export const IPC_CHANNELS = {
   INVOICES_RECORD_HISTORICAL: 'invoices:recordHistorical',
   INVOICES_UPDATE: 'invoices:update',
   INVOICES_FINALIZE: 'invoices:finalize',
+  INVOICES_CANCEL: 'invoices:cancel',
   INVOICES_DELETE: 'invoices:delete',
   INVOICES_TAX_REPORT: 'invoices:taxReport',
   REPORTS_CATALOG: 'reports:catalog',
@@ -139,7 +154,7 @@ export async function invokeIpcForTests<T>(channel: string, rawInput?: unknown):
     case IPC_CHANNELS.APP_RESTORE_DB: {
       const sourcePath = (input as { sourcePath: string }).sourcePath
       try {
-        const data = restoreDatabaseFrom(sourcePath)
+        const data = await restoreDatabaseFrom(sourcePath)
         return { ok: true, data: data as T }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Restore failed'
@@ -260,6 +275,14 @@ export async function invokeIpcForTests<T>(channel: string, rawInput?: unknown):
     case IPC_CHANNELS.INWARDS_CREATE:
       response = await agent().post('/api/inwards').send(input)
       break
+    case IPC_CHANNELS.INWARDS_LIST:
+      response = await agent().get('/api/inwards')
+      break
+    case IPC_CHANNELS.INWARDS_UPDATE: {
+      const { id, ...body } = input as { id: number }
+      response = await agent().put(`/api/inwards/${id}`).send(body)
+      break
+    }
     case IPC_CHANNELS.INWARDS_GET:
       response = await agent().get(`/api/inwards/${input}`)
       break
@@ -288,6 +311,60 @@ export async function invokeIpcForTests<T>(channel: string, rawInput?: unknown):
       break
     case IPC_CHANNELS.OLD_GOLD_PURCHASES_BY_NO:
       response = await agent().get(`/api/old-gold-purchases/by-no/${encodeURIComponent(String(input))}`)
+      break
+    case IPC_CHANNELS.OLD_GOLD_PURCHASES_PAYOUT:
+      response = await agent()
+        .post(`/api/old-gold-purchases/${(input as { id: number }).id}/payouts`)
+        .send((input as { input: unknown }).input)
+      break
+    case IPC_CHANNELS.OLD_GOLD_PURCHASES_VOID_PAYOUT:
+      response = await agent()
+        .post(
+          `/api/old-gold-purchases/${(input as { id: number }).id}/payouts/${(input as { payoutId: number }).payoutId}/void`,
+        )
+        .send({ reason: (input as { reason: string }).reason })
+      break
+    case IPC_CHANNELS.OLD_GOLD_PURCHASES_CANCEL:
+      response = await agent()
+        .post(`/api/old-gold-purchases/${(input as { id: number }).id}/cancel`)
+        .send({ reason: (input as { reason: string }).reason })
+      break
+    case IPC_CHANNELS.OLD_GOLD_PURCHASES_STATS:
+      response = await agent().get(
+        `/api/old-gold-purchases/stats${input ? `?date=${encodeURIComponent(String(input))}` : ''}`,
+      )
+      break
+    case IPC_CHANNELS.OLD_GOLD_BATCHES_LOT:
+      response = await agent().get('/api/old-gold-batches/lot')
+      break
+    case IPC_CHANNELS.OLD_GOLD_BATCHES_LIST:
+      response = await agent().get('/api/old-gold-batches')
+      break
+    case IPC_CHANNELS.OLD_GOLD_BATCHES_GET:
+      response = await agent().get(`/api/old-gold-batches/${input}`)
+      break
+    case IPC_CHANNELS.OLD_GOLD_BATCHES_CREATE:
+      response = await agent().post('/api/old-gold-batches').send(input)
+      break
+    case IPC_CHANNELS.OLD_GOLD_BATCHES_MELT:
+      response = await agent()
+        .post(`/api/old-gold-batches/${(input as { id: number }).id}/melt`)
+        .send((input as { input: unknown }).input)
+      break
+    case IPC_CHANNELS.OLD_GOLD_BATCHES_SEND:
+      response = await agent()
+        .post(`/api/old-gold-batches/${(input as { id: number }).id}/send`)
+        .send((input as { input: unknown }).input)
+      break
+    case IPC_CHANNELS.OLD_GOLD_BATCHES_SETTLE:
+      response = await agent()
+        .post(`/api/old-gold-batches/${(input as { id: number }).id}/settle`)
+        .send((input as { input: unknown }).input)
+      break
+    case IPC_CHANNELS.OLD_GOLD_BATCHES_CANCEL:
+      response = await agent()
+        .post(`/api/old-gold-batches/${(input as { id: number }).id}/cancel`)
+        .send({ reason: (input as { reason: string }).reason })
       break
     case IPC_CHANNELS.DUES_LIST:
       response = await agent().get('/api/dues').query(typeof input === 'string' ? { q: input } : {})
@@ -335,6 +412,11 @@ export async function invokeIpcForTests<T>(channel: string, rawInput?: unknown):
     case IPC_CHANNELS.INVOICES_FINALIZE:
       response = await agent().post(`/api/invoices/${input}/finalize`)
       break
+    case IPC_CHANNELS.INVOICES_CANCEL: {
+      const { id, reason } = input as { id: number; reason: string }
+      response = await agent().post(`/api/invoices/${id}/cancel`).send({ reason })
+      break
+    }
     case IPC_CHANNELS.INVOICES_DELETE:
       response = await agent().delete(`/api/invoices/${input}`)
       break

@@ -29,4 +29,5 @@ export interface PurchaseInvoiceData {
   amountInWords: string
   paymentMode: PurchasePaymentMode
   notes: string
+  watermark: 'DRAFT' | null
 }

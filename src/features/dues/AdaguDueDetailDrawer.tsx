@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   ArrowLeft,
   CalendarDays,
@@ -14,7 +15,7 @@ import {
   User,
   Zap,
 } from 'lucide-react'
-import type { AdaguDueSummary, DueEntry, Pledge, PledgeStatus } from '@shared/types'
+import type { AdaguDueSummary, DueEntry, Pledge, PledgePayment, PledgeStatus } from '@shared/types'
 import { Drawer } from '../../components/Drawer'
 import { LoadingState } from '../../components/LoadingState'
 import {
@@ -25,15 +26,36 @@ import {
 } from '../../lib/format'
 import { api } from '../../lib/api'
 import { AdaguQuickActions } from './AdaguQuickActions'
+import { pledgePaymentModeLabel } from './pledgePaymentModes'
+import { PledgePhotosStrip } from '../pledges/PledgePhotosStrip'
+
+function paymentKindLabel(kind: PledgePayment['kind']) {
+  if (kind === 'redeem') return 'Loan settled'
+  if (kind === 'renewal') return 'Renewal interest'
+  if (kind === 'transfer') return 'Principal transfer'
+  if (kind === 'auction') return 'Auction settlement'
+  return 'Payment received'
+}
+
+function paymentSplitNote(payment: PledgePayment) {
+  const parts: string[] = []
+  if (payment.interestPart) parts.push(`Interest ${formatCurrency(payment.interestPart)}`)
+  if (payment.principalPart) parts.push(`Principal ${formatCurrency(payment.principalPart)}`)
+  if (payment.discount) parts.push(`Discount ${formatCurrency(payment.discount)}`)
+  parts.push(pledgePaymentModeLabel(payment.mode))
+  return parts.join(' · ')
+}
 
 function statusLabel(status: PledgeStatus) {
   if (status === 'redeemed') return 'Redeemed'
   if (status === 'forfeited') return 'Forfeited'
+  if (status === 'renewed') return 'Renewed'
   if (status === 'draft') return 'Draft'
   return 'Active'
 }
 
 function statusHint(status: PledgeStatus, remaining: number) {
+  if (status === 'renewed') return 'Loan carried into a new ticket'
   if (status === 'redeemed' || remaining <= 0) return 'Loan has been settled'
   if (status === 'forfeited') return 'Pledge closed without gold release'
   return remaining > 0 ? 'Loan is outstanding' : 'No remaining due'
@@ -62,7 +84,10 @@ export function AdaguDueDetailDrawer({
   onCollectInterest,
   onTopup,
   onRedeem,
-  onForfeit,
+  onRenew,
+  onAuctionNotice,
+  onRecordAuction,
+  onPrintNotice,
   onViewBill,
   onReleaseReceipt,
 }: {
@@ -73,11 +98,15 @@ export function AdaguDueDetailDrawer({
   onCollectInterest: () => void
   onTopup: () => void
   onRedeem: () => void
-  onForfeit: () => void
+  onRenew?: () => void
+  onAuctionNotice: () => void
+  onRecordAuction: () => void
+  onPrintNotice: () => void
   onViewBill: () => void
   onReleaseReceipt: () => void
 }) {
   const [pledge, setPledge] = useState<Pledge | null>(null)
+  const [pledgePayments, setPledgePayments] = useState<PledgePayment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -87,10 +116,19 @@ export function AdaguDueDetailDrawer({
     let active = true
     setLoading(true)
     setError(null)
+    // Clear the previous loan so switching rows never shows stale items/history.
+    setPledge(null)
+    setPledgePayments([])
     void (async () => {
       try {
-        const data = await api.getPledge(summary.pledgeId)
-        if (active) setPledge(data)
+        const [data, payments] = await Promise.all([
+          api.getPledge(summary.pledgeId),
+          api.listPledgePayments(summary.pledgeId).catch(() => [] as PledgePayment[]),
+        ])
+        if (active) {
+          setPledge(data)
+          setPledgePayments(payments)
+        }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Failed to load Adagu details')
       } finally {
@@ -127,6 +165,17 @@ export function AdaguDueDetailDrawer({
           : 'active'
 
   const history = useMemo<HistoryRow[]>(() => {
+    if (pledgePayments.length > 0) {
+      return pledgePayments
+        .map((payment) => ({
+          id: `pledge-pay-${payment.id}`,
+          date: payment.paymentDate,
+          time: historyTime(payment.createdAt),
+          title: `${paymentKindLabel(payment.kind)} · ${formatCurrency(payment.amount)}`,
+          note: payment.note || paymentSplitNote(payment),
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+    }
     const rows: HistoryRow[] = payments.map((payment) => ({
       id: `pay-${payment.id}`,
       date: payment.entryDate,
@@ -157,7 +206,16 @@ export function AdaguDueDetailDrawer({
       })
     }
     return rows.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
-  }, [payments, topups, summary.amountCollected, summary.pledgeDate, summary.principal, summary.status, pledge])
+  }, [
+    pledgePayments,
+    payments,
+    topups,
+    summary.amountCollected,
+    summary.pledgeDate,
+    summary.principal,
+    summary.status,
+    pledge,
+  ])
 
   function downloadReceipt() {
     onViewBill()
@@ -222,6 +280,20 @@ export function AdaguDueDetailDrawer({
                         >
                           Extra loan
                         </button>
+                        {onRenew ? (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="adagu-detail-more-item"
+                            disabled={busy}
+                            onClick={() => {
+                              setMoreOpen(false)
+                              onRenew()
+                            }}
+                          >
+                            Renew loan
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           role="menuitem"
@@ -229,11 +301,36 @@ export function AdaguDueDetailDrawer({
                           disabled={busy}
                           onClick={() => {
                             setMoreOpen(false)
-                            onForfeit()
+                            onAuctionNotice()
                           }}
                         >
-                          Close / Forfeit
+                          Auction notice
                         </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="adagu-detail-more-item"
+                          disabled={busy}
+                          onClick={() => {
+                            setMoreOpen(false)
+                            onRecordAuction()
+                          }}
+                        >
+                          Record auction
+                        </button>
+                        {summary.auctionNoticeDate ? (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="adagu-detail-more-item"
+                            onClick={() => {
+                              setMoreOpen(false)
+                              onPrintNotice()
+                            }}
+                          >
+                            Print notice
+                          </button>
+                        ) : null}
                       </>
                     ) : null}
                     {summary.status === 'redeemed' ? (
@@ -298,6 +395,22 @@ export function AdaguDueDetailDrawer({
                     </span>
                   </span>
                 </div>
+                {pledge?.renewedFromId ? (
+                  <p className="muted">
+                    Renewed from{' '}
+                    <Link to={`/billing/adagu/${pledge.renewedFromId}`}>
+                      {pledge.renewedFromReceiptNo || `ADG #${pledge.renewedFromId}`}
+                    </Link>
+                  </p>
+                ) : null}
+                {pledge?.renewedToId ? (
+                  <p className="muted">
+                    Renewed to{' '}
+                    <Link to={`/billing/adagu/${pledge.renewedToId}`}>
+                      {pledge.renewedToReceiptNo || `ADG #${pledge.renewedToId}`}
+                    </Link>
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className={`adagu-detail-status adagu-detail-status--${statusTone}`}>
@@ -382,6 +495,33 @@ export function AdaguDueDetailDrawer({
             )}
           </section>
 
+          <section className="adagu-detail-card">
+            <div className="adagu-detail-card-head">
+              <Gem size={16} strokeWidth={1.75} aria-hidden />
+              <h3>Photos</h3>
+            </div>
+            <div className="adagu-detail-photos">
+              <PledgePhotosStrip
+                pledgeId={summary.pledgeId}
+                photos={pledge?.photos ?? []}
+                kind="item"
+                label="Pledged items"
+              />
+              <PledgePhotosStrip
+                pledgeId={summary.pledgeId}
+                photos={pledge?.photos ?? []}
+                kind="customer"
+                label="Borrower"
+              />
+              <PledgePhotosStrip
+                pledgeId={summary.pledgeId}
+                photos={pledge?.photos ?? []}
+                kind="id_proof"
+                label="ID proof"
+              />
+            </div>
+          </section>
+
           <div className="adagu-detail-split">
             <section className="adagu-detail-card">
               <div className="adagu-detail-card-head">
@@ -395,6 +535,18 @@ export function AdaguDueDetailDrawer({
                 <div>
                   <dt>Monthly interest</dt>
                   <dd>{formatCurrency(summary.monthlyInterest)}</dd>
+                </div>
+                <div>
+                  <dt>Interest due</dt>
+                  <dd>{formatCurrency(summary.interestDue)}</dd>
+                </div>
+                <div>
+                  <dt>Interest paid up to</dt>
+                  <dd>{formatDisplayDate(summary.interestPaidUpto)}</dd>
+                </div>
+                <div>
+                  <dt>Principal outstanding</dt>
+                  <dd>{formatCurrency(summary.principalOutstanding)}</dd>
                 </div>
                 <div>
                   <dt>Next due</dt>
@@ -506,7 +658,10 @@ export function AdaguDueDetailDrawer({
                 onCollectInterest={onCollectInterest}
                 onTopup={onTopup}
                 onRedeem={onRedeem}
-                onClose={onForfeit}
+                onRenew={onRenew}
+                onAuctionNotice={onAuctionNotice}
+                onRecordAuction={onRecordAuction}
+                onPrintNotice={onPrintNotice}
                 onViewBill={onViewBill}
                 onReleaseReceipt={onReleaseReceipt}
               />

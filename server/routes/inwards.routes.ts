@@ -13,7 +13,8 @@ import { assertMetalsOpenForDate } from '../db/metalDayClosing'
 import { assertCategoryExists } from '../db/stockCategories'
 import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
 import { recordPieceMovement, recordWeightMovement } from '../stock/movements'
-import { appendHuids, parseHuidsJson, requireHuidsForNewPieces, stringifyHuids } from '../products/huids'
+import { appendHuids, assertUniqueHuids, parseHuidsJson, stringifyHuids } from '../products/huids'
+import { newPieceHuidError } from '@shared/itemTypes'
 import { computePurchaseTotals } from '@shared/billing/billSummary'
 import { computePurchaseLineAmount, DEFAULT_HSN } from '@shared/billing/pricing'
 
@@ -64,14 +65,22 @@ function mapPaymentMode(value: string | null | undefined): PurchasePaymentMode {
   return 'cash'
 }
 
-function nextInwardNo(db: ReturnType<typeof getDatabase>): string {
-  const year = new Date().getFullYear()
-  const prefix = `IN-${year}-`
-  const last = db
-    .prepare(`SELECT inward_no FROM inwards WHERE inward_no LIKE ? ORDER BY inward_no DESC LIMIT 1`)
-    .get(`${prefix}%`) as { inward_no: string } | undefined
-  const lastSeq = last ? Number.parseInt(last.inward_no.replace(prefix, ''), 10) : 0
-  const next = Number.isFinite(lastSeq) ? lastSeq + 1 : 1
+function inwardPrefix(inwardDate: string): string {
+  const year = inwardDate.slice(0, 4)
+  return `IN-${/^\d{4}$/.test(year) ? year : new Date().getFullYear()}-`
+}
+
+/** Uses a numeric max so the series keeps counting past 9999 (a text sort puts "-10000" before "-9999"). */
+function nextInwardNo(db: ReturnType<typeof getDatabase>, inwardDate: string): string {
+  const prefix = inwardPrefix(inwardDate)
+  const row = db
+    .prepare(
+      `SELECT MAX(CAST(substr(inward_no, ?) AS INTEGER)) AS max_seq
+       FROM inwards
+       WHERE inward_no LIKE ?`,
+    )
+    .get(prefix.length + 1, `${prefix}%`) as { max_seq: number | null } | undefined
+  const next = (row?.max_seq ?? 0) + 1
   return `${prefix}${String(next).padStart(4, '0')}`
 }
 
@@ -108,6 +117,27 @@ function loadItems(db: ReturnType<typeof getDatabase>, inwardId: number): Inward
   return rows.map(mapItem)
 }
 
+function loadAllItemsByInward(db: ReturnType<typeof getDatabase>): Map<number, InwardItem[]> {
+  const rows = db
+    .prepare(
+      `SELECT ii.*, p.name AS product_name
+       FROM inward_items ii
+       LEFT JOIN products p ON p.id = ii.product_id
+       ORDER BY ii.inward_id, ii.id`,
+    )
+    .all() as InwardItemRow[]
+  const byInward = new Map<number, InwardItem[]>()
+  for (const row of rows) {
+    const list = byInward.get(row.inward_id)
+    if (list) {
+      list.push(mapItem(row))
+    } else {
+      byInward.set(row.inward_id, [mapItem(row)])
+    }
+  }
+  return byInward
+}
+
 function getInwardRow(db: ReturnType<typeof getDatabase>, id: number): InwardRow {
   const row = db
     .prepare(
@@ -124,7 +154,7 @@ function getInwardRow(db: ReturnType<typeof getDatabase>, id: number): InwardRow
   return row
 }
 
-function mapInward(db: ReturnType<typeof getDatabase>, row: InwardRow): Inward {
+function mapInward(db: ReturnType<typeof getDatabase>, row: InwardRow, items?: InwardItem[]): Inward {
   return {
     id: row.id,
     supplierId: row.supplier_id,
@@ -145,7 +175,7 @@ function mapInward(db: ReturnType<typeof getDatabase>, row: InwardRow): Inward {
     notes: row.notes,
     createdAt: row.created_at,
     finalizedAt: row.finalized_at,
-    items: loadItems(db, row.id),
+    items: items ?? loadItems(db, row.id),
   }
 }
 
@@ -181,7 +211,17 @@ function replaceItems(
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const lineAmounts: number[] = []
+  const huidsOnInward = new Set<string>()
   for (const item of items) {
+    if (item.productId != null) {
+      for (const huid of item.huids ?? []) {
+        if (huidsOnInward.has(huid)) {
+          throw new Error(`HUID ${huid} is used on more than one line`)
+        }
+        huidsOnInward.add(huid)
+      }
+      assertUniqueHuids(db, item.huids ?? [])
+    }
     let metal = item.metal.trim()
     let category = item.category.trim()
     let purity = item.purity ?? ''
@@ -268,12 +308,21 @@ function saveDraftInward(
 
   if (existingId != null) {
     assertDraft(db, existingId)
+    const current = db.prepare('SELECT inward_no FROM inwards WHERE id = ?').get(existingId) as {
+      inward_no: string
+    }
+    if (!current.inward_no.startsWith(inwardPrefix(input.inwardDate))) {
+      db.prepare('UPDATE inwards SET inward_no = ? WHERE id = ?').run(
+        nextInwardNo(db, input.inwardDate),
+        existingId,
+      )
+    }
     const { lineAmounts } = replaceItems(db, existingId, input.items)
     applyPurchaseTotals(db, existingId, input, lineAmounts)
     return mapInward(db, getInwardRow(db, existingId))
   }
 
-  const inwardNo = nextInwardNo(db)
+  const inwardNo = nextInwardNo(db, input.inwardDate)
   const result = db
     .prepare(
       `INSERT INTO inwards (
@@ -306,7 +355,8 @@ router.get(
          ORDER BY i.inward_date DESC, i.id DESC`,
       )
       .all() as InwardRow[]
-    res.json(rows.map((row) => mapInward(db, row)))
+    const itemsByInward = loadAllItemsByInward(db)
+    res.json(rows.map((row) => mapInward(db, row, itemsByInward.get(row.id) ?? [])))
   }),
 )
 
@@ -385,7 +435,10 @@ router.post(
           })
           continue
         }
-        requireHuidsForNewPieces(item.huids ?? [], item.qty)
+        const huidError = newPieceHuidError(item.metal, (item.huids ?? []).length, item.qty)
+        if (huidError) {
+          throw new Error(`${item.productName ?? 'Product line'}: ${huidError}`)
+        }
         appendHuids(db, item.productId, item.huids ?? [])
         recordPieceMovement(db, {
           type: 'purchase',

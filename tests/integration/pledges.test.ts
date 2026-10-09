@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getDatabase } from '../../server/db'
+import { setShopSetting } from '../../server/lib/settingsStore'
 import { getTestAgent, ipc, IPC_CHANNELS, useIntegrationEnv, withHuids } from './helpers/testEnv'
 
 async function createPledgeCustomer(name: string, phone: string): Promise<number> {
@@ -199,11 +200,11 @@ describe('pledges API', () => {
       .send({
         id: created.body.id,
         redeemedDate: '2026-10-01',
-        amountCollected: 16000,
+        amountCollected: 15825.5,
       })
     expect(redeemed.status).toBe(200)
     expect(redeemed.body.status).toBe('redeemed')
-    expect(redeemed.body.amountCollected).toBe(16000)
+    expect(redeemed.body.amountCollected).toBe(15825.5)
 
     const editBlocked = await getTestAgent()
       .put(`/api/pledges/${created.body.id}`)
@@ -260,9 +261,12 @@ describe('pledges API', () => {
       tax: 0,
       autoTax: false,
       billFormat: 'cash_bill',
-      items: [{ productId: product.id, qty: 1, rate: 100, metalRate: 100, netWeight: 2 }],
+      items: [
+        { productId: product.id, qty: 1, rate: 100, metalRate: 100, netWeight: 2, huid: product.huids[0] },
+      ],
     })
-    expect(cash.invoiceNo).toMatch(/^CB-\d{4}-\d{4}$/)
+    const cashFinal = await ipc(IPC_CHANNELS.INVOICES_FINALIZE, cash.id)
+    expect(cashFinal.invoiceNo).toMatch(/^CB-\d{4}-\d{4}$/)
 
     const tax = await ipc(IPC_CHANNELS.INVOICES_CREATE, {
       customerId: customer.id,
@@ -270,9 +274,12 @@ describe('pledges API', () => {
       tax: 0,
       autoTax: true,
       billFormat: 'tax_invoice',
-      items: [{ productId: product.id, qty: 1, rate: 100, metalRate: 100, netWeight: 2 }],
+      items: [
+        { productId: product.id, qty: 1, rate: 100, metalRate: 100, netWeight: 2, huid: product.huids[1] },
+      ],
     })
-    expect(tax.invoiceNo).toMatch(/^TI-\d{4}-\d{4}$/)
+    const taxFinal = await ipc(IPC_CHANNELS.INVOICES_FINALIZE, tax.id)
+    expect(taxFinal.invoiceNo).toMatch(/^TI-\d{4}-\d{4}$/)
   })
 
   it('records partial collections and forfeits active pledges', async () => {
@@ -338,7 +345,7 @@ describe('pledges API', () => {
     const created = await getTestAgent().post('/api/pledges').send({
       customerId: customer.id,
       pledgeDate: '2026-08-01',
-      assessedValue: 40000,
+      assessedValue: 100000,
       loanAmount: 50000,
       interestPct: 2,
       items: [
@@ -372,6 +379,178 @@ describe('pledges API', () => {
     expect(redeemed.status).toBe(200)
     expect(redeemed.body.status).toBe('redeemed')
     expect(redeemed.body.amountCollected).toBe(51000)
+  })
+
+  it('records interest into the payment ledger and reports the payoff', async () => {
+    const customer = await ipc(IPC_CHANNELS.CUSTOMERS_CREATE, {
+      name: 'Ledger Customer',
+      phone: '9000000031',
+      address: 'Salem',
+      notes: '',
+    })
+    const created = await getTestAgent().post('/api/pledges').send({
+      customerId: customer.id,
+      pledgeDate: '2026-08-01',
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      items: [goldItem('Chain')],
+    })
+    expect(created.status).toBe(201)
+    await getTestAgent().post(`/api/pledges/${created.body.id}/sanction`)
+
+    const collected = await getTestAgent().post(`/api/pledges/${created.body.id}/collect`).send({
+      collectedDate: '2026-08-31',
+      amount: 400,
+      mode: 'upi',
+    })
+    expect(collected.status).toBe(200)
+    expect(collected.body.amountCollected).toBe(400)
+
+    const payments = await getTestAgent().get(`/api/pledges/${created.body.id}/payments`)
+    expect(payments.status).toBe(200)
+    expect(payments.body).toHaveLength(1)
+    expect(payments.body[0].kind).toBe('interest')
+    expect(payments.body[0].mode).toBe('upi')
+    expect(payments.body[0].interestPart).toBe(400)
+    expect(payments.body[0].principalPart).toBe(0)
+
+    const payoff = await getTestAgent().get(`/api/pledges/${created.body.id}/payoff?date=2026-08-31`)
+    expect(payoff.status).toBe(200)
+    expect(payoff.body.principalOutstanding).toBe(20000)
+    expect(payoff.body.interestDue).toBe(0)
+    expect(payoff.body.interestPaidUpto).toBe('2026-08-31')
+    expect(payoff.body.nextInterestDue).toBe('2026-09-30')
+    expect(payoff.body.payoff).toBe(20000)
+  })
+
+  it('holds a partial interest payment as interest credit', async () => {
+    const customer = await ipc(IPC_CHANNELS.CUSTOMERS_CREATE, {
+      name: 'Credit Customer',
+      phone: '9000000032',
+      address: 'Salem',
+      notes: '',
+    })
+    const created = await getTestAgent().post('/api/pledges').send({
+      customerId: customer.id,
+      pledgeDate: '2026-08-01',
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      items: [goldItem('Bangle')],
+    })
+    await getTestAgent().post(`/api/pledges/${created.body.id}/sanction`)
+    await getTestAgent().post(`/api/pledges/${created.body.id}/collect`).send({
+      collectedDate: '2026-08-31',
+      amount: 100,
+    })
+
+    const payoff = await getTestAgent().get(`/api/pledges/${created.body.id}/payoff?date=2026-08-31`)
+    expect(payoff.body.interestCredit).toBe(100)
+    expect(payoff.body.interestDue).toBe(300)
+    expect(payoff.body.payoff).toBe(20300)
+  })
+
+  it('redeems with a discount and clears the customer balance', async () => {
+    const customer = await ipc(IPC_CHANNELS.CUSTOMERS_CREATE, {
+      name: 'Discount Customer',
+      phone: '9000000033',
+      address: 'Salem',
+      notes: '',
+    })
+    const created = await getTestAgent().post('/api/pledges').send({
+      customerId: customer.id,
+      pledgeDate: '2026-08-01',
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      items: [goldItem('Ring')],
+    })
+    await getTestAgent().post(`/api/pledges/${created.body.id}/sanction`)
+
+    const redeemed = await getTestAgent().post(`/api/pledges/${created.body.id}/redeem`).send({
+      redeemedDate: '2026-08-31',
+      amountCollected: 20000,
+      discount: 400,
+      mode: 'cash',
+    })
+    expect(redeemed.status).toBe(200)
+    expect(redeemed.body.status).toBe('redeemed')
+    expect(redeemed.body.amountCollected).toBe(20000)
+
+    const ledger = await ipc<{
+      columns: Array<{ customerId: number; balance: number }>
+    }>(IPC_CHANNELS.DUES_LIST)
+    const column = ledger.columns.find((entry) => entry.customerId === customer.id)
+    expect(column?.balance ?? 0).toBe(0)
+  })
+
+  it('rejects a collection above the payoff', async () => {
+    const customer = await ipc(IPC_CHANNELS.CUSTOMERS_CREATE, {
+      name: 'Overpay Customer',
+      phone: '9000000034',
+      address: 'Salem',
+      notes: '',
+    })
+    const created = await getTestAgent().post('/api/pledges').send({
+      customerId: customer.id,
+      pledgeDate: '2026-08-01',
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      items: [goldItem('Stud')],
+    })
+    await getTestAgent().post(`/api/pledges/${created.body.id}/sanction`)
+
+    const over = await getTestAgent().post(`/api/pledges/${created.body.id}/collect`).send({
+      collectedDate: '2026-08-31',
+      amount: 999999,
+    })
+    expect(over.status).toBe(400)
+    expect(over.body.error).toMatch(/payoff/i)
+  })
+
+  it('removes the latest pledge payment and reopens the loan', async () => {
+    const customer = await ipc(IPC_CHANNELS.CUSTOMERS_CREATE, {
+      name: 'Remove Payment Customer',
+      phone: '9000000035',
+      address: 'Salem',
+      notes: '',
+    })
+    const created = await getTestAgent().post('/api/pledges').send({
+      customerId: customer.id,
+      pledgeDate: '2026-08-01',
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      items: [goldItem('Bangle')],
+    })
+    await getTestAgent().post(`/api/pledges/${created.body.id}/sanction`)
+    const collected = await getTestAgent().post(`/api/pledges/${created.body.id}/collect`).send({
+      collectedDate: '2026-08-31',
+      amount: 5000,
+    })
+    expect(collected.body.amountCollected).toBe(5000)
+
+    const ledger = await ipc<{
+      columns: Array<{
+        customerId: number
+        entries: Array<{ id: number; kind: string; pledgeId: number | null }>
+      }>
+    }>(IPC_CHANNELS.DUES_LIST)
+    const column = ledger.columns.find((entry) => entry.customerId === customer.id)
+    const payment = column?.entries.find(
+      (entry) => entry.pledgeId === created.body.id && entry.kind === 'payment',
+    )
+    expect(payment).toBeDefined()
+
+    await ipc(IPC_CHANNELS.DUES_DELETE, payment!.id)
+
+    const after = await getTestAgent().get(`/api/pledges/${created.body.id}`)
+    expect(after.body.amountCollected).toBe(0)
+    expect(after.body.status).toBe('active')
+    const payments = await getTestAgent().get(`/api/pledges/${created.body.id}/payments`)
+    expect(payments.body).toHaveLength(0)
   })
 
   it('does not post dues for a draft pledge until it is sanctioned', async () => {
@@ -612,5 +791,407 @@ describe('pledges API', () => {
     expect(countRows('customer_dues', `pledge_id = ? AND kind = 'payment'`, [pledgeId])).toBe(
       paymentsBefore,
     )
+  })
+
+  it('locks a sanctioned loan against editing', async () => {
+    const customerId = await createPledgeCustomer('Lock Customer', '9000000041')
+    const created = await createDraftPledge(customerId, [goldItem('Chain')])
+    expect(created.status).toBe(201)
+    expect(created.body.status).toBe('draft')
+
+    await getTestAgent().post(`/api/pledges/${created.body.id}/sanction`)
+
+    const blocked = await getTestAgent().put(`/api/pledges/${created.body.id}`).send({
+      id: created.body.id,
+      customerId,
+      pledgeDate: '2026-08-01',
+      assessedValue: 52000,
+      loanAmount: 21000,
+      interestPct: 2,
+      items: [goldItem('Chain')],
+    })
+    expect(blocked.status).toBe(400)
+    expect(blocked.body.error).toMatch(/locked/i)
+  })
+
+  it('deletes draft loans but refuses to delete sanctioned loans', async () => {
+    const customerId = await createPledgeCustomer('Delete Customer', '9000000042')
+    const draft = await createDraftPledge(customerId, [goldItem('Ring')])
+    expect(draft.status).toBe(201)
+
+    const removed = await getTestAgent().delete(`/api/pledges/${draft.body.id}`)
+    expect(removed.status).toBe(200)
+    const gone = await getTestAgent().get(`/api/pledges/${draft.body.id}`)
+    expect(gone.status).toBe(404)
+    expect(countRows('pledge_items', 'pledge_id = ?', [draft.body.id])).toBe(0)
+
+    const active = await createDraftPledge(customerId, [goldItem('Stud')])
+    await getTestAgent().post(`/api/pledges/${active.body.id}/sanction`)
+    const refused = await getTestAgent().delete(`/api/pledges/${active.body.id}`)
+    expect(refused.status).toBe(400)
+    const stillThere = await getTestAgent().get(`/api/pledges/${active.body.id}`)
+    expect(stillThere.status).toBe(200)
+    expect(stillThere.body.status).toBe('active')
+  })
+
+  it('renews a loan into a new active ticket and clears the old balance', async () => {
+    const customerId = await createPledgeCustomer('Renew Customer', '9000000043')
+    const created = await createDraftPledge(customerId, [goldItem('Bangle')])
+    expect(created.status).toBe(201)
+    const oldId = created.body.id
+    await getTestAgent().post(`/api/pledges/${oldId}/sanction`)
+
+    const renewed = await getTestAgent().post(`/api/pledges/${oldId}/renew`).send({
+      renewDate: '2026-08-31',
+      mode: 'cash',
+      newLoanAmount: 18000,
+      note: 'Renewed at the counter',
+    })
+    expect(renewed.status).toBe(201)
+    expect(renewed.body.status).toBe('active')
+    expect(renewed.body.id).not.toBe(oldId)
+    expect(renewed.body.renewedFromId).toBe(oldId)
+    expect(renewed.body.receiptNo).toMatch(/^ADG\d{4,}$/)
+    expect(renewed.body.loanAmount).toBe(18000)
+    expect(renewed.body.items).toHaveLength(1)
+
+    const oldTicket = await getTestAgent().get(`/api/pledges/${oldId}`)
+    expect(oldTicket.body.status).toBe('renewed')
+    expect(oldTicket.body.renewedToId).toBe(renewed.body.id)
+    expect(oldTicket.body.renewedToReceiptNo).toBe(renewed.body.receiptNo)
+
+    const payments = await getTestAgent().get(`/api/pledges/${oldId}/payments`)
+    expect(payments.body.some((p: { kind: string }) => p.kind === 'renewal')).toBe(true)
+    expect(payments.body.some((p: { kind: string }) => p.kind === 'transfer')).toBe(true)
+
+    const ledger = await ipc<{
+      columns: Array<{ customerId: number; entries: Array<{ id: number; kind: string; pledgeId: number | null }> }>
+      adaguDues?: Array<{ pledgeId: number; remaining: number; status: string }>
+    }>(IPC_CHANNELS.DUES_LIST)
+    const oldDue = ledger.adaguDues?.find((row) => row.pledgeId === oldId)
+    expect(oldDue?.remaining ?? 0).toBe(0)
+    expect(oldDue?.status).toBe('renewed')
+  })
+
+  it('collects the difference on the old ticket when the renewed loan is smaller', async () => {
+    const customerId = await createPledgeCustomer('Renew Smaller', '9000000044')
+    const created = await createDraftPledge(customerId, [goldItem('Chain')])
+    const oldId = created.body.id
+    await getTestAgent().post(`/api/pledges/${oldId}/sanction`)
+
+    const renewed = await getTestAgent().post(`/api/pledges/${oldId}/renew`).send({
+      renewDate: '2026-08-31',
+      mode: 'upi',
+      newLoanAmount: 15000,
+    })
+    expect(renewed.status).toBe(201)
+    expect(renewed.body.loanAmount).toBe(15000)
+
+    const payments = await getTestAgent().get(`/api/pledges/${oldId}/payments`)
+    const principalCollected = payments.body.find(
+      (p: { kind: string; principalPart: number }) => p.kind === 'part' && p.principalPart > 0,
+    )
+    expect(principalCollected).toBeDefined()
+    expect(principalCollected.mode).toBe('upi')
+  })
+
+  it('rejects a loan above the LTV limit unless an admin overrides it', async () => {
+    const customerId = await createPledgeCustomer('LTV Customer', '9000000045')
+    const over = await getTestAgent().post('/api/pledges').send({
+      customerId,
+      pledgeDate: '2026-08-01',
+      assessedValue: 10000,
+      loanAmount: 9000,
+      interestPct: 2,
+      items: [goldItem('Chain')],
+    })
+    expect(over.status).toBe(400)
+    expect(over.body.error).toMatch(/ltv/i)
+
+    const override = await getTestAgent().post('/api/pledges').send({
+      customerId,
+      pledgeDate: '2026-08-01',
+      assessedValue: 10000,
+      loanAmount: 9000,
+      interestPct: 2,
+      allowAboveLtv: true,
+      items: [goldItem('Chain')],
+    })
+    expect(override.status).toBe(201)
+    expect(override.body.loanAmount).toBe(9000)
+  })
+
+  it('stores the running rate and value on each pledged item', async () => {
+    await getTestAgent().post('/api/metal-rates').send({
+      effectiveDate: '2026-08-01',
+      gold22k: 6000,
+      gold24k: 6500,
+      silverFine: 80,
+      silver925: 75,
+    })
+    const customerId = await createPledgeCustomer('Valuation Customer', '9000000046')
+    const created = await getTestAgent().post('/api/pledges').send({
+      customerId,
+      pledgeDate: '2026-08-01',
+      assessedValue: 57000,
+      loanAmount: 20000,
+      interestPct: 2,
+      items: [goldItem('Chain', { netWeight: 10 })],
+    })
+    expect(created.status).toBe(201)
+    expect(created.body.items[0].ratePerGram).toBe(6000)
+    expect(created.body.items[0].itemValue).toBe(60000)
+  })
+
+  it('runs the auction flow: notice, waiting period, outside buyer and surplus', async () => {
+    const customerId = await createPledgeCustomer('Auction Customer', '9000000047')
+    const created = await getTestAgent().post('/api/pledges').send({
+      customerId,
+      pledgeDate: '2026-06-01',
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      repaymentDueDate: '2026-07-01',
+      items: [goldItem('Chain')],
+    })
+    expect(created.status).toBe(201)
+    const pledgeId = created.body.id
+    await getTestAgent().post(`/api/pledges/${pledgeId}/sanction`)
+    // The API clamps the due date to today, so age the loan in the test database.
+    getDatabase()
+      .prepare('UPDATE pledges SET repayment_due_date = ? WHERE id = ?')
+      .run('2026-07-01', pledgeId)
+
+    const early = await getTestAgent()
+      .post(`/api/pledges/${pledgeId}/auction-notice`)
+      .send({ noticeDate: '2026-06-20' })
+    expect(early.status).toBe(400)
+
+    const notice = await getTestAgent()
+      .post(`/api/pledges/${pledgeId}/auction-notice`)
+      .send({ noticeDate: '2026-07-15' })
+    expect(notice.status).toBe(200)
+    expect(notice.body.noticeDate).toBe('2026-07-15')
+    expect(notice.body.auctionEligibleDate > '2026-07-15').toBe(true)
+
+    const tooEarly = await getTestAgent().post(`/api/pledges/${pledgeId}/auction`).send({
+      auctionDate: '2026-07-16',
+      buyerType: 'outside',
+      buyerName: 'Ravi',
+      saleAmount: 25000,
+    })
+    expect(tooEarly.status).toBe(400)
+
+    const auction = await getTestAgent().post(`/api/pledges/${pledgeId}/auction`).send({
+      auctionDate: '2026-07-30',
+      buyerType: 'outside',
+      buyerName: 'Ravi',
+      saleAmount: 25000,
+    })
+    expect(auction.status).toBe(200)
+    expect(auction.body.status).toBe('forfeited')
+
+    const row = await getTestAgent().get(`/api/pledges/${pledgeId}/auction`)
+    expect(row.body.saleAmount).toBe(25000)
+    expect(row.body.surplusAmount).toBeGreaterThan(0)
+    expect(row.body.shortfallAmount).toBe(0)
+
+    const payments = await getTestAgent().get(`/api/pledges/${pledgeId}/payments`)
+    expect(payments.body.some((p: { kind: string }) => p.kind === 'auction')).toBe(true)
+
+    const paid = await getTestAgent()
+      .post(`/api/pledges/${pledgeId}/auction-surplus-paid`)
+      .send({ surplusPaidDate: '2026-08-01', mode: 'cash' })
+    expect(paid.status).toBe(200)
+    expect(paid.body.surplusPaidDate).toBe('2026-08-01')
+  })
+
+  it('moves bought-back gold into stock when the shop takes an auctioned pledge', async () => {
+    const customerId = await createPledgeCustomer('Auction Shop', '9000000048')
+    const created = await getTestAgent().post('/api/pledges').send({
+      customerId,
+      pledgeDate: '2026-06-01',
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      repaymentDueDate: '2026-07-01',
+      items: [goldItem('Chain', { netWeight: 9.5 })],
+    })
+    expect(created.status).toBe(201)
+    const pledgeId = created.body.id
+    const itemId = created.body.items[0].id
+    await getTestAgent().post(`/api/pledges/${pledgeId}/sanction`)
+    getDatabase()
+      .prepare('UPDATE pledges SET repayment_due_date = ? WHERE id = ?')
+      .run('2026-07-01', pledgeId)
+    await getTestAgent()
+      .post(`/api/pledges/${pledgeId}/auction-notice`)
+      .send({ noticeDate: '2026-07-15' })
+
+    const auction = await getTestAgent().post(`/api/pledges/${pledgeId}/auction`).send({
+      auctionDate: '2026-07-30',
+      buyerType: 'shop',
+      saleAmount: 25000,
+      items: [{ pledgeItemId: itemId, category: 'Chain' }],
+    })
+    expect(auction.status).toBe(200)
+    expect(auction.body.status).toBe('forfeited')
+
+    const movement = getDatabase()
+      .prepare(
+        `SELECT movement_type, metal, category, weight_delta
+         FROM stock_movements
+         WHERE reference_type = 'pledge_auction' AND reference_id = ?`,
+      )
+      .get(pledgeId) as
+      | { movement_type: string; metal: string; category: string; weight_delta: number }
+      | undefined
+    expect(movement).toBeDefined()
+    expect(movement?.movement_type).toBe('purchase')
+    expect(movement?.metal).toBe('Gold')
+    expect(movement?.category).toBe('Chain')
+    expect(movement?.weight_delta).toBeCloseTo(9.5, 3)
+  })
+
+  it('writes off an auction shortfall and clears the customer balance', async () => {
+    const customerId = await createPledgeCustomer('Auction Short', '9000000049')
+    const created = await getTestAgent().post('/api/pledges').send({
+      customerId,
+      pledgeDate: '2026-06-01',
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      repaymentDueDate: '2026-07-01',
+      items: [goldItem('Chain')],
+    })
+    expect(created.status).toBe(201)
+    const pledgeId = created.body.id
+    await getTestAgent().post(`/api/pledges/${pledgeId}/sanction`)
+    getDatabase()
+      .prepare('UPDATE pledges SET repayment_due_date = ? WHERE id = ?')
+      .run('2026-07-01', pledgeId)
+    await getTestAgent()
+      .post(`/api/pledges/${pledgeId}/auction-notice`)
+      .send({ noticeDate: '2026-07-15' })
+
+    const auction = await getTestAgent().post(`/api/pledges/${pledgeId}/auction`).send({
+      auctionDate: '2026-07-30',
+      buyerType: 'outside',
+      buyerName: 'Ravi',
+      saleAmount: 10000,
+      writeOffShortfall: true,
+    })
+    expect(auction.status).toBe(200)
+
+    const row = await getTestAgent().get(`/api/pledges/${pledgeId}/auction`)
+    expect(row.body.shortfallAmount).toBeGreaterThan(0)
+    expect(row.body.shortfallWrittenOff).toBe(true)
+
+    const ledger = await ipc<{
+      adaguDues?: Array<{ pledgeId: number; remaining: number }>
+    }>(IPC_CHANNELS.DUES_LIST)
+    const due = ledger.adaguDues?.find((entry) => entry.pledgeId === pledgeId)
+    expect(due?.remaining ?? -1).toBe(0)
+  })
+
+  it('blocks sanctioning until KYC is entered when the shop requires it', async () => {
+    setShopSetting(getDatabase(), 'adagu_require_kyc', '1')
+    const customerId = await createPledgeCustomer('KYC Customer', '9000000050')
+    const created = await createDraftPledge(customerId, [goldItem('Chain')])
+    const pledgeId = created.body.id
+
+    const blocked = await getTestAgent().post(`/api/pledges/${pledgeId}/sanction`).send({})
+    expect(blocked.status).toBe(400)
+    expect(blocked.body.error).toMatch(/kyc/i)
+
+    await ipc(IPC_CHANNELS.CUSTOMERS_UPDATE, {
+      id: customerId,
+      input: {
+        name: 'KYC Customer',
+        phone: '9000000050',
+        address: 'Salem',
+        aadhaar: '123456789012',
+        pan: '',
+      },
+    })
+    const sanctioned = await getTestAgent().post(`/api/pledges/${pledgeId}/sanction`).send({})
+    expect(sanctioned.status).toBe(200)
+    expect(sanctioned.body.status).toBe('active')
+  })
+
+  it('uploads, lists and deletes pledge photos', async () => {
+    const customerId = await createPledgeCustomer('Photo Customer', '9000000051')
+    const created = await createDraftPledge(customerId, [goldItem('Chain')])
+    const pledgeId = created.body.id
+
+    // 1x1 transparent PNG.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    )
+    const uploaded = await getTestAgent()
+      .post(`/api/pledges/${pledgeId}/photos`)
+      .field('kind', 'item')
+      .attach('file', png, 'item.png')
+    expect(uploaded.status).toBe(201)
+    expect(uploaded.body.kind).toBe('item')
+    expect(uploaded.body.path).toMatch(/^\/uploads\//)
+
+    const list = await getTestAgent().get(`/api/pledges/${pledgeId}/photos`)
+    expect(list.body).toHaveLength(1)
+
+    const pledge = await getTestAgent().get(`/api/pledges/${pledgeId}`)
+    expect(pledge.body.photos).toHaveLength(1)
+
+    const removed = await getTestAgent().delete(
+      `/api/pledges/${pledgeId}/photos/${uploaded.body.id}`,
+    )
+    expect(removed.status).toBe(200)
+
+    const afterDelete = await getTestAgent().get(`/api/pledges/${pledgeId}/photos`)
+    expect(afterDelete.body).toHaveLength(0)
+  })
+
+  it('lists reminders and logs a WhatsApp reminder when it is opened', async () => {
+    const customerId = await createPledgeCustomer('Reminder Customer', '9000000052')
+    const created = await createDraftPledge(customerId, [goldItem('Chain')])
+    const pledgeId = created.body.id
+    await getTestAgent().post(`/api/pledges/${pledgeId}/sanction`)
+
+    const reminders = await getTestAgent().get('/api/pledges/reminders')
+    expect(reminders.status).toBe(200)
+    const entry = reminders.body.find(
+      (row: { pledgeId: number }) => row.pledgeId === pledgeId,
+    ) as
+      | { reason: string; whatsappUrl: string | null; lastRemindedAt: string | null }
+      | undefined
+    expect(entry).toBeDefined()
+    expect(entry?.reason).toBe('interest_overdue')
+    expect(entry?.whatsappUrl).toMatch(/^https:\/\/wa\.me\/919000000052\?text=/)
+    expect(entry?.lastRemindedAt).toBeNull()
+
+    const badUrl = await getTestAgent()
+      .post('/api/system/open-whatsapp')
+      .send({ pledgeId, url: 'https://example.com/evil' })
+    expect(badUrl.status).toBe(400)
+
+    process.env.JEWELTRACKERPRO_NO_OPEN = '1'
+    try {
+      const opened = await getTestAgent().post('/api/system/open-whatsapp').send({
+        pledgeId,
+        url: entry?.whatsappUrl,
+        kind: entry?.reason,
+      })
+      expect(opened.status).toBe(200)
+      expect(opened.body.ok).toBe(true)
+    } finally {
+      delete process.env.JEWELTRACKERPRO_NO_OPEN
+    }
+
+    const after = await getTestAgent().get('/api/pledges/reminders')
+    const reminded = after.body.find(
+      (row: { pledgeId: number }) => row.pledgeId === pledgeId,
+    ) as { lastRemindedAt: string | null } | undefined
+    expect(reminded?.lastRemindedAt).toBeTruthy()
   })
 })

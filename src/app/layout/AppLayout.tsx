@@ -21,6 +21,7 @@ import type { FeatureKey } from '@shared/types'
 import { useAuth } from '../../features/auth/authContext'
 import { canAccessInventory } from '../../features/inventory/inventoryTabs'
 import { useShopBranding } from '../../features/settings/shopBrandingContext'
+import { BackupHealthBanner } from '../../features/settings/BackupHealthBanner'
 import { localImageSrc } from '../../features/invoices/mapShopDisplay'
 import { LoadingState } from '../../components/LoadingState'
 import { warmPrintPreview } from '../../print/warmPrint'
@@ -227,6 +228,7 @@ export function AppLayout() {
         ) : null}
       </aside>
       <main className="content">
+        <BackupHealthBanner />
         {/* Pages load on demand, so keep the sidebar and the module tabs in
             place while a page chunk arrives instead of blanking the shell. */}
         <Suspense fallback={<LoadingState />}>

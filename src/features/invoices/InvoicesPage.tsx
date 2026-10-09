@@ -10,9 +10,11 @@ import {
   Trash2,
 } from 'lucide-react'
 import { localTodayIso } from '@shared/localDate'
+import { invoiceNoLabel } from '@shared/billing/invoiceNumber'
 import type { BillFormat, Invoice, PaymentMode, Pledge } from '@shared/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { DataTable, TablePager } from '../../components/DataTable'
+import { DateInput } from '../../components/DateInput'
 import { FilterBar } from '../../components/FilterBar'
 import { LoadingState } from '../../components/LoadingState'
 import { StatusBadge, type StatusKind } from '../../components/StatusBadge'
@@ -38,8 +40,8 @@ import { PledgePreviewModal } from '../pledges/PledgePreviewModal'
 const PAGE_SIZE_OPTIONS = [5, 10, 25]
 const DEFAULT_PAGE_SIZE = 5
 
-type SaleStatusChip = 'all' | 'draft' | 'estimate' | 'final'
-type PledgeStatusChip = 'all' | 'draft' | 'active' | 'redeemed' | 'forfeited'
+type SaleStatusChip = 'all' | 'draft' | 'estimate' | 'final' | 'cancelled'
+type PledgeStatusChip = 'all' | 'draft' | 'active' | 'redeemed' | 'forfeited' | 'renewed'
 type BillTypeFilter = 'all' | BillingType
 
 type BillRow =
@@ -49,6 +51,7 @@ type BillRow =
       id: number
       date: string
       billNo: string
+      billNoHint?: string
       typeLabel: string
       billType: 'cash_bill' | 'tax_invoice'
       customerName: string
@@ -85,6 +88,7 @@ type BillRow =
     }
 
 function listStatus(invoice: Invoice): StatusKind {
+  if (invoice.status === 'cancelled') return 'cancelled'
   if (invoice.isEstimate) return 'estimate'
   if (invoice.status === 'draft') return 'draft'
   if (invoice.balanceDue > 0) return 'due'
@@ -101,12 +105,14 @@ function typeLabelFor(type: 'cash_bill' | 'tax_invoice' | 'adagu'): string {
 
 function invoiceToRow(invoice: Invoice): BillRow {
   const billType = invoice.billFormat === 'tax_invoice' ? 'tax_invoice' : 'cash_bill'
+  const provisionalLabel = invoiceNoLabel(invoice.invoiceNo, invoice.isEstimate)
   return {
     kind: 'invoice',
     key: `invoice-${invoice.id}`,
     id: invoice.id,
     date: invoice.invoiceDate,
-    billNo: invoice.invoiceNo,
+    billNo: provisionalLabel ?? invoice.invoiceNo,
+    billNoHint: provisionalLabel ? invoice.invoiceNo : undefined,
     typeLabel: typeLabelFor(billType),
     billType,
     customerName: invoice.customerName,
@@ -124,7 +130,7 @@ function invoiceToRow(invoice: Invoice): BillRow {
 
 function pledgeToRow(pledge: Pledge): BillRow {
   const statusKind: StatusKind =
-    pledge.status === 'redeemed'
+    pledge.status === 'redeemed' || pledge.status === 'renewed'
       ? 'paid'
       : pledge.status === 'forfeited'
         ? 'draft'
@@ -134,11 +140,13 @@ function pledgeToRow(pledge: Pledge): BillRow {
   const statusLabel =
     pledge.status === 'redeemed'
       ? 'Redeemed'
-      : pledge.status === 'forfeited'
-        ? 'Forfeited'
-        : pledge.status === 'draft'
-          ? 'Draft'
-          : 'Active'
+      : pledge.status === 'renewed'
+        ? 'Renewed'
+        : pledge.status === 'forfeited'
+          ? 'Forfeited'
+          : pledge.status === 'draft'
+            ? 'Draft'
+            : 'Active'
   return {
     kind: 'pledge',
     key: `pledge-${pledge.id}`,
@@ -170,6 +178,8 @@ export function InvoicesPage() {
   const [totalRows, setTotalRows] = useState(0)
   const [reloadKey, setReloadKey] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const hasLoadedRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [reprinting, setReprinting] = useState(false)
   const [period, setPeriod] = useState<BillingPeriod>('all')
@@ -187,6 +197,7 @@ export function InvoicesPage() {
   const [selectedKeys, setSelectedKeys] = useState<string[]>([])
   const [menuKey, setMenuKey] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [previewInvoice, setPreviewInvoice] = useState<{
     id: number
     format: BillFormat
@@ -215,7 +226,8 @@ export function InvoicesPage() {
       try {
         if (active) {
           setError(null)
-          setLoading(true)
+          if (hasLoadedRef.current) setRefreshing(true)
+          else setLoading(true)
         }
         const includeInvoices =
           billTypeFilter === 'all' || billTypeFilter === 'cash_bill' || billTypeFilter === 'tax_invoice'
@@ -257,13 +269,17 @@ export function InvoicesPage() {
           setInvoices(invoicePage.items ?? [])
           setPledges(pledgePage.items ?? [])
           setTotalRows((invoicePage.total ?? 0) + (pledgePage.total ?? 0))
+          hasLoadedRef.current = true
         }
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : 'Failed to load bills')
         }
       } finally {
-        if (active) setLoading(false)
+        if (active) {
+          setLoading(false)
+          setRefreshing(false)
+        }
       }
     })()
     return () => {
@@ -344,13 +360,16 @@ export function InvoicesPage() {
 
   async function remove(id: number) {
     try {
+      setDeleting(true)
       await api.deleteInvoice(id)
-      setDeleteId(null)
       setSelectedKeys((keys) => keys.filter((key) => key !== `invoice-${id}`))
       showToast('Draft bill deleted', 'success')
+      setDeleteId(null)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete bill')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -368,7 +387,11 @@ export function InvoicesPage() {
         throw new Error('No bill has been printed yet.')
       }
       const format = settings.lastPrinted.billFormat || 'cash_bill'
-      setPreviewInvoice({ id: invoiceId, format })
+      setPreviewInvoice({
+        id: invoiceId,
+        format,
+        invoiceNo: settings.lastPrinted.invoiceNo || `bill-${invoiceId}`,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reprint last bill')
     } finally {
@@ -436,22 +459,20 @@ export function InvoicesPage() {
               placeholder="Search bills, customer, mobile..."
             />
           </label>
-          <label className="billing-date-field">
-            <Calendar size={16} strokeWidth={2} aria-hidden />
-            <span className="billing-date-label">{formatDisplayDate(selectedDate)}</span>
-            <input
-              className="billing-date-input"
-              type="date"
-              value={selectedDate}
-              onChange={(event) => {
-                setSelectedDate(event.target.value || today)
-                resetPage()
-              }}
-              aria-label="Billing date"
-            />
-          </label>
+          <DateInput
+            className="input"
+            value={selectedDate}
+            showIcon
+            ariaLabel="Billing date"
+            onChange={(value) => {
+              setSelectedDate(value || today)
+              resetPage()
+            }}
+          />
         </div>
       </header>
+
+      {refreshing ? <p className="muted list-refreshing-hint">Updating…</p> : null}
 
       {error && <div className="error-banner">{error}</div>}
 
@@ -473,6 +494,7 @@ export function InvoicesPage() {
                     { value: 'draft', label: 'Draft' },
                     { value: 'estimate', label: 'Estimate' },
                     { value: 'final', label: 'Final' },
+                    { value: 'cancelled', label: 'Cancelled' },
                   ]}
                 />
               ) : (
@@ -499,6 +521,10 @@ export function InvoicesPage() {
                     {
                       value: 'forfeited',
                       label: `Forfeited (${pledges.filter((p) => p.status === 'forfeited').length})`,
+                    },
+                    {
+                      value: 'renewed',
+                      label: `Renewed (${pledges.filter((p) => p.status === 'renewed').length})`,
                     },
                   ]}
                 />
@@ -711,7 +737,7 @@ export function InvoicesPage() {
                 const saleType = row.billType
                 const editPath = salePathForFormat(saleType, invoice.id)
                 const detailPath = saleDetailPathForFormat(saleType, invoice.id)
-                const viewPath = invoice.status === 'final' ? detailPath : editPath
+                const viewPath = invoice.status === 'draft' ? editPath : detailPath
                 return (
                   <tr key={row.key}>
                     <td className="billing-check-col">
@@ -726,6 +752,7 @@ export function InvoicesPage() {
                       <Link to={viewPath} className="billing-bill-no">
                         {row.billNo}
                       </Link>
+                      {row.billNoHint ? <span className="cell-hint">{row.billNoHint}</span> : null}
                     </td>
                     <td>{formatDisplayDate(row.date)}</td>
                     <td>{row.typeLabel}</td>
@@ -830,6 +857,7 @@ export function InvoicesPage() {
         <ConfirmDialog
           title="Delete draft bill"
           message="Delete this draft bill?"
+          busy={deleting}
           onCancel={() => setDeleteId(null)}
           onConfirm={() => void remove(deleteId)}
         />

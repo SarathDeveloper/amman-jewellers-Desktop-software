@@ -3,13 +3,21 @@ import { EMPTY_PRODUCT_VARIANT_FIELDS, type Product } from '../../shared/types'
 import {
   applyCurrentMetalRate,
   applyProductToLine,
+  availableHuidsForLine,
   computeEditorLineTotal,
   editorLineFromInvoiceItem,
   exclusiveVamc,
+  lineNeedsHuid,
+  lineOffersHuid,
+  linesMissingHuid,
   newEditorLine,
   OLD_GOLD_PURITIES,
   oldGoldPurityOptions,
+  qtyByProduct,
   rateForOldGoldPurity,
+  stockAvailabilityLabel,
+  stockShortageMessage,
+  stockShortages,
   toInvoiceItems,
   vamcPatch,
   vamcValue,
@@ -196,6 +204,7 @@ describe('editorLineFromInvoiceItem', () => {
       hsnCode: '7113',
       lineKind: 'sale' as const,
       description: 'Gold Ring',
+      huid: '',
     } satisfies InvoiceItem
     expect(editorLineFromInvoiceItem(item).vamcMode).toBe('amount')
     expect(editorLineFromInvoiceItem(item).metalRateAuto).toBe(false)
@@ -224,6 +233,7 @@ describe('editorLineFromInvoiceItem', () => {
       metal: 'Gold',
       lineKind: 'sale' as const,
       description: 'Gold Necklace',
+      huid: '',
     } satisfies InvoiceItem
     expect(editorLineFromInvoiceItem(item).metalRateAuto).toBe(true)
   })
@@ -297,5 +307,100 @@ describe('old gold purities', () => {
     expect(rateForOldGoldPurity('999', rates)).toBe(250)
     expect(rateForOldGoldPurity('925', rates)).toBe(231.48)
     expect(rateForOldGoldPurity('Silver', rates)).toBe(250)
+  })
+
+  it('uses the old gold buying rate and falls back to the selling rate when unset', () => {
+    const withBuyRates = {
+      ...rates,
+      gold22kBuy: 14000,
+      gold24kBuy: 0,
+      silver925Buy: 220,
+    }
+    expect(rateForOldGoldPurity('22K', withBuyRates)).toBe(14000)
+    // Zero buying rate means "use the selling rate".
+    expect(rateForOldGoldPurity('24K', withBuyRates)).toBe(16500)
+    expect(rateForOldGoldPurity('925', withBuyRates)).toBe(220)
+    expect(rateForOldGoldPurity('999', withBuyRates)).toBe(250)
+    expect(rateForOldGoldPurity('22K', null)).toBe(0)
+  })
+})
+
+describe('HUID line helpers', () => {
+  const tagged = product({ huids: ['AAAAAA', 'BBBBBB'] })
+
+  it('hides HUIDs already used by other lines but keeps the line selection', () => {
+    const first = saleLine({ key: 'a', huid: 'AAAAAA' })
+    const second = saleLine({ key: 'b', huid: 'BBBBBB' })
+    expect(availableHuidsForLine(first, [tagged], [first, second])).toEqual(['AAAAAA'])
+    expect(availableHuidsForLine(second, [tagged], [first, second])).toEqual(['BBBBBB'])
+
+    const empty = saleLine({ key: 'c', huid: '' })
+    expect(availableHuidsForLine(empty, [tagged], [first, empty])).toEqual(['BBBBBB'])
+  })
+
+  it('flags a tagged product line with no HUID and clears once picked', () => {
+    const line = saleLine({ huid: '' })
+    expect(linesMissingHuid([line], [tagged])).toHaveLength(1)
+    expect(linesMissingHuid([{ ...line, huid: 'AAAAAA' }], [tagged])).toHaveLength(0)
+  })
+
+  it('does not require a HUID when the product has none tagged', () => {
+    const untagged = product({ huids: [] })
+    const line = saleLine({ huid: '' })
+    expect(linesMissingHuid([line], [untagged])).toHaveLength(0)
+  })
+
+  it('offers but does not require a HUID for silver while some pieces are untagged', () => {
+    const silver = product({ metal: 'Silver', purity: '925', stockQty: 3, huids: ['AAAAAA'] })
+    const line = saleLine({ huid: '' })
+    expect(lineOffersHuid(line, [silver])).toBe(true)
+    expect(lineNeedsHuid(line, [silver])).toBe(false)
+    expect(linesMissingHuid([line], [silver])).toHaveLength(0)
+  })
+
+  it('requires a HUID for silver once every piece in stock is tagged', () => {
+    const silver = product({ metal: 'Silver', purity: '925', stockQty: 2, huids: ['AAAAAA', 'BBBBBB'] })
+    expect(linesMissingHuid([saleLine({ huid: '' })], [silver])).toHaveLength(1)
+  })
+})
+
+describe('stock availability helpers', () => {
+  const stock = (id: number, stockQty: number) => product({ id, stockQty })
+
+  it('counts every line of the same product', () => {
+    const lines = [
+      saleLine({ key: 'a', productId: 1, qty: 2 }),
+      saleLine({ key: 'b', productId: 1, qty: 1 }),
+      saleLine({ key: 'c', productId: 2, qty: 1 }),
+    ]
+    expect(qtyByProduct(lines)).toEqual({ 1: 3, 2: 1 })
+  })
+
+  it('flags the line that pushes a product past its stock', () => {
+    const lines = [
+      saleLine({ key: 'a', productId: 1, qty: 2 }),
+      saleLine({ key: 'b', productId: 1, qty: 2 }),
+    ]
+    const shortages = stockShortages(lines, [stock(1, 3)])
+    expect(shortages).toHaveLength(1)
+    expect(shortages[0]).toMatchObject({ key: 'b', productId: 1, requested: 4, available: 3 })
+    expect(stockShortageMessage(shortages[0])).toBe(
+      'Insufficient stock for Gold Ring (3 available, 4 on this bill)',
+    )
+  })
+
+  it('leaves a bill inside stock and manual lines alone', () => {
+    const lines = [
+      saleLine({ key: 'a', productId: 1, qty: 3 }),
+      saleLine({ key: 'b', productId: null, description: 'Loose stone', qty: 99 }),
+    ]
+    expect(stockShortages(lines, [stock(1, 3)])).toEqual([])
+  })
+
+  it('labels an option by remaining stock', () => {
+    expect(stockAvailabilityLabel(4)).toBe('4 in stock')
+    expect(stockAvailabilityLabel(4, 1)).toBe('3 in stock')
+    expect(stockAvailabilityLabel(4, 4)).toBe('All 4 on this bill')
+    expect(stockAvailabilityLabel(0)).toBe('Out of stock')
   })
 })

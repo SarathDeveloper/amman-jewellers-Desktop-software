@@ -28,6 +28,10 @@ function persistScheme(db: Database.Database, input: GoldSavingSchemeInput, id?:
     available_to: input.availableTo ?? null,
     terms: input.terms ?? '',
     status: input.status ?? 'active',
+    cancel_deduction_type: input.cancelDeductionType ?? 'none',
+    cancel_deduction_value: input.cancelDeductionValue ?? 0,
+    late_fee_type: input.lateFeeType ?? 'none',
+    late_fee_value: input.lateFeeValue ?? 0,
   }
 
   if (id) {
@@ -41,6 +45,8 @@ function persistScheme(db: Database.Database, input: GoldSavingSchemeInput, id?:
         allow_early_closure = ?, allow_partial_redemption = ?, allow_multiple_accounts = ?,
         redemption_type = ?, making_charge_rules = ?, wastage_rules = ?,
         available_from = ?, available_to = ?, terms = ?, status = ?,
+        cancel_deduction_type = ?, cancel_deduction_value = ?,
+        late_fee_type = ?, late_fee_value = ?,
         updated_at = datetime('now')
        WHERE id = ?`,
     ).run(
@@ -68,6 +74,10 @@ function persistScheme(db: Database.Database, input: GoldSavingSchemeInput, id?:
       payload.available_to,
       payload.terms,
       payload.status,
+      payload.cancel_deduction_type,
+      payload.cancel_deduction_value,
+      payload.late_fee_type,
+      payload.late_fee_value,
       id,
     )
     const after = loadScheme(db, id)
@@ -90,8 +100,9 @@ function persistScheme(db: Database.Database, input: GoldSavingSchemeInput, id?:
         purity, gold_rate_source, bonus_type, bonus_value, bonus_eligibility,
         allow_late_payments, grace_period_days, allow_missed_installments,
         allow_early_closure, allow_partial_redemption, allow_multiple_accounts,
-        redemption_type, making_charge_rules, wastage_rules, available_from, available_to, terms, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        redemption_type, making_charge_rules, wastage_rules, available_from, available_to, terms, status,
+        cancel_deduction_type, cancel_deduction_value, late_fee_type, late_fee_value
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       payload.name,
@@ -119,6 +130,10 @@ function persistScheme(db: Database.Database, input: GoldSavingSchemeInput, id?:
       payload.available_to,
       payload.terms,
       payload.status,
+      payload.cancel_deduction_type,
+      payload.cancel_deduction_value,
+      payload.late_fee_type,
+      payload.late_fee_value,
     )
   const created = loadScheme(db, Number(result.lastInsertRowid))
   writeAudit(db, {

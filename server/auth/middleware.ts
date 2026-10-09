@@ -63,6 +63,20 @@ export function requireFeature(feature: FeatureKey): RequestHandler {
   }
 }
 
+export function requireAnyFeature(features: FeatureKey[]): RequestHandler {
+  return (req, _res, next) => {
+    if (!req.user) {
+      next(new HttpError(401, 'Authentication required'))
+      return
+    }
+    if (req.user.role === 'admin' || features.some((feature) => req.user?.features.includes(feature))) {
+      next()
+      return
+    }
+    next(new HttpError(403, 'Permission denied'))
+  }
+}
+
 export function requireAuthAndFeature(feature: FeatureKey): RequestHandler[] {
   return [requireAuth, requireFeature(feature)]
 }

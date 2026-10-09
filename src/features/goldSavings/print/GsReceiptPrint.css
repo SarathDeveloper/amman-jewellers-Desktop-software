@@ -65,6 +65,14 @@
 .gs-receipt th,
 .gs-receipt td { border-bottom: 0.4pt solid #d6c7a1; padding: 1.4mm 1mm; text-align: left; }
 .gs-receipt th { width: 48%; font-weight: 600; }
+.gs-receipt-batch th { width: auto; }
+.gs-receipt-batch thead th {
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.gs-receipt-batch tfoot th { background: #faf6ea; }
+.gs-receipt .num { text-align: right; white-space: nowrap; }
 .gs-receipt-words { font-weight: 700; margin: 4mm 0 2mm; }
 .gs-receipt-note,
 .gs-receipt-tnc { font-size: 8pt; color: #444; }

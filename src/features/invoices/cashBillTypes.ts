@@ -1,4 +1,4 @@
-import type { PaymentMode } from '@shared/types'
+import type { BillPrintWatermark, PaymentMode } from '@shared/types'
 
 export interface BillDiscountLine {
   label: string
@@ -32,6 +32,8 @@ export interface CashBillData {
   discountBreakdown: BillDiscountLine[]
   oldGoldTotal: number
   oldGoldLines: Array<{ particulars: string; weight: number; amount: number }>
+  schemeCreditTotal: number
+  schemeCreditLines: Array<{ particulars: string; weight: number; amount: number }>
   roundOff: number
   amountPayable: number
   amountPaid: number
@@ -41,4 +43,6 @@ export interface CashBillData {
   paymentMode: PaymentMode
   balanceDue: number
   payments: Array<{ date: string; mode: string; amount: number }>
+  /** Diagonal stamp on non-final prints; null for a real bill. */
+  watermark: BillPrintWatermark | null
 }

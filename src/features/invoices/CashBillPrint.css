@@ -28,9 +28,32 @@
   padding: 4mm 5mm;
 }
 
-.cash-bill > *:not(.print-watermark) {
+.cash-bill > *:not(.print-watermark):not(.bill-status-watermark) {
   position: relative;
   z-index: 1;
+}
+
+/* Diagonal DRAFT / ESTIMATE / CANCELLED stamp over a non-final bill. */
+.bill-status-watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.bill-status-watermark span {
+  transform: rotate(-30deg);
+  font-size: 46pt;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  color: rgba(178, 34, 34, 0.16);
+  border: 3pt solid rgba(178, 34, 34, 0.16);
+  border-radius: 4mm;
+  padding: 2mm 8mm;
+  white-space: nowrap;
 }
 
 .print-watermark {
@@ -473,6 +496,13 @@
 
 .cash-bill-root.paper-thermal .print-watermark {
   display: none;
+}
+
+.cash-bill-root.paper-thermal .bill-status-watermark span {
+  font-size: 20pt;
+  letter-spacing: 0.2em;
+  border-width: 2pt;
+  padding: 1mm 4mm;
 }
 
 .cash-bill-root.paper-thermal .cash-bill {

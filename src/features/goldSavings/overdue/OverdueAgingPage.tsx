@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download } from 'lucide-react'
+import { Download, MessageCircle, Printer } from 'lucide-react'
 import type { GoldSavingAccount, GoldSavingReportResult, GoldSavingScheme } from '@shared/types'
 import { DataTable } from '../../../components/DataTable'
 import { EmptyState } from '../../../components/EmptyState'
@@ -11,6 +11,9 @@ import { SearchBar } from '../../../components/SearchBar'
 import { StatCard } from '../../../components/StatCard'
 import { formatCurrency, formatDisplayDate } from '../../../lib/format'
 import { api } from '../../../lib/api'
+import { goldSavingsReminderMessage, whatsappLink } from '../../../lib/whatsapp'
+import { PrintPreviewModal } from '../../print/PrintPreviewModal'
+import { useShopBranding } from '../../settings/shopBrandingContext'
 
 type BucketFilter = 'all' | '1-7 days' | '8-15 days' | '16-30 days' | '30+ days'
 
@@ -39,6 +42,8 @@ export function OverdueAgingPage() {
   const [bucket, setBucket] = useState<BucketFilter>('all')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [printOpen, setPrintOpen] = useState(false)
+  const { shopName } = useShopBranding()
 
   useEffect(() => {
     void Promise.all([api.listGsSchemes(), api.listGsAccounts()])
@@ -124,6 +129,31 @@ export function OverdueAgingPage() {
     URL.revokeObjectURL(url)
   }
 
+  const callListPath = useMemo(() => {
+    const params = new URLSearchParams()
+    if (bucket !== 'all') params.set('bucket', bucket)
+    if (schemeId) params.set('schemeId', schemeId)
+    if (search) params.set('q', search)
+    const qs = params.toString()
+    return `/print/gs-call-list${qs ? `?${qs}` : ''}`
+  }, [bucket, schemeId, search])
+
+  function reminderHref(row: Record<string, string | number>): string | null {
+    const phone = text(row, 'Mobile')
+    if (!phone) return null
+    return whatsappLink(
+      phone,
+      goldSavingsReminderMessage({
+        shopName,
+        customerName: text(row, 'Customer'),
+        accountNo: text(row, 'Account'),
+        installmentNo: num(row, 'Installment') || undefined,
+        dueDate: text(row, 'Due').slice(0, 10),
+        amount: num(row, 'Amount'),
+      }),
+    )
+  }
+
   return (
     <div className="app-page app-page-fill">
       <PageHeader
@@ -132,6 +162,15 @@ export function OverdueAgingPage() {
         actions={
           <>
             <SearchBar value={search} onChange={setSearch} placeholder="Search account, name or mobile..." />
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => setPrintOpen(true)}
+              disabled={visible.length === 0}
+            >
+              <Printer size={16} strokeWidth={1.75} aria-hidden />
+              Print call list
+            </button>
             <button type="button" className="btn secondary" onClick={exportCsv} disabled={visible.length === 0}>
               <Download size={16} strokeWidth={1.75} aria-hidden />
               Export CSV
@@ -179,33 +218,61 @@ export function OverdueAgingPage() {
                   <tr>
                     <th>Account</th>
                     <th>Customer</th>
+                    <th>Mobile</th>
                     <th>Scheme</th>
                     <th>Inst.</th>
                     <th>Due</th>
                     <th className="num">Days</th>
                     <th className="num">Amount</th>
+                    <th aria-label="Reminder" />
                   </tr>
                 </thead>
                 <tbody>
-                  {group.rows.map((row, index) => (
-                    <tr key={`${text(row, 'Account')}-${text(row, 'Installment')}-${index}`}>
-                      <td>
-                        <OverdueAccountLink accountNo={text(row, 'Account')} accountId={accountIds.get(text(row, 'Account'))} />
-                      </td>
-                      <td>{text(row, 'Customer')}</td>
-                      <td>{text(row, 'Scheme')}</td>
-                      <td>{text(row, 'Installment')}</td>
-                      <td>{formatDisplayDate(text(row, 'Due').slice(0, 10))}</td>
-                      <td className="num">{text(row, 'Days overdue')}</td>
-                      <td className="num">{formatCurrency(num(row, 'Amount'))}</td>
-                    </tr>
-                  ))}
+                  {group.rows.map((row, index) => {
+                    const href = reminderHref(row)
+                    return (
+                      <tr key={`${text(row, 'Account')}-${text(row, 'Installment')}-${index}`}>
+                        <td>
+                          <OverdueAccountLink accountNo={text(row, 'Account')} accountId={accountIds.get(text(row, 'Account'))} />
+                        </td>
+                        <td>{text(row, 'Customer')}</td>
+                        <td className="muted">{text(row, 'Mobile') || '—'}</td>
+                        <td>{text(row, 'Scheme')}</td>
+                        <td>{text(row, 'Installment')}</td>
+                        <td>{formatDisplayDate(text(row, 'Due').slice(0, 10))}</td>
+                        <td className="num">{text(row, 'Days overdue')}</td>
+                        <td className="num">{formatCurrency(num(row, 'Amount'))}</td>
+                        <td className="gs-reminder-cell">
+                          {href ? (
+                            <a
+                              className="btn ghost btn-sm"
+                              href={href}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Send a WhatsApp reminder"
+                            >
+                              <MessageCircle size={15} strokeWidth={1.75} aria-hidden />
+                              Remind
+                            </a>
+                          ) : null}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </DataTable>
           </section>
         ))
       )}
+      {printOpen ? (
+        <PrintPreviewModal
+          title="Scheme call list"
+          path={callListPath}
+          pdfFilename="gs-call-list.pdf"
+          onClose={() => setPrintOpen(false)}
+        />
+      ) : null}
     </div>
   )
 }

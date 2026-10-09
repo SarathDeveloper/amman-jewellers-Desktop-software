@@ -1,26 +1,32 @@
 import type { OldGoldItemInput } from '../types'
-import { computeInvoiceTax, computeInvoiceTotals, roundMoney } from './pricing'
+import { computeInvoiceTax, computeInvoiceTotals, roundMoney, roundWeight } from './pricing'
 
 export interface OldGoldValueInput {
   netWeight: number
   ratePerGram: number
   deductionPct?: number
+  /** Touch / assay percentage. When above 0 the value uses the fine weight. */
+  touchPct?: number
 }
 
 export interface OldGoldValueResult {
   grossValue: number
   deductionAmount: number
   finalValue: number
+  /** Weight the value is based on: `netWeight * touch / 100` when touch is set. */
+  fineWeight: number
 }
 
 export function computeOldGoldValue(input: OldGoldValueInput): OldGoldValueResult {
   const netWeight = Math.max(0, input.netWeight)
   const ratePerGram = Math.max(0, input.ratePerGram)
   const deductionPct = Math.min(100, Math.max(0, input.deductionPct ?? 0))
-  const grossValue = roundMoney(netWeight * ratePerGram)
+  const touchPct = input.touchPct != null && input.touchPct > 0 ? Math.min(100, input.touchPct) : 0
+  const valuedWeight = touchPct > 0 ? (netWeight * touchPct) / 100 : netWeight
+  const grossValue = roundMoney(valuedWeight * ratePerGram)
   const deductionAmount = roundMoney((grossValue * deductionPct) / 100)
   const finalValue = roundMoney(Math.max(0, grossValue - deductionAmount))
-  return { grossValue, deductionAmount, finalValue }
+  return { grossValue, deductionAmount, finalValue, fineWeight: roundWeight(valuedWeight) }
 }
 
 export function suggestRoundOff(amountBeforeRoundOff: number): number {
@@ -85,6 +91,8 @@ export interface BillSummaryInput {
   manualTax?: number
   oldGold?: Array<Pick<OldGoldItemInput, 'netWeight' | 'ratePerGram' | 'deductionPct'> & { finalValue?: number }>
   extraOldGoldCredit?: number
+  /** Gold savings scheme credit, valued in rupees. Kept separate from old gold. */
+  schemeCredit?: number
   roundOff?: number
 }
 
@@ -99,6 +107,7 @@ export interface BillSummary {
   invoiceTotal: number
   total: number
   oldGoldTotal: number
+  schemeCreditTotal: number
   amountBeforeRoundOff: number
   roundOff: number
   amountPayable: number
@@ -123,7 +132,8 @@ export function computeBillSummary(input: BillSummaryInput): BillSummary {
     }).finalValue
   }, 0)
   const oldGoldTotal = roundMoney(oldGoldFromItems + Math.max(0, input.extraOldGoldCredit ?? 0))
-  const amountBeforeRoundOff = roundMoney(totals.total - oldGoldTotal)
+  const schemeCreditTotal = roundMoney(Math.max(0, input.schemeCredit ?? 0))
+  const amountBeforeRoundOff = roundMoney(totals.total - oldGoldTotal - schemeCreditTotal)
   const roundOff = roundMoney(input.roundOff ?? 0)
   const amountPayable = roundMoney(amountBeforeRoundOff + roundOff)
 
@@ -138,6 +148,7 @@ export function computeBillSummary(input: BillSummaryInput): BillSummary {
     invoiceTotal: totals.total,
     total: totals.total,
     oldGoldTotal,
+    schemeCreditTotal,
     amountBeforeRoundOff,
     roundOff,
     amountPayable,

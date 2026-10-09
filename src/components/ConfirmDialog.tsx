@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Modal } from './Modal'
 
 export function ConfirmDialog({
@@ -5,6 +6,7 @@ export function ConfirmDialog({
   message,
   confirmLabel = 'Delete',
   danger = true,
+  busy = false,
   onConfirm,
   onCancel,
 }: {
@@ -12,20 +14,36 @@ export function ConfirmDialog({
   message: string
   confirmLabel?: string
   danger?: boolean
+  /** While true both buttons are disabled and the dialog cannot be dismissed. */
+  busy?: boolean
   onConfirm: () => void
   onCancel: () => void
 }) {
+  const confirmRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    // Focus the primary action so the dialog is keyboard-usable immediately.
+    confirmRef.current?.focus()
+  }, [])
+
   return (
     <Modal
       title={title}
+      busy={busy}
       onClose={onCancel}
       footer={
         <div className="modal-actions">
-          <button type="button" className="btn secondary" onClick={onCancel}>
+          <button type="button" className="btn secondary" disabled={busy} onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className={`btn${danger ? ' danger' : ''}`} onClick={onConfirm}>
-            {confirmLabel}
+          <button
+            ref={confirmRef}
+            type="button"
+            className={`btn${danger ? ' danger' : ''}`}
+            disabled={busy}
+            onClick={onConfirm}
+          >
+            {busy ? 'Working…' : confirmLabel}
           </button>
         </div>
       }

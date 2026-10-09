@@ -17,7 +17,14 @@ import {
   Weight,
   X,
 } from 'lucide-react'
-import { GOLD_PURITIES, SILVER_PURITIES, STOCK_ITEM_NAMES, STOCK_METALS } from '@shared/itemTypes'
+import {
+  GOLD_PURITIES,
+  isHuidMandatory,
+  newPieceHuidError,
+  SILVER_PURITIES,
+  STOCK_ITEM_NAMES,
+  STOCK_METALS,
+} from '@shared/itemTypes'
 import { computePurchaseTotals } from '@shared/billing/billSummary'
 import { computePurchaseLineAmount, DEFAULT_HSN } from '@shared/billing/pricing'
 import { localTodayIso } from '@shared/localDate'
@@ -100,6 +107,19 @@ function blankRawLine(category: string): LineState {
     makingCharges: '',
     hsnCode: DEFAULT_HSN,
     huids: [],
+  }
+}
+
+function lineFromProduct(product: Product): LineState {
+  return {
+    ...blankProductLine(),
+    productId: product.id,
+    metal: product.metal,
+    category: product.category,
+    purity: product.purity || (isSilver(product.metal) ? SILVER_PURITIES[0] : '22K'),
+    grossWeight: product.grossWeight || '',
+    netWeight: product.netWeight || '',
+    makingCharges: product.makingCharges || '',
   }
 }
 
@@ -212,11 +232,14 @@ function StaticValue({ children }: { children: ReactNode }) {
 export function InwardEditorModal({
   inward,
   readOnly,
+  initialProducts,
   onClose,
   onSaved,
 }: {
   inward: Inward | null
   readOnly: boolean
+  /** Pre-fills one product line per product for a new purchase. */
+  initialProducts?: Product[]
   onClose: () => void
   onSaved: () => Promise<void> | void
 }) {
@@ -230,9 +253,11 @@ export function InwardEditorModal({
   const [paymentMode, setPaymentMode] = useState<PurchasePaymentMode>(inward?.paymentMode ?? 'cash')
   const [roundOff, setRoundOff] = useState<NumericField>(inward?.roundOff ?? 0)
   const [roundOffTouched, setRoundOffTouched] = useState(inward != null)
-  const [lines, setLines] = useState<LineState[]>(() =>
-    inward ? linesFromInward(inward) : [blankProductLine()],
-  )
+  const [lines, setLines] = useState<LineState[]>(() => {
+    if (inward) return linesFromInward(inward)
+    if (initialProducts && initialProducts.length > 0) return initialProducts.map(lineFromProduct)
+    return [blankProductLine()]
+  })
   const [inwardId, setInwardId] = useState<number | null>(inward?.id ?? null)
   const [supplierModalOpen, setSupplierModalOpen] = useState(false)
   const [confirmFinalize, setConfirmFinalize] = useState(false)
@@ -324,10 +349,11 @@ export function InwardEditorModal({
     })
   }
 
-  function buildItems(): InwardItemInput[] {
+  function buildItems(finalize: boolean): InwardItemInput[] {
     if (lines.length === 0) {
       throw new Error('Add at least one line')
     }
+    const huidsSeen: string[] = []
     return lines.map((line, index) => {
       const qty = Math.max(1, Math.trunc(numericFieldToNumber(line.qty, 1)))
       const netWeight = numericFieldToNumber(line.netWeight)
@@ -341,13 +367,25 @@ export function InwardEditorModal({
           throw new Error(`${label} needs a product`)
         }
         const huids = line.huids.map((value) => value.trim().toUpperCase()).filter(Boolean)
-        if (huids.length !== qty) {
-          throw new Error('Add one HUID for each piece on this line')
+        const countError = finalize
+          ? newPieceHuidError(product.metal, huids.length, qty)
+          : huids.length > qty
+            ? 'A line cannot have more HUIDs than pieces'
+            : null
+        if (countError) {
+          throw new Error(`${label} (${product.name}): ${countError}`)
         }
-        const duplicate = huids.find((huid, index) => huids.indexOf(huid) !== index)
+        const invalid = huids.find((huid) => !/^[0-9A-Z]{6}$/.test(huid))
+        if (invalid) {
+          throw new Error(`${label}: HUID ${invalid} must be 6 letters or digits`)
+        }
+        const duplicate = huids.find(
+          (huid, index) => huids.indexOf(huid) !== index || huidsSeen.includes(huid),
+        )
         if (duplicate) {
           throw new Error(`HUID ${duplicate} is duplicated`)
         }
+        huidsSeen.push(...huids)
         return {
           productId: product.id,
           metal: product.metal,
@@ -396,7 +434,7 @@ export function InwardEditorModal({
         notes,
         paymentMode,
         roundOff: liveTotals.roundOff,
-        items: buildItems(),
+        items: buildItems(finalize),
       }
       const saved =
         inwardId == null
@@ -862,6 +900,11 @@ export function InwardEditorModal({
                           <p className="muted">
                             HUID (Hallmark Unique ID) — {line.huids.filter((value) => value.trim()).length} of{' '}
                             {qty} pieces
+                            {readOnly
+                              ? ''
+                              : isHuidMandatory(metal)
+                                ? ' · can be added later, needed before finalize'
+                                : ' · optional for silver'}
                           </p>
                           <HuidEntryList
                             values={line.huids}

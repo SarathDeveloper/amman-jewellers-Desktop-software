@@ -100,7 +100,7 @@ describe('stock IPC', () => {
       invoiceDate: stockDate,
       tax: 0,
       autoTax: false,
-      items: [{ productId: product.id, qty: 1, rate: 100, metalRate: 100, netWeight: 6 }],
+      items: [{ productId: product.id, qty: 1, rate: 100, metalRate: 100, netWeight: 6, huid: product.huids[0] }],
     })
     await ipc(IPC_CHANNELS.INVOICES_FINALIZE, invoice.id)
 

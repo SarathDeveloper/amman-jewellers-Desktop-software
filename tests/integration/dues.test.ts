@@ -29,7 +29,7 @@ describe('dues IPC', () => {
       tax: 0,
       autoTax: false,
       paymentMode: 'upi',
-      items: [{ productId: product.id, qty: 1, rate: 1500, metalRate: 1500, netWeight: 4 }],
+      items: [{ productId: product.id, qty: 1, rate: 1500, metalRate: 1500, netWeight: 4, huid: product.huids[0] }],
     })
     const finalized = await ipc(IPC_CHANNELS.INVOICES_FINALIZE, invoice.id)
 
@@ -71,7 +71,7 @@ describe('dues IPC', () => {
       autoTax: false,
       paymentMode: 'cash',
       amountPaid: 2000,
-      items: [{ productId: product.id, qty: 1, rate: 5000, metalRate: 5000, netWeight: 8 }],
+      items: [{ productId: product.id, qty: 1, rate: 5000, metalRate: 5000, netWeight: 8, huid: product.huids[0] }],
     })
     const finalized = await ipc(IPC_CHANNELS.INVOICES_FINALIZE, invoice.id)
     expect(finalized.amountPaid).toBe(2000)
@@ -146,7 +146,7 @@ describe('dues IPC', () => {
       tax: 0,
       autoTax: false,
       paymentMode: 'upi',
-      items: [{ productId: product.id, qty: 1, rate: 5000, metalRate: 5000, netWeight: 8 }],
+      items: [{ productId: product.id, qty: 1, rate: 5000, metalRate: 5000, netWeight: 8, huid: product.huids[0] }],
     })
     const finalized = await ipc(IPC_CHANNELS.INVOICES_FINALIZE, invoice.id)
 

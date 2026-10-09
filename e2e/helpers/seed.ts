@@ -71,7 +71,16 @@ export async function seedFinalInvoice(page: Page): Promise<number> {
         tax: 0,
         autoTax: false,
         paymentMode: 'upi',
-        items: [{ productId: product.id, qty: 1, rate: 1000, metalRate: 1000, netWeight: 2.5 }],
+        items: [
+          {
+            productId: product.id,
+            qty: 1,
+            rate: 1000,
+            metalRate: 1000,
+            netWeight: 2.5,
+            huid: 'E00001',
+          },
+        ],
       }),
     })
     const finalized = await api<{ id: number }>(`/api/invoices/${invoice.id}/finalize`, { method: 'POST' })

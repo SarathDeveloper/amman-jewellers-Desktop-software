@@ -2,6 +2,7 @@ import type {
   AppInfo,
   AuthUser,
   BackupFile,
+  BackupInspection,
   BackupStatus,
   BillFormat,
   ChangePasswordInput,
@@ -15,6 +16,7 @@ import type {
   DuesLedger,
   HistoricalInvoiceInput,
   Invoice,
+  InvoiceCancelInput,
   InvoiceInput,
   InvoiceListQuery,
   InvoiceListStats,
@@ -26,19 +28,38 @@ import type {
   LoginInput,
   MetalRates,
   MetalRatesInput,
+  OldGoldBatch,
+  OldGoldBatchCancelInput,
+  OldGoldBatchCreateInput,
+  OldGoldBatchMeltInput,
+  OldGoldBatchSendInput,
+  OldGoldBatchSettleInput,
+  OldGoldLot,
+  OldGoldPayoutInput,
   OldGoldPurchase,
   OldGoldPurchaseInput,
   OldGoldPurchaseUpdateInput,
   PagedList,
   Pledge,
+  PledgeAuction,
+  PledgeAuctionInput,
+  PledgeAuctionNoticeInput,
+  PledgeAuctionSurplusInput,
   PledgeCollectInput,
   PledgeForfeitInput,
   PledgeInput,
   PledgeListQuery,
+  PledgePayment,
+  PledgePayoff,
+  PledgePhoto,
+  PledgePhotoKind,
   PledgeRedeemInput,
+  PledgeReminderEntry,
+  PledgeRenewInput,
   PledgeTopup,
   PledgeTopupInput,
   PledgeUpdateInput,
+  PledgeWhatsAppOpenInput,
   Product,
   ProductInput,
   ResetPasswordInput,
@@ -61,6 +82,7 @@ import type {
   InwardInput,
   InwardUpdateInput,
   MetalDayCloseInput,
+  MetalDayCloseResult,
   MetalDayClosingHistoryRow,
   MetalDayClosingSheet,
   MetalDayReopenInput,
@@ -72,16 +94,20 @@ import type {
   GoldSavingAccountDetail,
   GoldSavingAccountInput,
   GoldSavingAuditLog,
+  GoldSavingCancelInput,
   GoldSavingDashboard,
   GoldSavingLedgerEntry,
   GoldSavingPassbook,
   GoldSavingPayment,
   GoldSavingPaymentInput,
+  GoldSavingRate,
   GoldSavingRedemption,
   GoldSavingRedemptionInput,
+  GoldSavingRefund,
   GoldSavingReportId,
   GoldSavingReportResult,
   GoldSavingScheme,
+  GoldSavingSchemeCreditPreview,
   GoldSavingSchemeInput,
 } from '@shared/types'
 import type { ReportDefinition, ReportId, ReportLookups, ReportResult } from '@shared/reportsCatalog'
@@ -139,10 +165,10 @@ function asPaged<T>(payload: unknown): PagedList<T> {
   }
 }
 
-function qs(params: Record<string, string | undefined>): string {
+function qs(params: Record<string, string | number | undefined>): string {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
-    if (value) search.set(key, value)
+    if (value) search.set(key, String(value))
   }
   const encoded = search.toString()
   return encoded ? `?${encoded}` : ''
@@ -220,7 +246,7 @@ export const api = {
       `/api/stock/day-closings/history${qs({ metal })}`,
     ),
   closeMetalDay: (input: MetalDayCloseInput) =>
-    request<MetalDayClosingSheet>('/api/stock/day-closings/close', {
+    request<MetalDayCloseResult>('/api/stock/day-closings/close', {
       method: 'POST',
       body: JSON.stringify(input),
     }),
@@ -261,10 +287,34 @@ export const api = {
     request<Inward>(`/api/inwards/${id}/finalize`, { method: 'POST' }),
   deleteInward: (id: number) => request<void>(`/api/inwards/${id}`, { method: 'DELETE' }),
 
-  listOldGoldPurchases: () => request<OldGoldPurchase[]>('/api/old-gold-purchases'),
+  listOldGoldPurchases: (params: {
+    customerId?: number | null
+    status?: string
+    from?: string
+    to?: string
+    available?: boolean
+  } = {}) =>
+    request<OldGoldPurchase[]>(
+      `/api/old-gold-purchases${qs({
+        customerId: params.customerId ?? undefined,
+        status: params.status,
+        from: params.from,
+        to: params.to,
+        available: params.available ? 1 : undefined,
+      })}`,
+    ),
   getOldGoldPurchase: (id: number) => request<OldGoldPurchase>(`/api/old-gold-purchases/${id}`),
-  getNextOldGoldPurchaseNo: () =>
-    request<{ purchaseNo: string }>('/api/old-gold-purchases/next-purchase-no'),
+  getOldGoldPurchaseStats: (date: string) =>
+    request<{
+      date: string
+      count: number
+      amount: number
+      netWeight: number
+      paidOut: number
+      openBalance: number
+    }>(`/api/old-gold-purchases/stats${qs({ date })}`),
+  getNextOldGoldPurchaseNo: (date?: string) =>
+    request<{ purchaseNo: string }>(`/api/old-gold-purchases/next-purchase-no${qs({ date })}`),
   lookupOldGoldPurchaseByNo: (purchaseNo: string) =>
     request<OldGoldPurchase>(`/api/old-gold-purchases/by-no/${encodeURIComponent(purchaseNo)}`),
   createOldGoldPurchase: (input: OldGoldPurchaseInput) =>
@@ -276,8 +326,54 @@ export const api = {
     }),
   finalizeOldGoldPurchase: (id: number) =>
     request<OldGoldPurchase>(`/api/old-gold-purchases/${id}/finalize`, { method: 'POST' }),
+  createOldGoldPayout: (id: number, input: OldGoldPayoutInput) =>
+    request<OldGoldPurchase>(`/api/old-gold-purchases/${id}/payouts`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  voidOldGoldPayout: (id: number, payoutId: number, reason: string) =>
+    request<OldGoldPurchase>(`/api/old-gold-purchases/${id}/payouts/${payoutId}/void`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  cancelOldGoldPurchase: (id: number, reason: string) =>
+    request<OldGoldPurchase>(`/api/old-gold-purchases/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
   deleteOldGoldPurchase: (id: number) =>
     request<void>(`/api/old-gold-purchases/${id}`, { method: 'DELETE' }),
+
+  getOldGoldLot: () => request<OldGoldLot>('/api/old-gold-batches/lot'),
+  listOldGoldBatches: (params: { status?: string; from?: string; to?: string } = {}) =>
+    request<OldGoldBatch[]>(
+      `/api/old-gold-batches${qs({ status: params.status, from: params.from, to: params.to })}`,
+    ),
+  getOldGoldBatch: (id: number) => request<OldGoldBatch>(`/api/old-gold-batches/${id}`),
+  getNextOldGoldBatchNo: (date?: string) =>
+    request<{ batchNo: string }>(`/api/old-gold-batches/next-batch-no${qs({ date })}`),
+  createOldGoldBatch: (input: OldGoldBatchCreateInput) =>
+    request<OldGoldBatch>('/api/old-gold-batches', { method: 'POST', body: JSON.stringify(input) }),
+  meltOldGoldBatch: (id: number, input: OldGoldBatchMeltInput) =>
+    request<OldGoldBatch>(`/api/old-gold-batches/${id}/melt`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  sendOldGoldBatch: (id: number, input: OldGoldBatchSendInput) =>
+    request<OldGoldBatch>(`/api/old-gold-batches/${id}/send`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  settleOldGoldBatch: (id: number, input: OldGoldBatchSettleInput) =>
+    request<OldGoldBatch>(`/api/old-gold-batches/${id}/settle`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  cancelOldGoldBatch: (id: number, input: OldGoldBatchCancelInput) =>
+    request<OldGoldBatch>(`/api/old-gold-batches/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   listDues: (search?: string) => request<DuesLedger>(`/api/dues${qs({ q: search })}`),
   createDueEntry: (input: DueEntryInput) =>
@@ -329,6 +425,8 @@ export const api = {
     request<Invoice>(`/api/invoices/${input.id}`, { method: 'PUT', body: JSON.stringify(input) }),
   finalizeInvoice: (id: number) =>
     request<Invoice>(`/api/invoices/${id}/finalize`, { method: 'POST' }),
+  cancelInvoice: (id: number, input: InvoiceCancelInput) =>
+    request<Invoice>(`/api/invoices/${id}/cancel`, { method: 'POST', body: JSON.stringify(input) }),
   markInvoicePrinted: (invoiceId: number) =>
     request<{ invoiceNo: string }>(`/api/invoices/${invoiceId}/printed`, { method: 'POST' }),
   recordInvoicePayment: (id: number, input: InvoicePaymentInput) =>
@@ -356,8 +454,11 @@ export const api = {
     request<Pledge>('/api/pledges', { method: 'POST', body: JSON.stringify(input) }),
   updatePledge: (input: PledgeUpdateInput) =>
     request<Pledge>(`/api/pledges/${input.id}`, { method: 'PUT', body: JSON.stringify(input) }),
-  sanctionPledge: (id: number) =>
-    request<Pledge>(`/api/pledges/${id}/sanction`, { method: 'POST' }),
+  sanctionPledge: (id: number, input: { allowAboveLtv?: boolean } = {}) =>
+    request<Pledge>(`/api/pledges/${id}/sanction`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   redeemPledge: (input: PledgeRedeemInput) =>
     request<Pledge>(`/api/pledges/${input.id}/redeem`, {
       method: 'POST',
@@ -373,9 +474,52 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  renewPledge: (input: PledgeRenewInput) =>
+    request<Pledge>(`/api/pledges/${input.id}/renew`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  deletePledge: (id: number) =>
+    request<{ id: number }>(`/api/pledges/${id}`, { method: 'DELETE' }),
   listPledgeTopups: (id: number) => request<PledgeTopup[]>(`/api/pledges/${id}/topups`),
   addPledgeTopup: (input: PledgeTopupInput) =>
     request<Pledge>(`/api/pledges/${input.pledgeId}/topup`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getPledgeAuction: (id: number) => request<PledgeAuction | null>(`/api/pledges/${id}/auction`),
+  sendPledgeAuctionNotice: (input: PledgeAuctionNoticeInput) =>
+    request<PledgeAuction>(`/api/pledges/${input.id}/auction-notice`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  recordPledgeAuction: (input: PledgeAuctionInput) =>
+    request<Pledge>(`/api/pledges/${input.id}/auction`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  markPledgeAuctionSurplusPaid: (input: PledgeAuctionSurplusInput) =>
+    request<PledgeAuction>(`/api/pledges/${input.id}/auction-surplus-paid`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  listPledgePayments: (id: number) => request<PledgePayment[]>(`/api/pledges/${id}/payments`),
+  getPledgePayoff: (id: number, date?: string) =>
+    request<PledgePayoff>(`/api/pledges/${id}/payoff${qs({ date })}`),
+  listPledgeReminders: (date?: string) =>
+    request<PledgeReminderEntry[]>(`/api/pledges/reminders${qs({ date })}`),
+  listPledgePhotos: (id: number) => request<PledgePhoto[]>(`/api/pledges/${id}/photos`),
+  uploadPledgePhoto: async (id: number, kind: PledgePhotoKind, file: File) => {
+    const body = new FormData()
+    body.append('kind', kind)
+    // Photos print a few centimetres wide, so shrink before upload.
+    body.append('file', await downscaleImageFile(file))
+    return request<PledgePhoto>(`/api/pledges/${id}/photos`, { method: 'POST', body })
+  },
+  deletePledgePhoto: (id: number, photoId: number) =>
+    request<PledgePhoto>(`/api/pledges/${id}/photos/${photoId}`, { method: 'DELETE' }),
+  openWhatsAppReminder: (input: PledgeWhatsAppOpenInput) =>
+    request<{ ok: boolean }>('/api/system/open-whatsapp', {
       method: 'POST',
       body: JSON.stringify(input),
     }),
@@ -435,17 +579,28 @@ export const api = {
     }),
   listGsAccounts: (search?: string) =>
     request<GoldSavingAccount[]>(`/api/gold-savings/accounts${qs({ q: search })}`),
+  previewGsBillingCredit: (customerId: number, invoiceId?: number | null, date?: string | null) =>
+    request<GoldSavingSchemeCreditPreview[]>(
+      `/api/gold-savings/billing-preview${qs({
+        customerId: String(customerId),
+        invoiceId: invoiceId ? String(invoiceId) : undefined,
+        date: date ?? undefined,
+      })}`,
+    ),
+  getGsRate: (date: string, purity: string) =>
+    request<GoldSavingRate>(`/api/gold-savings/rate${qs({ date, purity })}`),
   getGsAccount: (id: number) => request<GoldSavingAccountDetail>(`/api/gold-savings/accounts/${id}`),
   createGsAccount: (input: GoldSavingAccountInput) =>
     request<GoldSavingAccountDetail>('/api/gold-savings/accounts', {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  cancelGsAccount: (id: number, reason: string) =>
+  cancelGsAccount: (id: number, input: GoldSavingCancelInput) =>
     request<GoldSavingAccountDetail>(`/api/gold-savings/accounts/${id}/cancel`, {
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify(input),
     }),
+  getGsRefund: (id: number) => request<GoldSavingRefund>(`/api/gold-savings/refunds/${id}`),
   collectGsPayment: (input: GoldSavingPaymentInput) =>
     request<GoldSavingPayment>('/api/gold-savings/payments', {
       method: 'POST',
@@ -454,6 +609,11 @@ export const api = {
   getGsPayment: (id: number) => request<GoldSavingPayment>(`/api/gold-savings/payments/${id}`),
   reverseGsPayment: (id: number, reason: string) =>
     request<GoldSavingPayment>(`/api/gold-savings/payments/${id}/reverse`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  waiveGsInstallment: (installmentId: number, reason: string) =>
+    request<GoldSavingAccountDetail>(`/api/gold-savings/installments/${installmentId}/waive`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
@@ -497,6 +657,11 @@ export const api = {
   }) => request<BackupStatus>('/api/backup/settings', { method: 'PUT', body: JSON.stringify(input) }),
   copyBackupOffsite: () => request<BackupStatus>('/api/backup/offsite-copy', { method: 'POST' }),
   listBackups: () => request<BackupFile[]>('/api/backup/list'),
+  inspectBackup: (name: string) =>
+    request<BackupInspection>('/api/backup/inspect', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
   createBackup: () => request<BackupFile>('/api/backup/create', { method: 'POST' }),
   restoreBackupByName: (name: string) =>
     request<BackupStatus>('/api/backup/restore-local', {

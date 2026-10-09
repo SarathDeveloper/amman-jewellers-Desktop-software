@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
+  Banknote,
   BookOpen,
   Building2,
   Database,
@@ -21,7 +23,7 @@ import type {
   TaxReportRow,
 } from '@shared/types'
 import { PageHeader } from '../../components/PageHeader'
-import { formatCurrency } from '../../lib/format'
+import { formatCurrency, formatDisplayMonth } from '../../lib/format'
 import { api } from '../../lib/api'
 import { useToast } from '../../components/toastContext'
 import { defaultShopLogoUrl, localImageSrc, shopSettingsToDisplay } from '../invoices/mapShopDisplay'
@@ -147,7 +149,12 @@ function DashedImageField({
 export function SettingsPage() {
   const { showToast } = useToast()
   const { refresh: refreshBranding } = useShopBranding()
+  const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<SettingsTab>(() => {
+    const requested = searchParams.get('tab')
+    if (requested === 'printers' || requested === 'backup' || requested === 'data') {
+      return requested
+    }
     return 'invoice'
   })
   const [info, setInfo] = useState<AppInfo | null>(null)
@@ -636,28 +643,43 @@ export function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="billing-chrome billing-chrome--list" style={{ marginBottom: '1.25rem' }}>
-                  <div className="billing-chrome-tabs">
+                <div className="billing-chrome" style={{ marginBottom: '1.25rem' }}>
+                  <div className="billing-chrome-tabs" role="tablist" aria-label="Bill template">
                     <button
                       type="button"
+                      role="tab"
+                      aria-selected={invoiceTab === 'cash'}
                       className={`billing-chrome-tab${invoiceTab === 'cash' ? ' active' : ''}`}
                       onClick={() => setInvoiceTab('cash')}
                     >
-                      Cash Bill
+                      <span className="billing-chrome-tab-icon" aria-hidden>
+                        <Banknote size={18} strokeWidth={1.75} />
+                      </span>
+                      <span className="billing-chrome-tab-label">Cash Bill</span>
                     </button>
                     <button
                       type="button"
+                      role="tab"
+                      aria-selected={invoiceTab === 'tax'}
                       className={`billing-chrome-tab${invoiceTab === 'tax' ? ' active' : ''}`}
                       onClick={() => setInvoiceTab('tax')}
                     >
-                      Tax Invoice
+                      <span className="billing-chrome-tab-icon" aria-hidden>
+                        <FileText size={18} strokeWidth={1.75} />
+                      </span>
+                      <span className="billing-chrome-tab-label">Tax Invoice</span>
                     </button>
                     <button
                       type="button"
+                      role="tab"
+                      aria-selected={invoiceTab === 'adagu'}
                       className={`billing-chrome-tab${invoiceTab === 'adagu' ? ' active' : ''}`}
                       onClick={() => setInvoiceTab('adagu')}
                     >
-                      Adagu Bill
+                      <span className="billing-chrome-tab-icon" aria-hidden>
+                        <BookOpen size={18} strokeWidth={1.75} />
+                      </span>
+                      <span className="billing-chrome-tab-label">Adagu Bill</span>
                     </button>
                   </div>
                 </div>
@@ -724,6 +746,46 @@ export function SettingsPage() {
                           }
                         />
                       </label>
+                      <label className="span-3">
+                        Auction notice period (days)
+                        <input
+                          className="input"
+                          type="number"
+                          min={0}
+                          max={365}
+                          step={1}
+                          value={shop.adaguAuctionNoticeDays}
+                          onChange={(e) =>
+                            patchShop({
+                              adaguAuctionNoticeDays: Math.min(
+                                365,
+                                Math.max(0, Math.round(Number(e.target.value) || 0)),
+                              ),
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="span-3">
+                        <input
+                          type="checkbox"
+                          checked={shop.adaguRequireKyc}
+                          onChange={(e) => patchShop({ adaguRequireKyc: e.target.checked })}
+                        />{' '}
+                        Require KYC (Aadhaar or PAN) before sanctioning
+                      </label>
+                      <label className="span-3">
+                        WhatsApp reminder message
+                        <textarea
+                          className="textarea"
+                          rows={3}
+                          maxLength={500}
+                          value={shop.adaguReminderTemplate}
+                          onChange={(e) => patchShop({ adaguReminderTemplate: e.target.value })}
+                        />
+                        <span className="settings-reminder-preview">
+                          Placeholders: {'{name} {receiptNo} {interestDue} {dueDate} {principal} {shopName}'}
+                        </span>
+                      </label>
                     </div>
                   </>
                 )}
@@ -753,7 +815,7 @@ export function SettingsPage() {
                   <tbody>
                     {taxReport.map((row) => (
                       <tr key={row.month}>
-                        <td>{row.month}</td>
+                        <td>{formatDisplayMonth(row.month)}</td>
                         <td className="num">{formatCurrency(row.taxableSales)}</td>
                         <td className="num">{formatCurrency(row.cgst)}</td>
                         <td className="num">{formatCurrency(row.sgst)}</td>

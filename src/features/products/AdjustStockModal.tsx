@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Calculator, X } from 'lucide-react'
+import { huidRemovalRange, isHuidMandatory, newPieceHuidError } from '@shared/itemTypes'
 import { localTodayIso } from '@shared/localDate'
 import type { Product } from '@shared/types'
 import { DateInput } from '../../components/DateInput'
@@ -45,8 +46,11 @@ export function AdjustStockModal({
   const qtyDelta = direction === 'add' ? qty : -qty
   const newStock = currentStock + qtyDelta
   const existingHuids = product.huids ?? []
-  const removeNeeded =
-    direction === 'reduce' ? Math.min(qty, existingHuids.length) : 0
+  const huidsMandatory = isHuidMandatory(product.metal)
+  const removeRange =
+    direction === 'reduce'
+      ? huidRemovalRange(product.metal, existingHuids.length, currentStock, qty)
+      : { min: 0, max: 0 }
 
   const validationError = useMemo(() => {
     if (!date.trim()) return 'Date is required'
@@ -54,14 +58,20 @@ export function AdjustStockModal({
     if (newStock < 0) return `Cannot reduce below 0 pcs (current stock is ${currentStock})`
     if (direction === 'add') {
       const filled = huids.map((value) => value.trim().toUpperCase()).filter(Boolean)
-      if (filled.length !== qty) return 'Add one HUID for each new piece'
+      const countError = newPieceHuidError(product.metal, filled.length, qty)
+      if (countError) return countError
       const duplicate = filled.find((huid, index) => filled.indexOf(huid) !== index)
       if (duplicate) return `HUID ${duplicate} is duplicated`
     }
-    if (direction === 'reduce' && existingHuids.length > 0 && removedHuids.length !== removeNeeded) {
-      return removeNeeded === 1
-        ? 'Select 1 HUID to remove'
-        : `Select ${removeNeeded} HUIDs to remove`
+    if (direction === 'reduce' && existingHuids.length > 0) {
+      if (removeRange.min === removeRange.max && removedHuids.length !== removeRange.max) {
+        return removeRange.max === 1 ? 'Select 1 HUID to remove' : `Select ${removeRange.max} HUIDs to remove`
+      }
+      if (removedHuids.length < removeRange.min) {
+        return removeRange.min === 1
+          ? 'Select at least 1 HUID to remove'
+          : `Select at least ${removeRange.min} HUIDs to remove`
+      }
     }
     return null
   }, [
@@ -71,9 +81,11 @@ export function AdjustStockModal({
     currentStock,
     direction,
     huids,
+    product.metal,
     existingHuids.length,
     removedHuids.length,
-    removeNeeded,
+    removeRange.min,
+    removeRange.max,
   ])
 
   const shownError = error ?? (qty > 0 && newStock < 0 ? validationError : null)
@@ -209,7 +221,11 @@ export function AdjustStockModal({
 
           {direction === 'add' && qty > 0 ? (
             <div>
-              <p className="muted">HUID (Hallmark Unique ID) for each new piece</p>
+              <p className="muted">
+                {huidsMandatory
+                  ? 'HUID (Hallmark Unique ID) for each new piece'
+                  : 'HUID (Hallmark Unique ID) for new pieces · optional for silver'}
+              </p>
               <HuidEntryList values={resizeHuidRows(huids, qty)} onChange={setHuids} />
             </div>
           ) : null}
@@ -219,7 +235,7 @@ export function AdjustStockModal({
               <legend className="product-attr-head">Select HUIDs to remove</legend>
               {existingHuids.map((huid) => {
                 const checked = removedHuids.includes(huid)
-                const disableUnchecked = !checked && removedHuids.length >= removeNeeded
+                const disableUnchecked = !checked && removedHuids.length >= removeRange.max
                 return (
                   <label key={huid} className="product-form-toggle">
                     <input

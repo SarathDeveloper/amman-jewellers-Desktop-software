@@ -116,7 +116,7 @@ test('enroll without terms stays disabled; duplicate Ravi is blocked; new custom
 
   await window.getByRole('button', { name: 'Cancel', exact: true }).click()
   const cancelDialog = window.getByRole('dialog', { name: 'Cancel scheme account' })
-  await cancelDialog.locator('input.input').fill('E2E cancel after enroll')
+  await cancelDialog.getByLabel('Reason').fill('E2E cancel after enroll')
   await cancelDialog.getByRole('button', { name: 'Cancel account' }).click()
   await expect(window.locator('.settings-row').filter({ hasText: 'Status' })).toContainText('Cancelled')
 })
@@ -140,6 +140,53 @@ test('collect Priya next installment then reverse it', async ({ window }) => {
   await reverseDialog.getByRole('button', { name: 'Reverse payment' }).click()
   await expect(window.getByText('Payment reversed')).toBeVisible()
   await expect(window.getByText('Reversed').first()).toBeVisible()
+})
+
+test('collect two installments in one batch and reprint the batch receipt', async ({ window }) => {
+  seedGoldSavingsDemo()
+
+  await openGoldSavingsTab(window, 'Collections')
+  await window.getByRole('row').filter({ hasText: 'Suresh' }).click()
+  await window.getByRole('button', { name: 'Collect next installment' }).click()
+
+  const collectDialog = window.getByRole('dialog', { name: /^Collect GS-/ })
+  const countInput = collectDialog.locator('.gs-stepper input')
+  await expect(countInput).toBeEnabled()
+  await countInput.fill('2')
+  await expect(collectDialog.getByText(/^Installments in this receipt$/)).toBeVisible()
+  await expect(collectDialog.getByText(/^2 installments ·/)).toBeVisible()
+
+  await collectDialog.getByRole('button', { name: 'Record payment' }).click()
+  await window.getByRole('dialog', { name: 'Confirm collection' }).getByRole('button', { name: 'Confirm' }).click()
+  await closePrintPreview(window, 'Collection receipt')
+
+  const batch = getDatabase()
+    .prepare(
+      `SELECT batch_no AS batchNo, COUNT(*) AS rows
+       FROM gold_saving_payments
+       WHERE batch_no IS NOT NULL AND status = 'posted'
+       GROUP BY batch_no
+       ORDER BY batch_no DESC
+       LIMIT 1`,
+    )
+    .get() as { batchNo: string; rows: number }
+  expect(batch.rows).toBe(2)
+  expect(batch.batchNo).toMatch(/^GSB-\d{4}-\d{4}$/)
+
+  const first = getDatabase()
+    .prepare(`SELECT id FROM gold_saving_payments WHERE batch_no = ? ORDER BY id LIMIT 1`)
+    .get(batch.batchNo) as { id: number }
+
+  await seedShopName(window, 'Gold Savings Print Shop')
+  const origin = new URL(window.url()).origin
+  await window.goto(`${origin}/print/gs-batch-receipt/${first.id}`)
+  await expect(window.getByRole('heading', { name: 'Gold Savings Print Shop' })).toBeVisible({ timeout: 15_000 })
+  await expect(window.locator('.gs-receipt-note').first()).toContainText('One receipt for 2 installments')
+  await expect(window.locator('.gs-receipt-batch tbody tr')).toHaveCount(2)
+  await expect(
+    window.locator('.gs-receipt tr').filter({ hasText: 'Total amount paid to date' }),
+  ).toContainText('₹6000.00')
+  await expect(window.locator('.gs-receipt-print-error')).toHaveCount(0)
 })
 
 test('customer with a scheme account cannot be deleted', async ({ window }) => {
@@ -220,6 +267,24 @@ test('receipt and passbook print routes render without errors', async ({ window 
   await expect(window.getByRole('heading', { name: 'Gold Savings Print Shop' })).toBeVisible({ timeout: 15_000 })
   await expect(window.locator('.error-banner')).toHaveCount(0)
   await expect(window.locator('.gs-passbook-print-status')).toHaveCount(0)
+})
+
+test('call list print route lists overdue accounts and honours the bucket filter', async ({ window }) => {
+  seedGoldSavingsDemo()
+  await seedShopName(window, 'Gold Savings Print Shop')
+
+  const origin = new URL(window.url()).origin
+  await window.goto(`${origin}/print/gs-call-list`)
+  await expect(window.getByRole('heading', { name: 'Gold Savings Print Shop' })).toBeVisible({ timeout: 15_000 })
+  await expect(window.locator('.gs-call-list-table tbody tr')).not.toHaveCount(0)
+  await expect(window.locator('.gs-call-list-table')).toContainText('Suresh')
+  await expect(window.locator('.gs-call-list-error')).toHaveCount(0)
+  await expect(window.locator('.gs-call-list-summary')).toContainText('to collect')
+
+  await window.goto(`${origin}/print/gs-call-list?bucket=${encodeURIComponent('30+ days')}`)
+  await expect(window.getByRole('heading', { name: 'Gold Savings Print Shop' })).toBeVisible({ timeout: 15_000 })
+  await expect(window.locator('.gs-call-list-meta')).toContainText('30+ days')
+  await expect(window.locator('.gs-call-list-error')).toHaveCount(0)
 })
 
 test('reports list overdue installments and daily collections', async ({ window }) => {

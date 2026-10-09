@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { PaperSize, PrinterRole } from '@shared/types'
 import { api } from '../../lib/api'
+import { formatDisplayDateTime } from '../../lib/format'
 import { applyPaperDataset, paperClassName, paperPageCss } from './paperSize'
 import { signalPrintReady, waitForPrintLayout } from './printPageUtils'
 import './CashBillPrint.css'
@@ -71,7 +72,7 @@ export function TestPrintPage() {
     }
   }, [ready, error])
 
-  const printedAt = new Date().toLocaleString()
+  const printedAt = formatDisplayDateTime(new Date().toISOString())
 
   return (
     <div className="cash-bill-print-page">

@@ -1,5 +1,6 @@
 import { Gem } from 'lucide-react'
 import type { Product } from '@shared/types'
+import { formatWeight } from '../../lib/format'
 import { localImageSrc } from '../invoices/mapShopDisplay'
 
 export type StockTone = 'in' | 'low' | 'out'
@@ -26,8 +27,9 @@ export function stockLabel(tone: StockTone): string {
 
 function compactWeight(weight: number): string {
   if (weight <= 0) return ''
-  const text = weight.toFixed(3).replace(/\.?0+$/, '')
-  return `${text}g`
+  // Use the shared 3-decimal formatter, then trim trailing zeros for the compact
+  // variant label ("2.5g" rather than "2.500 g").
+  return formatWeight(weight, 3).replace(/\.?0+ g$/, 'g')
 }
 
 export function variantDisplayName(product: Product): string {

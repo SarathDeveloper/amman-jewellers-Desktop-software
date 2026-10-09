@@ -62,6 +62,11 @@ export function CashBillPrint({
           alt=""
           aria-hidden
         />
+        {data.watermark ? (
+          <div className="bill-status-watermark" aria-hidden>
+            <span>{data.watermark}</span>
+          </div>
+        ) : null}
         <header className="cash-bill-header">
           <div className="cash-bill-brand-row">
             <div className="cash-bill-gstin" />
@@ -176,6 +181,18 @@ export function CashBillPrint({
               ))}
               {data.oldGoldLines.map((line, index) => (
                 <tr key={`old-gold-${index}`}>
+                  <td className="cash-bill-col-particulars">{line.particulars}</td>
+                  <td className="cash-bill-col-num">{formatWeight(line.weight)}</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td>&nbsp;</td>
+                  <td className="cash-bill-col-num cash-bill-col-amount">-{formatAmount(line.amount)}</td>
+                </tr>
+              ))}
+              {(data.schemeCreditLines ?? []).map((line, index) => (
+                <tr key={`scheme-credit-${index}`}>
                   <td className="cash-bill-col-particulars">{line.particulars}</td>
                   <td className="cash-bill-col-num">{formatWeight(line.weight)}</td>
                   <td>&nbsp;</td>

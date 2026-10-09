@@ -71,6 +71,7 @@ export function BillDuesTab({
   const [paymentDate, setPaymentDate] = useState(localTodayIso())
   const [paymentNote, setPaymentNote] = useState('')
   const [settling, setSettling] = useState(false)
+  const [entryBusy, setEntryBusy] = useState(false)
   const [deleteEntry, setDeleteEntry] = useState<DueEntry | null>(null)
   const [customers, setCustomers] = useState<Customer[]>([])
   const [recordCustomerId, setRecordCustomerId] = useState(0)
@@ -170,12 +171,15 @@ export function BillDuesTab({
     }
     try {
       onError(null)
+      setEntryBusy(true)
       await api.createDueEntry(form)
       setOpen(false)
       showToast('Entry added', 'success')
       await onReload()
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Failed to save entry')
+    } finally {
+      setEntryBusy(false)
     }
   }
 
@@ -197,6 +201,7 @@ export function BillDuesTab({
     }
     try {
       onError(null)
+      setEntryBusy(true)
       await api.updateDueEntry(editForm)
       setEditOpen(false)
       setEditForm(null)
@@ -204,18 +209,23 @@ export function BillDuesTab({
       await onReload()
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Failed to update entry')
+    } finally {
+      setEntryBusy(false)
     }
   }
 
   async function removeEntry(entry: DueEntry) {
     try {
       onError(null)
+      setEntryBusy(true)
       await api.deleteDueEntry(entry.id)
       setDeleteEntry(null)
       showToast('Entry removed', 'success')
       await onReload()
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Failed to delete entry')
+    } finally {
+      setEntryBusy(false)
     }
   }
 
@@ -617,6 +627,7 @@ export function BillDuesTab({
       {editOpen && editForm && (
         <Modal
           title="Edit dues entry"
+          busy={entryBusy}
           onClose={() => {
             setEditOpen(false)
             setEditForm(null)
@@ -626,6 +637,7 @@ export function BillDuesTab({
               <button
                 type="button"
                 className="btn secondary"
+                disabled={entryBusy}
                 onClick={() => {
                   setEditOpen(false)
                   setEditForm(null)
@@ -633,8 +645,8 @@ export function BillDuesTab({
               >
                 Cancel
               </button>
-              <button type="button" className="btn" onClick={() => void saveEditEntry()}>
-                Save
+              <button type="button" className="btn" disabled={entryBusy} onClick={() => void saveEditEntry()}>
+                {entryBusy ? 'Saving…' : 'Save'}
               </button>
             </div>
           }
@@ -691,14 +703,15 @@ export function BillDuesTab({
       {open && (
         <Modal
           title="Add dues entry"
+          busy={entryBusy}
           onClose={() => setOpen(false)}
           footer={
             <div className="modal-actions">
-              <button type="button" className="btn secondary" onClick={() => setOpen(false)}>
+              <button type="button" className="btn secondary" disabled={entryBusy} onClick={() => setOpen(false)}>
                 Cancel
               </button>
-              <button type="button" className="btn" onClick={() => void saveEntry()}>
-                Save
+              <button type="button" className="btn" disabled={entryBusy} onClick={() => void saveEntry()}>
+                {entryBusy ? 'Saving…' : 'Save'}
               </button>
             </div>
           }
@@ -770,6 +783,7 @@ export function BillDuesTab({
               : 'Remove this entry?'
           }
           confirmLabel="Remove"
+          busy={entryBusy}
           onCancel={() => setDeleteEntry(null)}
           onConfirm={() => void removeEntry(deleteEntry)}
         />

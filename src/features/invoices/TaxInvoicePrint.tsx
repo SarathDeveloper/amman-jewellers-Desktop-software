@@ -70,6 +70,11 @@ export function TaxInvoicePrint({
           alt=""
           aria-hidden
         />
+        {data.watermark ? (
+          <div className="bill-status-watermark" aria-hidden>
+            <span>{data.watermark}</span>
+          </div>
+        ) : null}
         <header className="tax-invoice-header">
           <div className="tax-invoice-brand-row">
             <div className="tax-invoice-gstin">
@@ -290,6 +295,12 @@ export function TaxInvoicePrint({
               <div className="tax-invoice-totals-row">
                 <span>Old gold</span>
                 <span>-{money(data.oldGoldTotal)}</span>
+              </div>
+            ) : null}
+            {(data.schemeCreditTotal ?? 0) > 0 ? (
+              <div className="tax-invoice-totals-row">
+                <span>Gold savings credit</span>
+                <span>-{money(data.schemeCreditTotal)}</span>
               </div>
             ) : null}
             <div className="tax-invoice-totals-row">

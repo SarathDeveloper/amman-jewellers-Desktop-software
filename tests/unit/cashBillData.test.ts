@@ -24,6 +24,8 @@ function item(overrides: Partial<InvoiceItem> = {}): InvoiceItem {
     hsnCode: '7113',
     lineKind: 'sale',
     description: 'Gold Chain',
+    purity: '',
+    huid: '',
     ...overrides,
   }
 }
@@ -77,5 +79,47 @@ describe('buildCashBillData', () => {
       }),
     )
     expect(data.lines[0].vamc).toBe(250)
+  })
+
+  it('prints purity and HUID in the particulars', () => {
+    const data = buildCashBillData(
+      invoice({ items: [item({ purity: '22K', huid: 'ABC123' })] }),
+    )
+    expect(data.lines[0].particulars).toBe('Gold Chain (22K) · HUID ABC123')
+  })
+
+  it('prefers the stored customer and rate snapshots over live values', () => {
+    const data = buildCashBillData(invoice(), {
+      customer: { name: 'Snap Name', phone: '111', address: 'Old addr', gstin: '' },
+      rates: {
+        id: 0,
+        effectiveDate: '2026-09-30',
+        gold22k: 15125,
+        gold24k: 16500,
+        gold20k: 13750,
+        gold18k: 12375,
+        silverFine: 250,
+        silver925: 231.48,
+        createdAt: '',
+      },
+    })
+    expect(data.customerName).toBe('Snap Name')
+    expect(data.goldRate).toBe(15125)
+    expect(data.silverRate).toBe(250)
+  })
+
+  it('stamps a draft print and leaves a final bill clean', () => {
+    expect(buildCashBillData(invoice()).watermark).toBeNull()
+    expect(
+      buildCashBillData(invoice({ status: 'draft', invoiceNo: 'DRAFT-7' })).watermark,
+    ).toBe('DRAFT')
+    expect(
+      buildCashBillData(
+        invoice({ status: 'draft', isEstimate: true, invoiceNo: 'EST-2026-0003' }),
+      ).watermark,
+    ).toBe('ESTIMATE')
+    expect(
+      buildCashBillData(invoice({ status: 'draft', invoiceNo: 'CB-2026-0042' })).watermark,
+    ).toBe('DRAFT')
   })
 })

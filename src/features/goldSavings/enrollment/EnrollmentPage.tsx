@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { addCalendarMonths, goldWeightFromAmount, rateForPurity } from '@shared/goldSavings/math'
+import { addCalendarMonths, goldWeightFromAmount } from '@shared/goldSavings/math'
 import { localTodayIso } from '@shared/localDate'
-import type { Customer, GoldSavingPaymentMode, GoldSavingScheme, MetalRates } from '@shared/types'
+import type { Customer, GoldSavingPaymentMode, GoldSavingRate, GoldSavingScheme } from '@shared/types'
 import { DateInput } from '../../../components/DateInput'
 import { PageHeader } from '../../../components/PageHeader'
 import { useToast } from '../../../components/toastContext'
@@ -12,14 +12,18 @@ import { api } from '../../../lib/api'
 import { BillCustomerSearch } from '../../invoices/BillCustomerSearch'
 import { PrintPreviewModal } from '../../print/PrintPreviewModal'
 import { GsGoldWeightPreview } from '../GsGoldWeightPreview'
+import { GsRateNotice } from '../GsRateNotice'
+import { useAuth } from '../../auth/authContext'
 import { GS_PAYMENT_MODES } from '../gsLabels'
 
 export function EnrollmentPage() {
   const { showToast } = useToast()
+  const { isAdmin } = useAuth()
   const navigate = useNavigate()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [schemes, setSchemes] = useState<GoldSavingScheme[]>([])
-  const [rates, setRates] = useState<MetalRates | null>(null)
+  const [rateInfo, setRateInfo] = useState<GoldSavingRate | null>(null)
+  const [acceptRateDate, setAcceptRateDate] = useState(false)
   const [customerId, setCustomerId] = useState(0)
   const [schemeId, setSchemeId] = useState(0)
   const [monthlyAmount, setMonthlyAmount] = useState(0)
@@ -41,13 +45,12 @@ export function EnrollmentPage() {
 
   useEffect(() => {
     let active = true
-    void Promise.all([api.listCustomers(), api.listGsSchemes(), api.getLatestMetalRates()])
-      .then(([customerList, schemeList, latest]) => {
+    void Promise.all([api.listCustomers(), api.listGsSchemes()])
+      .then(([customerList, schemeList]) => {
         if (!active) return
         setCustomers(customerList ?? [])
         const activeSchemes = (schemeList ?? []).filter((scheme) => scheme.status === 'active')
         setSchemes(activeSchemes)
-        setRates(latest)
         setSchemeId((current) => current || activeSchemes[0]?.id || 0)
         setMonthlyAmount((current) => current || activeSchemes[0]?.monthlyAmount || 0)
         setError(null)
@@ -63,8 +66,10 @@ export function EnrollmentPage() {
   const scheme = schemes.find((item) => item.id === schemeId) ?? null
   const customer = customers.find((item) => item.id === customerId) ?? null
   const maturityDate = scheme ? addCalendarMonths(firstInstallmentDate, scheme.durationMonths - 1) : ''
-  const goldRate = scheme && rates ? rateForPurity(rates, scheme.purity) : 0
+  const goldRate = rateInfo?.rate ?? 0
   const initialWeight = monthlyAmount > 0 && goldRate > 0 ? goldWeightFromAmount(monthlyAmount, goldRate) : 0
+  const staleRate = Boolean(rateInfo && !rateInfo.matchesDate)
+  const rateBlocked = collectInitial && staleRate && (!isAdmin || !acceptRateDate)
 
   async function enroll() {
     if (!scheme || !customer) return
@@ -81,12 +86,14 @@ export function EnrollmentPage() {
         nomineeRelationship,
         nomineePhone,
         termsAccepted,
+        acceptRateDate,
         initialPayment: collectInitial
           ? {
               amount: monthlyAmount,
               paymentDate: enrollmentDate,
               paymentMode,
               transactionRef,
+              acceptRateDate,
             }
           : undefined,
       })
@@ -100,7 +107,7 @@ export function EnrollmentPage() {
     }
   }
 
-  const ready = Boolean(customer && scheme && termsAccepted && monthlyAmount > 0)
+  const ready = Boolean(customer && scheme && termsAccepted && monthlyAmount > 0) && !rateBlocked
   const summary =
     customer && scheme
       ? `Enroll ${customer.name} in ${scheme.name} at ${formatCurrency(monthlyAmount)} / month?`
@@ -182,7 +189,15 @@ export function EnrollmentPage() {
               </label>
               <label>
                 <span className="field-label">Enrollment date</span>
-                <DateInput className="input" value={enrollmentDate} onChange={setEnrollmentDate} showIcon />
+                <DateInput
+                  className="input"
+                  value={enrollmentDate}
+                  onChange={(value) => {
+                    setEnrollmentDate(value)
+                    setAcceptRateDate(false)
+                  }}
+                  showIcon
+                />
               </label>
               <label>
                 <span className="field-label">First installment date</span>
@@ -226,10 +241,18 @@ export function EnrollmentPage() {
                   <span className="field-label">Amount</span>
                   <input className="input" type="number" value={monthlyAmount || ''} onChange={(e) => setMonthlyAmount(Number(e.target.value))} />
                 </label>
-                <label>
-                  <span className="field-label">Gold rate / g</span>
-                  <input className="input" value={goldRate || ''} disabled />
-                </label>
+                {scheme ? (
+                  <div className="full">
+                    <GsRateNotice
+                      date={enrollmentDate}
+                      purity={scheme.purity}
+                      isAdmin={isAdmin}
+                      acceptRateDate={acceptRateDate}
+                      onAcceptRateDateChange={setAcceptRateDate}
+                      onRate={setRateInfo}
+                    />
+                  </div>
+                ) : null}
                 <label>
                   <span className="field-label">Payment mode</span>
                   <select className="input" value={paymentMode} onChange={(e) => setPaymentMode(e.target.value as GoldSavingPaymentMode)}>
@@ -261,6 +284,7 @@ export function EnrollmentPage() {
           message={summary}
           confirmLabel="Enroll"
           danger={false}
+          busy={saving}
           onConfirm={() => void enroll()}
           onCancel={() => setConfirmOpen(false)}
         />

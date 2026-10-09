@@ -27,6 +27,7 @@ export interface ComputedLine {
   rate: number
   metal: string
   category: string
+  purity: string
   productId: number | null
 }
 
@@ -121,6 +122,7 @@ export function computeInvoiceLines(
         rate: metalRate,
         metal,
         category: item.category?.trim() || '',
+        purity: item.purity?.trim() || '',
         productId: null,
       }
     }
@@ -161,6 +163,7 @@ export function computeInvoiceLines(
         rate: metalRate,
         metal: item.metal?.trim() || '',
         category: item.category?.trim() || '',
+        purity: item.purity?.trim() || '',
         productId: null,
       }
     }
@@ -205,6 +208,7 @@ export function computeInvoiceLines(
       rate: pricingInput.metalRate,
       metal: product.metal,
       category: product.category,
+      purity: item.purity?.trim() || product.purity,
       productId,
     }
   })
@@ -220,6 +224,7 @@ export function computeInvoiceAmounts(
     amountPaid: number
     oldGold?: OldGoldItemInput[]
     extraOldGoldCredit?: number
+    schemeCredit?: number
     roundOff?: number
   },
 ) {
@@ -238,6 +243,7 @@ export function computeInvoiceAmounts(
     manualTax: options.manualTax,
     oldGold: options.oldGold ?? [],
     extraOldGoldCredit: exchangeCredit + Math.max(0, options.extraOldGoldCredit ?? 0),
+    schemeCredit: Math.max(0, options.schemeCredit ?? 0),
     roundOff: options.roundOff ?? 0,
   })
 
