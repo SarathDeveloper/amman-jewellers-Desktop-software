@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { DEFAULT_ADAGU_REMINDER_TEMPLATE } from './adagu/reminders'
 import { DEFAULT_CASH_VISIBILITY, DEFAULT_TAX_VISIBILITY } from './billTemplate'
-import { GOLD_PURITIES, isHuidMandatory, SILVER_PURITIES, STOCK_METALS } from './itemTypes'
+import { GOLD_PURITIES, SILVER_PURITIES, STOCK_METALS } from './itemTypes'
 
 export const idSchema = z.number().int().positive()
 
@@ -13,7 +13,7 @@ export const huidSchema = z
   .string()
   .trim()
   .toUpperCase()
-  .regex(/^[0-9A-Z]{6}$/, 'HUID must be 6 letters or digits')
+  .regex(/^[0-9A-Z]+$/, 'HUID can only be letters and digits')
 
 export const productInputSchema = z
   .object({
@@ -67,12 +67,10 @@ export const productInputSchema = z
       seen.set(huid, index)
     })
 
-    if (isHuidMandatory(data.metal) ? data.huids.length !== data.stockQty : data.huids.length > data.stockQty) {
+    if (data.huids.length > data.stockQty) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: isHuidMandatory(data.metal)
-          ? 'Add one HUID for each piece in stock'
-          : 'A product cannot have more HUIDs than pieces in stock',
+        message: 'A product cannot have more HUIDs than pieces in stock',
         path: ['huids'],
       })
     }
@@ -185,7 +183,7 @@ export const invoiceItemInputSchema = z
       .string()
       .trim()
       .toUpperCase()
-      .regex(/^([0-9A-Z]{6})?$/, 'HUID must be 6 letters or digits')
+      .regex(/^[0-9A-Z]*$/, 'HUID can only be letters and digits')
       .optional(),
   })
   .superRefine((data, ctx) => {
@@ -416,6 +414,7 @@ export const shopSettingsSchema = z.object({
     .string()
     .max(500)
     .default(DEFAULT_ADAGU_REMINDER_TEMPLATE),
+  pawnbrokerLicenseNo: z.string().max(60).default(''),
 })
 
 export const metalRatesInputSchema = z.object({
@@ -775,7 +774,7 @@ export const duePaymentInputSchema = z.object({
   amount: z.number().positive(),
   entryDate: z.string().min(1),
   note: z.string().max(500).default(''),
-  mode: pledgePaymentModeSchema.optional().default('cash'),
+  mode: pledgePaymentModeSchema.optional(),
 })
 
 export const reportErrorSchema = z.object({

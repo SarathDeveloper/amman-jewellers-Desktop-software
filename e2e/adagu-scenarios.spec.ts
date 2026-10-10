@@ -593,18 +593,8 @@ test.describe('Adagu billing — live Tauri scenarios', () => {
     await sanction.getByRole('button', { name: 'Sanction loan' }).click()
     await expect(window.locator('.error-banner')).toContainText('KYC is required')
 
-    // Filling an ID unblocks sanctioning; the loan can then be saved as a draft for photos.
+    // Filling an ID unblocks sanctioning; picking a photo auto-saves the draft first.
     await window.getByPlaceholder('12 digits').fill('123456789012')
-    await window.getByRole('button', { name: 'Save draft' }).click()
-    await expect(window.getByText('Draft saved')).toBeVisible()
-
-    const borrowerPhoto = window.locator('.pledge-photos').filter({ hasText: 'Borrower photo' })
-    await borrowerPhoto.locator('input[type="file"]').setInputFiles({
-      name: 'borrower.png',
-      mimeType: 'image/png',
-      buffer: PNG_1PX,
-    })
-    await expect(borrowerPhoto.locator('.pledge-photo-thumb img')).toHaveCount(1)
 
     const itemPhoto = window.locator('.pledge-photos').filter({ hasText: 'Item photos' })
     await itemPhoto.locator('input[type="file"]').setInputFiles({
@@ -614,13 +604,16 @@ test.describe('Adagu billing — live Tauri scenarios', () => {
     })
     await expect(itemPhoto.locator('.pledge-photo-thumb img')).toHaveCount(1)
 
+    await window.getByRole('button', { name: 'Save draft' }).click()
+    await expect(window.getByText('Draft saved')).toBeVisible()
+
     await sanctionAdaguLoan(window)
 
     await openDuesTab(window, 'Adagu Dues')
     const row = await adaguDueRow(window, customerName)
     const receiptNo = await receiptNoFromDueRow(row)
     const drawer = await openAdaguDueDrawer(window, receiptNo, customerName)
-    await expect(drawer.locator('.adagu-detail-photos .pledge-photo-thumb')).toHaveCount(2)
+    await expect(drawer.locator('.adagu-detail-photos .pledge-photo-thumb')).toHaveCount(1)
   })
 
   test('P5b — the Reminders tab opens WhatsApp and records the reminder', async ({ window }) => {

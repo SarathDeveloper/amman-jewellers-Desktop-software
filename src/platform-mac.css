@@ -1,0 +1,69 @@
+/*
+ * macOS-only normalisation. Every rule is scoped to `html.platform-mac`, which
+ * `applyPlatformClass()` sets from the user agent, so Windows is unaffected.
+ *
+ * Loaded after `responsive.css` from the app entry (`src/main.tsx`).
+ */
+
+/* macOS hides overlay scrollbars until the user scrolls, which changes how
+   dense lists and tables read and how wide a scrollable panel looks. Draw
+   classic, always-visible scrollbars instead. */
+html.platform-mac ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  -webkit-appearance: none;
+}
+html.platform-mac ::-webkit-scrollbar-track {
+  background: var(--page-bg, #f3f4f6);
+}
+html.platform-mac ::-webkit-scrollbar-thumb {
+  background: var(--border-strong, #d1d5db);
+  border: 3px solid var(--page-bg, #f3f4f6);
+  border-radius: 999px;
+}
+html.platform-mac ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted, #6b7280);
+}
+html.platform-mac ::-webkit-scrollbar-corner {
+  background: var(--page-bg, #f3f4f6);
+}
+
+/* Safari ignores the app's padding and height on a <select> and paints a native
+   rounded control instead. Reset it and draw the same chevron everywhere. */
+html.platform-mac select:not([multiple]) {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 0.7rem 0.7rem;
+  padding-right: 1.9rem;
+  text-overflow: ellipsis;
+}
+
+/* Safari draws checkboxes and radios at its own size and colour. */
+html.platform-mac input[type="checkbox"],
+html.platform-mac input[type="radio"] {
+  accent-color: var(--brand, #7e3af2);
+}
+
+/* Safari has no popup for `input[type="time"]`, so the app's invisible overlay
+   would leave the field uneditable. Show the native control instead of the
+   formatted label. */
+html.platform-mac .date-display-input.is-time .date-display-input-value {
+  display: none;
+}
+html.platform-mac .date-display-input.is-time .date-display-input-native {
+  position: static;
+  inset: auto;
+  width: 100%;
+  height: auto;
+  opacity: 1;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}

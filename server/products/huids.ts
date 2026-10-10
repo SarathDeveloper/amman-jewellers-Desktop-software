@@ -101,9 +101,9 @@ export function stringifyHuids(huids: string[] | undefined): string {
   return JSON.stringify(huids ?? [])
 }
 
-export function requireHuidsForNewPieces(metal: string, huids: string[], qty: number): void {
+export function requireHuidsForNewPieces(huids: string[], qty: number): void {
   if (qty <= 0) return
-  const error = newPieceHuidError(metal, huids.length, qty)
+  const error = newPieceHuidError(huids.length, qty)
   if (error) {
     throw new Error(error)
   }

@@ -1,58 +1,39 @@
-import { expect, test } from './fixtures/web-app'
-import { openInventoryTab, sidebarLink } from './helpers/nav'
+import { expect, type Locator } from '@playwright/test'
+import { test } from './fixtures/web-app'
+import { openInventoryTab, parkPointer, sidebarLink } from './helpers/nav'
 
 /**
- * The desktop rail used to widen to 15.5rem on hover, which laid it straight over the
- * left edge of the content — the module tab row and the first table column — and
- * swallowed clicks there. It now keeps its collapsed width and floats the label
- * beside itself instead, so the content under it is never covered.
+ * On desktop the rail stays collapsed until the pointer rests on it, then it widens
+ * over the content to show its labels and collapses again once the pointer leaves.
  */
-test('sidebar rail keeps its width and labels the hovered icon', async ({ window }) => {
-  // Desktop Chrome is 1280x720, so this exercises the rail rather than the drawer.
+test('sidebar rail expands on hover and collapses when the pointer leaves', async ({ window }) => {
   expect(window.viewportSize()?.width ?? 0).toBeGreaterThan(1024)
 
   await openInventoryTab(window, 'Products')
   await expect(window.getByRole('heading', { name: 'Products' })).toBeVisible()
 
   const rail = window.locator('#app-sidebar')
-  const content = window.locator('.content')
+  const nav = window.locator('.sidebar-nav')
   const collapsed = await rail.evaluate((el) => el.getBoundingClientRect().width)
+  expect(collapsed).toBeLessThan(100)
 
-  // The rail and the content must not overlap, hovered or not.
-  const overlapsContent = async () => {
-    const railBox = await rail.boundingBox()
-    const contentBox = await content.boundingBox()
-    if (!railBox || !contentBox) throw new Error('rail or content has no box')
-    return railBox.x + railBox.width > contentBox.x
-  }
-  expect(await overlapsContent()).toBe(false)
+  const dashboard = window.locator('.sidebar-nav').getByRole('link', { name: 'Dashboard' })
+  expect(await labelFitsRail(dashboard)).toBe(false)
+  await expect(window.locator('.brand-text')).toHaveCSS('opacity', '0')
+  expect(await navHasHorizontalOverflow(nav)).toBe(false)
 
-  await window.locator('.sidebar-nav .nav-link').first().hover()
-  const chip = window.locator('.nav-tooltip')
-  await expect(chip).toBeVisible()
-  await expect(chip).toHaveText('Dashboard')
+  await dashboard.hover()
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(200)
+  expect(await labelFitsRail(dashboard)).toBe(true)
+  await expect(window.locator('.sidebar-logout-label')).toHaveCSS('opacity', '1')
+  expect(await navHasHorizontalOverflow(nav)).toBe(false)
 
-  // The chip sits beside the rail and is actually painted (it would otherwise be a
-  // transparent box, or clipped to nothing by the rail's own overflow).
-  const railBox = await rail.boundingBox()
-  const chipBox = await chip.boundingBox()
-  if (!railBox || !chipBox) throw new Error('rail or chip has no box')
-  expect(chipBox.x).toBeGreaterThanOrEqual(railBox.x + railBox.width)
-  expect(await chip.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)')
-
-  // Hovering must not widen the rail over the content.
-  expect(await rail.evaluate((el) => el.getBoundingClientRect().width)).toBe(collapsed)
-  expect(await overlapsContent()).toBe(false)
-
-  // The module tab row stays clickable while the rail is hovered.
-  await window.getByRole('tab', { name: 'Gold & Silver' }).click()
-  await expect(window.getByRole('tab', { name: 'Gold & Silver' })).toHaveAttribute('aria-selected', 'true')
-
-  // The chip follows the pointer away.
-  await expect(window.locator('.nav-tooltip')).toBeHidden()
+  await parkPointer(window)
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeCloseTo(collapsed, 0)
+  expect(await labelFitsRail(dashboard)).toBe(false)
 })
 
-test('sidebar rail floats the sign out label instead of widening', async ({ window }) => {
+test('sidebar rail expands to show the sign out label', async ({ window }) => {
   await sidebarLink(window, 'Customers').click()
   await expect(window.getByRole('heading', { name: 'Customers' })).toBeVisible()
 
@@ -60,6 +41,27 @@ test('sidebar rail floats the sign out label instead of widening', async ({ wind
   const collapsed = await rail.evaluate((el) => el.getBoundingClientRect().width)
 
   await window.getByRole('button', { name: 'Sign out' }).hover()
-  await expect(window.locator('.nav-tooltip')).toHaveText('Sign out')
-  expect(await rail.evaluate((el) => el.getBoundingClientRect().width)).toBe(collapsed)
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(collapsed + 100)
+  await expect(window.locator('.sidebar-logout-label')).toHaveCSS('opacity', '1')
+  await expect(window.locator('.nav-tooltip')).toHaveCount(0)
+
+  await parkPointer(window)
+  await expect.poll(() => rail.evaluate((el) => el.getBoundingClientRect().width)).toBeCloseTo(collapsed, 0)
 })
+
+/** The link label is clipped by the collapsed rail and fully inside it once expanded. */
+async function labelFitsRail(link: Locator) {
+  return link.evaluate((el) => {
+    const rail = el.closest('.sidebar')?.getBoundingClientRect()
+    const text = [...el.childNodes].find((node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())
+    if (!rail || !text) return false
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    const rect = range.getBoundingClientRect()
+    return rect.width > 0 && rect.left >= rail.left && rect.right <= rail.right + 1
+  })
+}
+
+async function navHasHorizontalOverflow(nav: Locator) {
+  return nav.evaluate((el) => el.scrollWidth > el.clientWidth + 1)
+}

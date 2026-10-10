@@ -507,18 +507,22 @@ export function AdaguDueDetailDrawer({
                 kind="item"
                 label="Pledged items"
               />
-              <PledgePhotosStrip
-                pledgeId={summary.pledgeId}
-                photos={pledge?.photos ?? []}
-                kind="customer"
-                label="Borrower"
-              />
-              <PledgePhotosStrip
-                pledgeId={summary.pledgeId}
-                photos={pledge?.photos ?? []}
-                kind="id_proof"
-                label="ID proof"
-              />
+              {(pledge?.photos ?? []).some((photo) => photo.kind === 'customer') ? (
+                <PledgePhotosStrip
+                  pledgeId={summary.pledgeId}
+                  photos={pledge?.photos ?? []}
+                  kind="customer"
+                  label="Borrower"
+                />
+              ) : null}
+              {(pledge?.photos ?? []).some((photo) => photo.kind === 'id_proof') ? (
+                <PledgePhotosStrip
+                  pledgeId={summary.pledgeId}
+                  photos={pledge?.photos ?? []}
+                  kind="id_proof"
+                  label="ID proof"
+                />
+              ) : null}
             </div>
           </section>
 

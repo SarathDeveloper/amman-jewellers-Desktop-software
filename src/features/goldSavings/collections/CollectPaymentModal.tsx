@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { computeLateFee, goldWeightFromAmount } from '@shared/goldSavings/math'
 import { localTodayIso } from '@shared/localDate'
 import type { GoldSavingAccountDetail, GoldSavingPaymentMode, GoldSavingRate } from '@shared/types'
@@ -32,7 +32,7 @@ export function CollectPaymentModal({
   const [paymentDate, setPaymentDate] = useState(localTodayIso())
   const [amount, setAmount] = useState(0)
   const [count, setCount] = useState(1)
-  const [lateFee, setLateFee] = useState(0)
+  const [lateFeeOverride, setLateFeeOverride] = useState<number | null>(null)
   const [discount, setDiscount] = useState(0)
   const [mode, setMode] = useState<GoldSavingPaymentMode>('cash')
   const [transactionRef, setTransactionRef] = useState('')
@@ -41,7 +41,7 @@ export function CollectPaymentModal({
   const [rateReason, setRateReason] = useState('')
   const [confirm, setConfirm] = useState(false)
   const [saving, setSaving] = useState(false)
-  const idempotencyKey = useRef(
+  const [idempotencyKey] = useState(() =>
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `gs-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -65,22 +65,17 @@ export function CollectPaymentModal({
   const nextInstallment = unpaid[0]
   const maxCount = Math.max(1, unpaid.length)
   const requestedCount = Math.min(Math.max(1, count), maxCount)
-
-  useEffect(() => {
-    if (!detail) return
-    const next = detail.installments.find((item) => item.status !== 'paid' && item.status !== 'waived')
-    setLateFee(
-      next
-        ? computeLateFee({
-            dueDate: next.dueDate,
-            paymentDate,
-            graceDays: detail.scheme.gracePeriodDays,
-            type: detail.scheme.lateFeeType,
-            value: detail.scheme.lateFeeValue,
-          })
-        : 0,
-    )
-  }, [detail, paymentDate])
+  const suggestedLateFee =
+    detail && nextInstallment
+      ? computeLateFee({
+          dueDate: nextInstallment.dueDate,
+          paymentDate,
+          graceDays: detail.scheme.gracePeriodDays,
+          type: detail.scheme.lateFeeType,
+          value: detail.scheme.lateFeeValue,
+        })
+      : 0
+  const lateFee = lateFeeOverride ?? suggestedLateFee
 
   if (!detail) {
     return (
@@ -128,7 +123,7 @@ export function CollectPaymentModal({
         goldRateOverrideReason: rateReason,
         acceptRateDate: acceptRateDate || undefined,
         remarks,
-        idempotencyKey: idempotencyKey.current,
+        idempotencyKey,
       })
       showToast(
         requestedCount > 1 ? `${requestedCount} installments recorded` : 'Payment recorded',
@@ -222,6 +217,7 @@ export function CollectPaymentModal({
               value={paymentDate}
               onChange={(value) => {
                 setPaymentDate(value)
+                setLateFeeOverride(null)
                 setAcceptRateDate(false)
               }}
               showIcon
@@ -238,7 +234,7 @@ export function CollectPaymentModal({
               type="number"
               value={(single ? lateFee : batchLateFee) || ''}
               disabled={!isAdmin || !single}
-              onChange={(e) => setLateFee(Number(e.target.value))}
+              onChange={(e) => setLateFeeOverride(Number(e.target.value))}
             />
             <span className="muted">
               {!single

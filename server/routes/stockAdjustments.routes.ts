@@ -44,13 +44,12 @@ function applyAdjustmentHuids(
     }
     const huids = line.huids ?? []
     if (line.qtyDelta > 0) {
-      requireHuidsForNewPieces(product.metal, huids, line.qtyDelta)
+      requireHuidsForNewPieces(huids, line.qtyDelta)
       appendHuids(db, line.productId, huids)
     } else if (line.qtyDelta < 0) {
       const existing = listHuids(db, line.productId)
       if (existing.length === 0) continue
       const { min, max } = huidRemovalRange(
-        product.metal,
         existing.length,
         product.stock_qty,
         Math.abs(line.qtyDelta),

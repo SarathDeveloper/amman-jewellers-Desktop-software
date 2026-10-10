@@ -51,6 +51,7 @@ export function buildCashBillData(
   const oldGoldLines = oldGoldPrintLines(invoice)
   const schemeCreditLines = schemeCreditPrintLines(invoice)
   const amountPayable = invoice.amountPayable ?? invoice.total
+  const itemCount = sourceItems.reduce((sum, item) => sum + (item.qty || 1), 0)
 
   return {
     invoiceNo: invoice.invoiceNo,
@@ -58,6 +59,7 @@ export function buildCashBillData(
     customerName: extras?.customer?.name || invoice.customerName,
     customerPhone: extras?.customer?.phone || invoice.customerPhone || '',
     customerAddressLines: splitAddress(extras?.customer?.address),
+    itemCount,
     total: invoice.total,
     discount: invoice.discount,
     discountBreakdown: discountBreakdown(invoice),

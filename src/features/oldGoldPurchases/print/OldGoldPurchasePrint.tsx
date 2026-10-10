@@ -39,7 +39,7 @@ export function OldGoldPurchasePrint({
   const activePayouts = purchase.payouts.filter((payout) => payout.voidedAt == null)
 
   return (
-    <div className="ogp-print-root" data-print-root>
+    <div className="ogp-print-root" data-print-root data-print-fit="page">
       <article className="ogp-print-sheet">
         <img
           className="ogp-print-watermark"

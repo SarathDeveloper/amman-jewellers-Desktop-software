@@ -28,7 +28,7 @@ export function PurchaseInvoicePrint({
   const emptyRows = Array.from({ length: emptyCount }, (_, index) => index)
 
   return (
-    <div className="purchase-invoice-root" data-print-root>
+    <div className="purchase-invoice-root" data-print-root data-print-fit="page">
       <article className="purchase-invoice">
         <img
           className="print-watermark"

@@ -44,6 +44,9 @@ function shop(overrides: Partial<ShopSettings> = {}): ShopSettings {
     pledgeLtvPct: 75,
     adaguInterestPct: 2.1,
     adaguAuctionNoticeDays: 14,
+    adaguRequireKyc: false,
+    adaguReminderTemplate: '',
+    pawnbrokerLicenseNo: '',
     ...overrides,
   }
 }
@@ -124,6 +127,11 @@ describe('shopSettingsToDisplay', () => {
     expect(display.place).toBe('Salem')
     expect(display.proprietorLines).toEqual(['A. Owner', 'Gold Loan'])
     expect(display.promoLine).toBe('Hallmarked jewellery')
+  })
+
+  it('maps the pawnbroker licence number', () => {
+    const display = shopSettingsToDisplay(shop({ pawnbrokerLicenseNo: ' PB-1024 ' }))
+    expect(display.pawnbrokerLicenseNo).toBe('PB-1024')
   })
 
   it('uses saved bill template labels from shop settings', () => {

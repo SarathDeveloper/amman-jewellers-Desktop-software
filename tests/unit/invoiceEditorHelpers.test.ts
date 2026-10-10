@@ -7,12 +7,15 @@ import {
   computeEditorLineTotal,
   editorLineFromInvoiceItem,
   exclusiveVamc,
+  lineHuidError,
   lineNeedsHuid,
   lineOffersHuid,
-  linesMissingHuid,
+  linesWithHuidError,
   newEditorLine,
   OLD_GOLD_PURITIES,
   oldGoldPurityOptions,
+  productForHuid,
+  huidCellState,
   qtyByProduct,
   rateForOldGoldPurity,
   stockAvailabilityLabel,
@@ -340,14 +343,53 @@ describe('HUID line helpers', () => {
 
   it('flags a tagged product line with no HUID and clears once picked', () => {
     const line = saleLine({ huid: '' })
-    expect(linesMissingHuid([line], [tagged])).toHaveLength(1)
-    expect(linesMissingHuid([{ ...line, huid: 'AAAAAA' }], [tagged])).toHaveLength(0)
+    expect(linesWithHuidError([line], [tagged])).toHaveLength(1)
+    expect(linesWithHuidError([{ ...line, huid: 'AAAAAA' }], [tagged])).toHaveLength(0)
+  })
+
+  it('offers HUID entry for a product with no tagged pieces but does not require it', () => {
+    const untagged = product({ huids: [] })
+    const line = saleLine({ huid: '' })
+    expect(lineOffersHuid(line, [untagged])).toBe(true)
+    expect(lineNeedsHuid(line, [untagged])).toBe(false)
+    expect(linesWithHuidError([line], [untagged])).toHaveLength(0)
+  })
+
+  it('accepts an untagged HUID typed for a product with no tagged pieces', () => {
+    const untagged = product({ huids: [] })
+    const line = saleLine({ huid: 'ZZZZZZ' })
+    expect(lineHuidError(line, [untagged], [line])).toBeNull()
+  })
+
+  it('rejects a malformed HUID and a HUID used twice on the bill', () => {
+    const malformed = saleLine({ key: 'a', huid: 'AB-1' })
+    expect(lineHuidError(malformed, [tagged], [malformed])).toBe('HUID can only be letters and digits')
+
+    const first = saleLine({ key: 'a', huid: 'AAAAAA' })
+    const second = saleLine({ key: 'b', huid: 'AAAAAA' })
+    expect(lineHuidError(second, [tagged], [first, second])).toBe('HUID AAAAAA is used twice on this bill')
+  })
+
+  it('accepts a HUID shorter than six characters', () => {
+    const untagged = product({ huids: [] })
+    const short = saleLine({ key: 'a', huid: 'AB' })
+    expect(lineHuidError(short, [untagged], [short])).toBeNull()
+  })
+
+  it('requires one of the tagged HUIDs once every piece in stock is tagged', () => {
+    const fullyTagged = product({ stockQty: 1, huids: ['AAAAAA'] })
+    const untagged = saleLine({ huid: 'ZZZZZZ' })
+    expect(lineHuidError(untagged, [fullyTagged], [untagged])).toBe(
+      'HUID ZZZZZZ is not tagged on this product',
+    )
+    const picked = saleLine({ huid: 'AAAAAA' })
+    expect(lineHuidError(picked, [fullyTagged], [picked])).toBeNull()
   })
 
   it('does not require a HUID when the product has none tagged', () => {
     const untagged = product({ huids: [] })
     const line = saleLine({ huid: '' })
-    expect(linesMissingHuid([line], [untagged])).toHaveLength(0)
+    expect(linesWithHuidError([line], [untagged])).toHaveLength(0)
   })
 
   it('offers but does not require a HUID for silver while some pieces are untagged', () => {
@@ -355,12 +397,62 @@ describe('HUID line helpers', () => {
     const line = saleLine({ huid: '' })
     expect(lineOffersHuid(line, [silver])).toBe(true)
     expect(lineNeedsHuid(line, [silver])).toBe(false)
-    expect(linesMissingHuid([line], [silver])).toHaveLength(0)
+    expect(linesWithHuidError([line], [silver])).toHaveLength(0)
   })
 
-  it('requires a HUID for silver once every piece in stock is tagged', () => {
+  it('requires a HUID once every piece in stock is tagged', () => {
     const silver = product({ metal: 'Silver', purity: '925', stockQty: 2, huids: ['AAAAAA', 'BBBBBB'] })
-    expect(linesMissingHuid([saleLine({ huid: '' })], [silver])).toHaveLength(1)
+    expect(linesWithHuidError([saleLine({ huid: '' })], [silver])).toHaveLength(1)
+  })
+})
+
+describe('productForHuid', () => {
+  const tagged = product({ id: 1, huids: ['AAAAAA', 'BBBBBB'] })
+  const other = product({ id: 2, name: 'Silver Ring', huids: ['CCCCCC'] })
+
+  it('finds the sellable product that has the HUID tagged', () => {
+    expect(productForHuid('aaaaaa', [tagged], [])?.id).toBe(1)
+    expect(productForHuid('CCCCCC', [tagged, other], [])?.id).toBe(2)
+  })
+
+  it('returns null for an unknown code or a code claimed by another line', () => {
+    expect(productForHuid('ZZZZZZ', [tagged], [])).toBeNull()
+    const used = saleLine({ key: 'a', huid: 'AAAAAA' })
+    expect(productForHuid('AAAAAA', [tagged], [used], 'b')).toBeNull()
+    // The line that owns the code may still find it.
+    expect(productForHuid('AAAAAA', [tagged], [used], 'a')?.id).toBe(1)
+  })
+
+  it('ignores an inactive product', () => {
+    const inactive = product({ id: 3, huids: ['DDDDDD'], isActive: false })
+    expect(productForHuid('DDDDDD', [inactive], [])).toBeNull()
+  })
+})
+
+describe('huidCellState', () => {
+  const tagged = product({ huids: ['AAAAAA'] })
+
+  it('marks the empty row as a scan field', () => {
+    expect(huidCellState(newEditorLine(), [tagged])).toEqual({ state: 'empty' })
+  })
+
+  it('marks a product line as a HUID picker', () => {
+    expect(huidCellState(saleLine(), [tagged])).toEqual({ state: 'product' })
+  })
+
+  it('disables the cell for a manual line without a catalog item', () => {
+    const manual = saleLine({ productId: 0, description: 'Loose stone' })
+    expect(huidCellState(manual, [tagged])).toEqual({
+      state: 'disabled',
+      reason: 'HUID needs a catalog item',
+    })
+  })
+
+  it('disables the cell when the line has more than one piece', () => {
+    expect(huidCellState(saleLine({ qty: 2 }), [tagged])).toEqual({
+      state: 'disabled',
+      reason: 'One HUID per line',
+    })
   })
 })
 

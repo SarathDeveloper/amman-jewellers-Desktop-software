@@ -188,19 +188,11 @@
   font-weight: 700;
 }
 
-.cash-bill-table-wrap {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
 .cash-bill-table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  flex: 1;
-  font-size: 7.5pt;
+  font-size: 6.6pt;
 }
 
 .cash-bill-table th,
@@ -208,14 +200,15 @@
   border: 0.5pt solid #999;
   padding: 1mm 0.6mm;
   vertical-align: top;
+  word-wrap: break-word;
 }
 
 .cash-bill-table thead th {
   background: #fff;
   font-weight: 700;
   text-align: center;
-  font-size: 6.5pt;
-  line-height: 1.2;
+  font-size: 6pt;
+  line-height: 1.15;
   word-wrap: break-word;
 }
 
@@ -225,24 +218,20 @@
 }
 
 .cash-bill-col-particulars {
+  width: 22%;
   text-align: left;
 }
 
 .cash-bill-col-num {
   text-align: right;
-  width: 14mm;
 }
 
 .cash-bill-col-amount {
   width: 18mm;
 }
 
-.cash-bill-table tbody td {
-  height: 6.5mm;
-}
-
 .cash-bill-table tbody tr.empty td {
-  color: transparent;
+  height: 7mm;
 }
 
 .cash-bill-footer-grid {
@@ -256,6 +245,11 @@
 .cash-bill-footer-grid--single {
   grid-template-columns: 1fr;
   justify-items: end;
+}
+
+.cash-bill-item-count {
+  font-size: 8pt;
+  margin: 2mm 0 0;
 }
 
 .cash-bill-discount-box {
@@ -304,6 +298,7 @@
   align-items: flex-end;
   gap: 4mm;
   margin-top: auto;
+  margin-bottom: 6mm;
   padding-top: 4mm;
   font-size: 8pt;
 }
@@ -431,9 +426,13 @@
     break-inside: avoid;
   }
 
-  .cash-bill-table tbody td {
+  .cash-bill-table tbody tr.empty td {
     height: 5mm;
-    padding: 0.5mm 0.5mm;
+  }
+
+  .cash-bill-table th,
+  .cash-bill-table td {
+    padding: 0.6mm 0.5mm;
   }
 
   .cash-bill-logo {
@@ -463,9 +462,13 @@
     font-size: 7pt;
   }
 
-  .cash-bill-root--dense .cash-bill-table tbody td {
-    height: auto;
+  .cash-bill-root--dense .cash-bill-table th,
+  .cash-bill-root--dense .cash-bill-table td {
     padding: 0.35mm 0.4mm;
+  }
+
+  .cash-bill-root--dense .cash-bill-table tbody tr.empty td {
+    height: 4mm;
   }
 }
 
@@ -486,6 +489,42 @@
 
 .cash-bill-root.paper-a4 .cash-bill-table {
   font-size: 8.5pt;
+}
+
+.cash-bill-root.paper-a4 .cash-bill-table th,
+.cash-bill-root.paper-a4 .cash-bill-table td {
+  padding: 1.6mm 1.2mm;
+}
+
+.cash-bill-root.paper-a4 .cash-bill-table tbody tr.empty td {
+  height: 8.5mm;
+}
+
+.cash-bill-root.paper-a4 .cash-bill-col-particulars {
+  width: 26%;
+}
+
+.cash-bill-root.paper-a4 .cash-bill-col-amount {
+  width: 24mm;
+}
+
+.cash-bill-root.paper-a4 .cash-bill-item-count {
+  font-size: 9pt;
+}
+
+.cash-bill-root.paper-a4 .cash-bill-signatures {
+  margin-bottom: 10mm;
+}
+
+@media print {
+  .cash-bill-root.paper-a4 .cash-bill-table tbody tr.empty td {
+    height: 6mm;
+  }
+
+  .cash-bill-root.paper-a4 .cash-bill-table th,
+  .cash-bill-root.paper-a4 .cash-bill-table td {
+    padding: 1mm 0.8mm;
+  }
 }
 
 .cash-bill-root.paper-thermal {
@@ -531,7 +570,7 @@
   font-size: 7pt;
 }
 
-.cash-bill-root.paper-thermal .cash-bill-table tbody td {
+.cash-bill-root.paper-thermal .cash-bill-table tbody tr.empty td {
   height: auto;
 }
 
@@ -539,6 +578,7 @@
   flex-direction: column;
   gap: 3mm;
   padding-top: 3mm;
+  margin-bottom: 0;
 }
 
 .cash-bill-root.paper-thermal .cash-bill-signatures .left,

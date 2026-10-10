@@ -62,6 +62,7 @@ export function TaxInvoicePrint({
     <div
       className={`tax-invoice-root ${paperClassName(paperSize)}${filled.length > 8 ? ' tax-invoice-root--dense' : ''}`}
       data-print-root
+      data-print-fit="page"
     >
       <article className="tax-invoice">
         <img

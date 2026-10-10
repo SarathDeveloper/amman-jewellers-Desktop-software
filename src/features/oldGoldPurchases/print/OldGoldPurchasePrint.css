@@ -1,7 +1,7 @@
 .ogp-print-root {
   --ogp-ink: #111;
   color: var(--ogp-ink);
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Segoe UI', Selawik, system-ui, sans-serif;
   font-size: 12px;
   background: #fff;
   padding: 12mm;

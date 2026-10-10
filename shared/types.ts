@@ -697,6 +697,7 @@ export interface ShopSettings {
   adaguAuctionNoticeDays: number
   adaguRequireKyc: boolean
   adaguReminderTemplate: string
+  pawnbrokerLicenseNo: string
 }
 
 export interface MetalRates {

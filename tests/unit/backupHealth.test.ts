@@ -40,9 +40,9 @@ describe('backup health', () => {
     expect(needsAttention(status({ lastBackupAt: new Date(2026, 9, 7, 9).toISOString() }), now)).toBe(true)
   })
 
-  it('asks for attention when the off-machine copy failed or is stale', () => {
+  it('asks for attention when the off-machine copy failed or is stale, but not before the first copy', () => {
     expect(needsAttention(status({ lastOffsiteError: 'Off-machine folder was not found' }), now)).toBe(true)
-    expect(needsAttention(status({ lastOffsiteAt: null }), now)).toBe(true)
+    expect(needsAttention(status({ lastOffsiteAt: null }), now)).toBe(false)
     expect(needsAttention(status({ lastOffsiteAt: new Date(2026, 9, 7, 9).toISOString() }), now)).toBe(true)
   })
 

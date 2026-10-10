@@ -18,7 +18,6 @@ import {
   Weight,
   X,
 } from 'lucide-react'
-import { isHuidMandatory } from '@shared/itemTypes'
 import type { Product, ProductInput } from '@shared/types'
 import { Modal } from '../../components/Modal'
 import { localImageSrc } from '../invoices/mapShopDisplay'
@@ -597,8 +596,7 @@ export function ProductFormModal({
                 <span>HUID (Hallmark Unique ID)</span>
               </div>
               <p className="muted">
-                {taggedHuidCount} of {stockQty} pieces tagged
-                {isHuidMandatory(form.metal) ? '' : ' · optional for silver'}
+                {taggedHuidCount} of {stockQty} pieces tagged · optional
               </p>
               {stockQty === 0 && taggedHuidCount === 0 ? (
                 <p className="muted">No HUID needed while stock is 0.</p>

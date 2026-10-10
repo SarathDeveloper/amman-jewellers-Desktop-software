@@ -1,6 +1,5 @@
 import {
   GOLD_PURITIES,
-  isHuidMandatory,
   SILVER_PURITIES,
   STOCK_ITEM_NAMES,
   STOCK_METALS,
@@ -217,8 +216,8 @@ export function validateProductForm(
   for (const raw of form.huids) {
     const huid = raw.trim().toUpperCase()
     if (!huid) continue
-    if (!/^[0-9A-Z]{6}$/.test(huid)) {
-      errors.huids = 'HUID must be 6 letters or digits'
+    if (!/^[0-9A-Z]+$/.test(huid)) {
+      errors.huids = 'HUID can only be letters and digits'
       break
     }
     if (seenHuids.has(huid)) {
@@ -230,12 +229,8 @@ export function validateProductForm(
 
   const filledHuidCount = form.huids.filter((value) => value.trim()).length
   const stockQty = Math.max(0, Math.trunc(numericFieldToNumber(form.stockQty)))
-  if (!errors.huids) {
-    if (isHuidMandatory(form.metal) && filledHuidCount !== stockQty) {
-      errors.huids = 'Add one HUID for each piece in stock'
-    } else if (filledHuidCount > stockQty) {
-      errors.huids = 'A product cannot have more HUIDs than pieces in stock'
-    }
+  if (!errors.huids && filledHuidCount > stockQty) {
+    errors.huids = 'A product cannot have more HUIDs than pieces in stock'
   }
 
   return errors

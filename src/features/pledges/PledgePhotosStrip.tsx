@@ -13,7 +13,7 @@ export function PledgePhotosStrip({
   editable = false,
   busy = false,
   onChanged,
-  onError,
+  ensurePledgeId,
 }: {
   pledgeId: number
   photos: PledgePhoto[]
@@ -22,29 +22,39 @@ export function PledgePhotosStrip({
   editable?: boolean
   busy?: boolean
   onChanged?: (photos: PledgePhoto[]) => void
-  onError?: (message: string | null) => void
+  /**
+   * Resolves the loan id for this strip. An unsaved draft has no id yet, so the
+   * editor saves it here and returns the new id; throwing shows the reason.
+   */
+  ensurePledgeId?: () => Promise<number>
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [working, setWorking] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
 
   const shown = photos.filter((photo) => photo.kind === kind)
   const disabled = busy || working
 
   async function addFiles(files: FileList | null) {
     if (!files || files.length === 0) return
-    if (!pledgeId) {
-      onError?.('Save the loan before adding photos')
-      return
-    }
     try {
       setWorking(true)
-      onError?.(null)
-      for (const file of Array.from(files)) {
-        await api.uploadPledgePhoto(pledgeId, kind, file)
+      setMessage(null)
+      // A new loan has no id until it is saved, and photos hang off the row.
+      let target = pledgeId
+      if (!target) {
+        target = (await ensurePledgeId?.()) ?? 0
       }
-      onChanged?.(await api.listPledgePhotos(pledgeId))
+      if (!target) {
+        setMessage('Save the loan before adding photos')
+        return
+      }
+      for (const file of Array.from(files)) {
+        await api.uploadPledgePhoto(target, kind, file)
+      }
+      onChanged?.(await api.listPledgePhotos(target))
     } catch (err) {
-      onError?.(err instanceof Error ? err.message : 'Failed to upload photo')
+      setMessage(err instanceof Error ? err.message : 'Failed to upload photo')
     } finally {
       setWorking(false)
       if (inputRef.current) inputRef.current.value = ''
@@ -54,11 +64,11 @@ export function PledgePhotosStrip({
   async function remove(photo: PledgePhoto) {
     try {
       setWorking(true)
-      onError?.(null)
+      setMessage(null)
       await api.deletePledgePhoto(pledgeId, photo.id)
       onChanged?.(await api.listPledgePhotos(pledgeId))
     } catch (err) {
-      onError?.(err instanceof Error ? err.message : 'Failed to delete photo')
+      setMessage(err instanceof Error ? err.message : 'Failed to delete photo')
     } finally {
       setWorking(false)
     }
@@ -90,8 +100,13 @@ export function PledgePhotosStrip({
           </>
         ) : null}
       </div>
+      {message ? (
+        <p className="pledge-photos-error" role="alert">
+          {message}
+        </p>
+      ) : null}
       {shown.length === 0 ? (
-        <p className="muted pledge-photos-empty">No photos yet.</p>
+        message ? null : <p className="muted pledge-photos-empty">No photos yet.</p>
       ) : (
         <ul className="pledge-photo-strip">
           {shown.map((photo) => (

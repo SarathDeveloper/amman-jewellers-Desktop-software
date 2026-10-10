@@ -18,16 +18,20 @@
     });
   }
 
+  var platform = navigator.platform || navigator.userAgent || 'unknown';
+  var isMac = /Mac/i.test(platform);
+
   window.desktopAPI = {
-    platform: navigator.platform || 'unknown',
+    platform: platform,
+    isMac: isMac,
     getAppVersion: function () {
       return invoke('get_app_version');
     },
     exportDatabase: async function () {
       var suggested = 'jeweltrackerpro-backup-' + new Date().toISOString().slice(0, 10) + '.db';
       var path = await invoke('choose_backup_path', {
-        default_filename: suggested,
-        filter_name: 'SQLite database',
+        defaultFilename: suggested,
+        filterName: 'SQLite database',
         extension: 'db',
       });
       if (!path) {
@@ -44,8 +48,8 @@
     exportExcel: async function () {
       var suggested = 'jeweltrackerpro-tables-' + new Date().toISOString().slice(0, 10) + '.xlsx';
       var path = await invoke('choose_backup_path', {
-        default_filename: suggested,
-        filter_name: 'Excel workbook',
+        defaultFilename: suggested,
+        filterName: 'Excel workbook',
         extension: 'xlsx',
       });
       if (!path) {
@@ -62,5 +66,32 @@
     chooseBackupFolder: function () {
       return invoke('choose_backup_folder');
     },
+    savePdf: async function (bytes, defaultFilename) {
+      var path = await invoke('choose_backup_path', {
+        defaultFilename: defaultFilename,
+        filterName: 'PDF document',
+        extension: 'pdf',
+      });
+      if (!path) {
+        return { canceled: true };
+      }
+      await invoke('write_backup_file', { path: path, bytes: Array.from(bytes) });
+      return { canceled: false, filePath: path };
+    },
+    openPrintWindow: function (path) {
+      return invoke('open_print_window', { path: path });
+    },
+    printWebview: function () {
+      return invoke('print_webview');
+    },
   };
+
+  // In a dedicated print window on macOS, render through the native webview
+  // print panel. WKWebView does not reliably print an embedded iframe, so
+  // PrintPreviewModal opens this window instead.
+  if (window.__JTP_DESKTOP_PRINT__ && isMac) {
+    window.print = function () {
+      window.desktopAPI.printWebview();
+    };
+  }
 })();

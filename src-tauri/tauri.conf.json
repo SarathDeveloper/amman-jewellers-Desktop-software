@@ -40,6 +40,11 @@
         "installMode": "currentUser",
         "displayLanguageSelector": false
       }
+    },
+    "macOS": {
+      "signingIdentity": "-",
+      "hardenedRuntime": false,
+      "minimumSystemVersion": "12.0"
     }
   }
 }

@@ -6,12 +6,10 @@ import {
   ChevronDown,
   Coins,
   FileEdit,
-  FileText,
   IndianRupee,
   Package,
   Plus,
   RefreshCw,
-  ShoppingBag,
   UserPlus,
   Users,
   Wallet,
@@ -29,12 +27,10 @@ import type {
   MetalRates,
   StockReconciliationRow,
 } from '@shared/types'
-import { FilterBar } from '../../components/FilterBar'
-import { DateInput } from '../../components/DateInput'
-import { MetalBarIcon } from '../../components/MetalBarIcon'
 import { formatCurrency, formatDisplayDate, formatInr, formatPaymentMode, formatWeight } from '../../lib/format'
 import { api } from '../../lib/api'
 import { useAuth } from '../auth/authContext'
+import { CategoryStockCard } from './CategoryStockCard'
 import { DashboardAlertsMenu } from './DashboardAlertsMenu'
 import {
   applyInvoiceStats,
@@ -42,11 +38,8 @@ import {
   periodGranularity,
   RECENT_BILLS_LIMIT,
   resolvePeriodRange,
-  type ChartGranularity,
-  type DashboardPeriod,
   type DashboardStats,
   type OldGoldTodayStats,
-  type SalesChartBucket,
 } from './dashboardStats'
 
 function formatDashboardDate(isoDate: string): string {
@@ -63,36 +56,6 @@ function greetingForHour(hour: number): string {
   return 'Good evening'
 }
 
-const PERIOD_OPTIONS: { value: DashboardPeriod; label: string }[] = [
-  { value: 'today', label: 'Today' },
-  { value: 'week', label: 'Weekly' },
-  { value: 'month', label: 'Monthly' },
-  { value: 'year', label: 'Yearly' },
-  { value: 'custom', label: 'Custom' },
-]
-
-function periodSalesLabel(period: DashboardPeriod): string {
-  if (period === 'week') return "This week's sales"
-  if (period === 'month') return "This month's sales"
-  if (period === 'year') return "This year's sales"
-  if (period === 'custom') return 'Custom range sales'
-  return "Today's sales"
-}
-
-function periodCollectionsLabel(period: DashboardPeriod): string {
-  if (period === 'week') return "This week's collections"
-  if (period === 'month') return "This month's collections"
-  if (period === 'year') return "This year's collections"
-  if (period === 'custom') return 'Custom range collections'
-  return "Today's collections"
-}
-
-function chartCaption(granularity: ChartGranularity): string {
-  if (granularity === 'hour') return 'Today by hour'
-  if (granularity === 'month') return 'By month'
-  return 'By day'
-}
-
 type KpiTone = 'brand' | 'success' | 'danger' | 'info'
 
 function KpiSparkline({ values }: { values: number[] }) {
@@ -103,7 +66,7 @@ function KpiSparkline({ values }: { values: number[] }) {
   const points = values
     .map((value, index) => {
       const x = (index / Math.max(values.length - 1, 1)) * 100
-      const y = 100 - (value / max) * 100
+      const y = 22 - (value / max) * 20
       return `${x},${y}`
     })
     .join(' ')
@@ -154,33 +117,6 @@ function KpiCard({
   }
 
   return <div className="card padded dashboard-kpi-card">{body}</div>
-}
-
-function SalesOverviewChart({ buckets }: { buckets: SalesChartBucket[] }) {
-  const max = Math.max(...buckets.map((bucket) => bucket.total), 1)
-  const dense = buckets.length > 14
-
-  return (
-    <div className="dashboard-sales-chart" role="img" aria-label="Sales for selected period">
-      <div className={`dashboard-sales-bars${dense ? ' dense' : ''}`}>
-        {buckets.map((bucket) => {
-          const heightPct = (bucket.total / max) * 100
-          return (
-            <div key={bucket.key} className="dashboard-sales-bar-col">
-              <div className="dashboard-sales-bar-track">
-                <div
-                  className="dashboard-sales-bar-fill"
-                  style={{ height: `${heightPct}%` }}
-                  title={`${bucket.label}: ₹${formatInr(bucket.total)}`}
-                />
-              </div>
-              <span className="dashboard-sales-bar-label">{bucket.label}</span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
 }
 
 type GoldKarat = '22k' | '24k'
@@ -305,48 +241,6 @@ function GoldRateTicker({ rates }: { rates: MetalRates | null }) {
   )
 }
 
-function MetalStockBlock({
-  title,
-  metal,
-  summary,
-  closingLabel,
-}: {
-  title: string
-  metal: 'gold' | 'silver'
-  summary: { opening: number; inward: number; sold: number; closing: number }
-  closingLabel: string
-}) {
-  return (
-    <div className="dashboard-metal-block">
-      <div className="dashboard-metal-head">
-        <h3 className="dashboard-metal-title">
-          <MetalBarIcon metal={metal} />
-          {title}
-        </h3>
-        <Link to="/inventory/stock" className="dashboard-panel-link">View stock</Link>
-      </div>
-      <dl className="dashboard-metal-stats">
-        <div>
-          <dt>Opening today</dt>
-          <dd className="num">{formatWeight(summary.opening)}</dd>
-        </div>
-        <div>
-          <dt>Inward today</dt>
-          <dd className="num stock-qty in">{formatWeight(summary.inward)}</dd>
-        </div>
-        <div>
-          <dt>Sold today</dt>
-          <dd className="num dashboard-metal-sold">{formatWeight(summary.sold)}</dd>
-        </div>
-        <div>
-          <dt className="kpi-label">{closingLabel}</dt>
-          <dd className="num dashboard-metal-closing">{formatWeight(summary.closing)}</dd>
-        </div>
-      </dl>
-    </div>
-  )
-}
-
 export function DashboardPage() {
   if (window.location.hash.includes('crash-test')) {
     throw new Error('Diagnostic crash test')
@@ -369,14 +263,11 @@ export function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false)
   const hasLoadedRef = useRef(false)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [period, setPeriod] = useState<DashboardPeriod>('today')
-  const [customFrom, setCustomFrom] = useState(() => localTodayIso())
-  const [customTo, setCustomTo] = useState(() => localTodayIso())
 
   const today = localTodayIso()
   const greeting = greetingForHour(new Date().getHours())
-  const range = resolvePeriodRange(period, today, customFrom, customTo)
-  const granularity = periodGranularity(period, range)
+  const range = resolvePeriodRange('today', today, today, today)
+  const granularity = periodGranularity('today', range)
   const emptyStats: InvoiceListStats = {
     sales: 0,
     collections: 0,
@@ -394,7 +285,7 @@ export function DashboardPage() {
     goldStock,
     silverStock,
     today,
-    { period, customFrom, customTo },
+    { period: 'today', customFrom: today, customTo: today },
     oldGoldStats,
   )
 
@@ -526,14 +417,14 @@ export function DashboardPage() {
         <>
           <div className="dashboard-kpi-grid">
             <KpiCard
-              label={periodSalesLabel(period)}
+              label="Today's sales"
               value={`₹ ${formatInr(stats.todaySales)}`}
               icon={IndianRupee}
               tone="brand"
               sparkline={salesSparkline}
             />
             <KpiCard
-              label={periodCollectionsLabel(period)}
+              label="Today's collections"
               value={`₹ ${formatInr(stats.todayCollections)}`}
               icon={Banknote}
               tone="success"
@@ -565,95 +456,11 @@ export function DashboardPage() {
             />
           </div>
 
-          <div className="dashboard-mid-grid">
-            <section className="card padded dashboard-panel dashboard-sales-panel">
-              <div className="dashboard-sales-top">
-                <div className="dashboard-sales-heading">
-                  <div>
-                    <h2>Sales overview</h2>
-                    <p className="dashboard-sales-hero-sub muted">{periodSalesLabel(period)}</p>
-                  </div>
-                  <div className="dashboard-sales-top-right">
-                    <p className="dashboard-sales-hero num">₹ {formatInr(stats.todaySales)}</p>
-                    <span className="muted dashboard-panel-sub">{chartCaption(sales.chartGranularity)}</span>
-                  </div>
-                </div>
-                <div className="dashboard-sales-filters">
-                  <FilterBar value={period} onChange={setPeriod} options={PERIOD_OPTIONS} />
-                  {period === 'custom' ? (
-                    <div className="dashboard-sales-custom-range">
-                      <label className="dashboard-sales-date-field">
-                        From
-                        <DateInput
-                          className="input"
-                          value={customFrom}
-                          max={today}
-                          ariaLabel="Custom from date"
-                          onChange={setCustomFrom}
-                        />
-                      </label>
-                      <label className="dashboard-sales-date-field">
-                        To
-                        <DateInput
-                          className="input"
-                          value={customTo}
-                          max={today}
-                          ariaLabel="Custom to date"
-                          onChange={setCustomTo}
-                        />
-                      </label>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-              <SalesOverviewChart buckets={sales.chartBuckets} />
-              <div className="dashboard-sales-footer">
-                <div>
-                  <FileText size={14} aria-hidden />
-                  <span className="dashboard-mini-label">Bills generated</span>
-                  <strong className="num">{sales.billsGenerated}</strong>
-                </div>
-                <div>
-                  <IndianRupee size={14} aria-hidden />
-                  <span className="dashboard-mini-label">Average bill value</span>
-                  <strong className="num">₹ {formatInr(sales.averageBillValue)}</strong>
-                </div>
-                <div>
-                  <Users size={14} aria-hidden />
-                  <span className="dashboard-mini-label">Customers billed</span>
-                  <strong className="num">{sales.customersBilled}</strong>
-                </div>
-                <div>
-                  <ShoppingBag size={14} aria-hidden />
-                  <span className="dashboard-mini-label">Total items sold</span>
-                  <strong className="num">{sales.totalItemsSold}</strong>
-                </div>
-              </div>
-            </section>
-
-            <section className="card padded dashboard-panel dashboard-metal-panel">
-              <div className="dashboard-panel-head">
-                <div>
-                  <h2>Metal stock</h2>
-                  <p className="muted dashboard-panel-sub">
-                    {formatDashboardDate(today)} · Not affected by the sales period filter
-                  </p>
-                </div>
-              </div>
-              <MetalStockBlock
-                title="Gold"
-                metal="gold"
-                summary={stats.metalStock.gold}
-                closingLabel="Gold closing"
-              />
-              <MetalStockBlock
-                title="Silver"
-                metal="silver"
-                summary={stats.metalStock.silver}
-                closingLabel="Silver closing"
-              />
-            </section>
-          </div>
+          <CategoryStockCard
+            goldRows={goldStock}
+            silverRows={silverStock}
+            dateLabel={formatDashboardDate(today)}
+          />
 
           <section className="dashboard-quick-section" aria-label="Quick actions">
             <h2 className="dashboard-quick-title">

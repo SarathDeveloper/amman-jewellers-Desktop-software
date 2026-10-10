@@ -1,18 +1,25 @@
+import { amountInWords } from '@shared/billing/amountInWords'
 import { netPaidAmount } from '@shared/billing/pledgeMath'
 import type { Pledge } from '@shared/types'
 import { formatDisplayDate } from '../../lib/format'
-import { defaultShopLogoUrl, EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplayInfo } from '../invoices/mapShopDisplay'
 import { pledgePaymentModeLabel } from '../dues/pledgePaymentModes'
-import './PledgePrint.css'
+import { EMPTY_SHOP_DISPLAY, type ShopDisplayInfo } from '../invoices/mapShopDisplay'
+import {
+  AdaguBorrower,
+  AdaguEmptyRows,
+  AdaguPrintSheet,
+  AdaguSignatures,
+} from './AdaguPrintHeader'
 
-function formatWeight(value: number): string {
-  if (!value) return ''
-  return value.toFixed(3)
+const MIN_BODY_ROWS = 4
+const COLUMNS = 8
+
+function money(value: number): string {
+  return value.toFixed(2)
 }
 
-function formatAmount(value: number): string {
-  if (!value && value !== 0) return ''
-  return value.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+function weight(value: number): string {
+  return value.toFixed(3)
 }
 
 export function PledgeReleasePrint({
@@ -23,14 +30,6 @@ export function PledgeReleasePrint({
   shop?: ShopDisplayInfo
 }) {
   const shopInfo = shop ?? EMPTY_SHOP_DISPLAY
-  const shopName = shopInfo.name
-  const phones = shopInfo.phones
-  const addressLines = shopInfo.addressLines
-  const footerParts = [
-    shopName,
-    shopInfo.place,
-    phones.length ? `Ph: ${phones.join(' / ')}` : '',
-  ].filter(Boolean)
   const netPaid = netPaidAmount(pledge.loanAmount, pledge.charges ?? 0)
   const extraLoan = (pledge.topups ?? []).reduce((sum, topup) => sum + topup.amount, 0)
   const paymentRows = pledge.payments ?? []
@@ -42,204 +41,139 @@ export function PledgeReleasePrint({
   const totalStone = pledge.items.reduce((sum, item) => sum + (item.stoneWeight ?? 0), 0)
   const totalNet = pledge.items.reduce((sum, item) => sum + item.netWeight, 0)
   const totalQty = pledge.items.reduce((sum, item) => sum + item.pieces, 0)
+  const emptyCount = Math.max(0, MIN_BODY_ROWS - pledge.items.length)
   const releaseDate = pledge.redeemedDate ? formatDisplayDate(pledge.redeemedDate) : ''
 
   return (
-    <div className="pledge-print-root" data-print-root>
-      <article className="pledge-print">
-        <img
-          className="print-watermark"
-          src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)}
-          alt=""
-          aria-hidden
-        />
-        <header className="pledge-print-top">
-          <div className="pledge-print-brand">
-            <img
-              className="pledge-print-logo"
-              src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)}
-              alt=""
-            />
-            {shopName ? <h1>{shopName}</h1> : null}
-            <p className="pledge-print-title">GOLD RELEASE RECEIPT</p>
-            {shopInfo.proprietorLines.length > 0 ? (
-              <div className="pledge-print-proprietor">
-                {shopInfo.proprietorLines.map((line) => (
-                  <p key={line}>{line}</p>
-                ))}
-              </div>
-            ) : null}
-          </div>
-          <div className="pledge-print-contact">
-            {phones.length > 0 ? <p className="pledge-print-contact-label">DIRECT CONTACT</p> : null}
-            {phones.map((phone) => (
-              <p key={phone}>{phone}</p>
-            ))}
-            {addressLines.map((line) => (
-              <p key={line} className="pledge-print-address">
-                {line}
-              </p>
-            ))}
-          </div>
-        </header>
-
-        <div className="pledge-print-meta">
-          <div>
-            <span>ADAGU NO.:</span>
-            <strong>{pledge.receiptNo}</strong>
-          </div>
-          <div>
-            <span>PLEDGE DATE:</span>
-            <strong>{formatDisplayDate(pledge.pledgeDate)}</strong>
-          </div>
-          <div>
-            <span>RELEASE DATE:</span>
-            <strong>{pledge.redeemedDate ? formatDisplayDate(pledge.redeemedDate) : '—'}</strong>
-          </div>
+    <AdaguPrintSheet shop={shopInfo} dense={pledge.items.length > 8}>
+      <section className="tax-invoice-meta">
+        <div className="tax-invoice-party">
+          <AdaguBorrower
+            name={pledge.customerName}
+            guardian={pledge.guardianName}
+            address={pledge.customerAddress}
+            phone={pledge.customerPhone}
+          />
         </div>
-
-        <section className="pledge-print-section">
-          <h2>BORROWER / CUSTOMER DETAILS</h2>
-          <div className="pledge-print-borrower">
-            <div>
-              <span>Customer Name:</span>
-              <strong>{pledge.customerName}</strong>
-            </div>
-            <div>
-              <span>Mobile Number:</span>
-              <strong>{pledge.customerPhone || '—'}</strong>
-            </div>
-            <div>
-              <span>F / M / H Name:</span>
-              <strong>{pledge.guardianName || '—'}</strong>
-            </div>
-            <div className="full">
-              <span>Address:</span>
-              <strong>{pledge.customerAddress || '—'}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section className="pledge-print-section">
-          <h2>JEWELLERY RELEASED (Item checklist)</h2>
-          <table className="pledge-print-items">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Ornaments</th>
-                <th>Purity</th>
-                <th className="num">Qty</th>
-                <th className="num">Gross</th>
-                <th className="num">Ded.</th>
-                <th className="num">Net</th>
-                <th>Received</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pledge.items.map((item, index) => (
-                <tr key={item.id}>
-                  <td>{index + 1}</td>
-                  <td>{item.description}</td>
-                  <td>{item.purity}</td>
-                  <td className="num">{item.pieces}</td>
-                  <td className="num">{formatWeight(item.grossWeight)}</td>
-                  <td className="num">{formatWeight(item.stoneWeight ?? 0)}</td>
-                  <td className="num">{formatWeight(item.netWeight)}</td>
-                  <td className="pledge-print-check">☐</td>
-                </tr>
-              ))}
-              <tr>
-                <td colSpan={3}><strong>Total</strong></td>
-                <td className="num">{totalQty}</td>
-                <td className="num">{formatWeight(totalGross)}</td>
-                <td className="num">{formatWeight(totalStone)}</td>
-                <td className="num">{formatWeight(totalNet)}</td>
-                <td />
-              </tr>
-            </tbody>
-          </table>
-        </section>
-
-        <section className="pledge-print-section">
-          <h2>SETTLEMENT SUMMARY</h2>
-          <div className="pledge-print-loan-grid">
-            <div>
-              <span>Original loan</span>
-              <strong>₹ {formatAmount(pledge.loanAmount)}</strong>
-            </div>
-            <div>
-              <span>Net paid at sanction</span>
-              <strong>₹ {formatAmount(netPaid)}</strong>
-            </div>
-            <div>
-              <span>Extra after sanction</span>
-              <strong>₹ {formatAmount(extraLoan)}</strong>
-            </div>
-            <div>
-              <span>Total collected</span>
-              <strong>₹ {formatAmount(pledge.amountCollected)}</strong>
-            </div>
-            <div>
-              <span>Interest collected</span>
-              <strong>₹ {formatAmount(interestCollected)}</strong>
-            </div>
-            <div>
-              <span>Principal repaid</span>
-              <strong>₹ {formatAmount(principalCollected)}</strong>
-            </div>
-            {totalDiscount > 0 ? (
-              <div>
-                <span>Discount given</span>
-                <strong>₹ {formatAmount(totalDiscount)}</strong>
-              </div>
-            ) : null}
-            {redeemMode ? (
-              <div>
-                <span>Settlement mode</span>
-                <strong>{pledgePaymentModeLabel(redeemMode)}</strong>
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="pledge-print-declaration">
-          <h2>Customer acknowledgment</h2>
+        <div className="tax-invoice-title-center">GOLD RELEASE RECEIPT</div>
+        <div className="tax-invoice-meta-right">
           <p>
-            I/We confirm that the jewellery listed above has been received in full and in the same
-            condition as pledged under Adagu {pledge.receiptNo}. All dues against this loan have been
-            settled on {pledge.redeemedDate ? formatDisplayDate(pledge.redeemedDate) : releaseDate || 'this date'}.
+            <span>Adagu No :</span> {pledge.receiptNo}
           </p>
-        </section>
-
-        <footer className="pledge-print-signs">
-          <div>
-            <div className="pledge-print-sign-line" />
-            <span>CUSTOMER SIGNATURE / LTI</span>
-          </div>
-          <div>
-            <div className="pledge-print-sign-line" />
-            <span>WITNESS</span>
-          </div>
-          <div>
-            <div className="pledge-print-sign-line">
-              {shopInfo.signatureImagePath ? (
-                <img
-                  className="pledge-print-sign-img"
-                  src={localImageSrc(shopInfo.signatureImagePath, '')}
-                  alt=""
-                />
-              ) : null}
-            </div>
-            <span>{shopName ? `FOR ${shopName}` : 'FOR'}</span>
-            <span className="pledge-print-sign-sub">(AUTHORIZED SIGNATORY)</span>
-          </div>
-        </footer>
-
-        <div className="pledge-print-bottom">
-          {footerParts.length > 0 ? <span>{footerParts.join(' • ')}</span> : null}
-          <span>Gold Release Receipt</span>
+          <p>
+            <span>Pledge date :</span> {formatDisplayDate(pledge.pledgeDate)}
+          </p>
+          <p>
+            <span>Release date :</span> {releaseDate || '—'}
+          </p>
         </div>
-      </article>
-    </div>
+      </section>
+
+      <hr className="tax-invoice-rule" />
+
+      <table className="tax-invoice-table">
+        <thead>
+          <tr>
+            <th className="adagu-print-col-sno">S.No</th>
+            <th className="tax-invoice-col-particulars">Particulars</th>
+            <th>Purity</th>
+            <th>Qty</th>
+            <th>Gross</th>
+            <th>Ded.</th>
+            <th>Net</th>
+            <th>Received</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pledge.items.map((item, index) => (
+            <tr key={item.id}>
+              <td className="adagu-print-col-center">{index + 1}</td>
+              <td className="tax-invoice-col-particulars">{item.description}</td>
+              <td className="adagu-print-col-center">{item.purity}</td>
+              <td className="tax-invoice-col-num">{item.pieces}</td>
+              <td className="tax-invoice-col-num">{weight(item.grossWeight)}</td>
+              <td className="tax-invoice-col-num">{weight(item.stoneWeight ?? 0)}</td>
+              <td className="tax-invoice-col-num">{weight(item.netWeight)}</td>
+              <td className="adagu-print-check">☐</td>
+            </tr>
+          ))}
+          <AdaguEmptyRows count={emptyCount} columns={COLUMNS} />
+          <tr className="adagu-print-total">
+            <td />
+            <td>Total</td>
+            <td />
+            <td className="tax-invoice-col-num">{totalQty}</td>
+            <td className="tax-invoice-col-num">{weight(totalGross)}</td>
+            <td className="tax-invoice-col-num">{weight(totalStone)}</td>
+            <td className="tax-invoice-col-num">{weight(totalNet)}</td>
+            <td />
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="tax-invoice-item-count">
+        {shopInfo.billTemplate.taxItemCountLabel} {totalQty}
+      </p>
+
+      <div className="tax-invoice-footer-grid">
+        <div className="tax-invoice-discount-box">
+          <h3>Settlement details</h3>
+          <div className="tax-invoice-totals-row">
+            <span>Net paid at sanction</span>
+            <span>{money(netPaid)}</span>
+          </div>
+          {redeemMode ? (
+            <div className="tax-invoice-totals-row">
+              <span>Settlement mode</span>
+              <span>{pledgePaymentModeLabel(redeemMode)}</span>
+            </div>
+          ) : null}
+        </div>
+        <div className="tax-invoice-totals">
+          <div className="tax-invoice-totals-row">
+            <span>Original loan</span>
+            <span>{money(pledge.loanAmount)}</span>
+          </div>
+          <div className="tax-invoice-totals-row">
+            <span>Extra after sanction</span>
+            <span>{money(extraLoan)}</span>
+          </div>
+          <div className="tax-invoice-totals-row">
+            <span>Interest collected</span>
+            <span>{money(interestCollected)}</span>
+          </div>
+          <div className="tax-invoice-totals-row">
+            <span>Principal repaid</span>
+            <span>{money(principalCollected)}</span>
+          </div>
+          {totalDiscount > 0 ? (
+            <div className="tax-invoice-totals-row">
+              <span>Discount</span>
+              <span>{money(totalDiscount)}</span>
+            </div>
+          ) : null}
+          <div className="tax-invoice-totals-row tax-invoice-totals-row--grand">
+            <span>Total collected</span>
+            <span>{money(pledge.amountCollected)}</span>
+          </div>
+        </div>
+      </div>
+
+      <p className="tax-invoice-words">
+        {shopInfo.billTemplate.amountInWordsLabel} {amountInWords(pledge.amountCollected)}
+      </p>
+
+      <p className="adagu-print-ack">
+        I/We confirm that the jewellery listed above has been received in full and in the same
+        condition as pledged under Adagu {pledge.receiptNo}. All dues against this loan have been
+        settled on {releaseDate || 'this date'}.
+      </p>
+
+      <AdaguSignatures
+        left="Customer Signature / LTI"
+        center="Witness"
+        shop={shopInfo}
+      />
+    </AdaguPrintSheet>
   )
 }

@@ -27,6 +27,7 @@ export interface CashBillData {
   customerPhone: string
   customerAddressLines: string[]
   lines: CashBillLine[]
+  itemCount: number
   total: number
   discount: number
   discountBreakdown: BillDiscountLine[]

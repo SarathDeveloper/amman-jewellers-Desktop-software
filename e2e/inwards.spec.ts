@@ -63,7 +63,7 @@ test('inward finalize increases product piece stock', async ({ window }) => {
   await expect(row.locator('.stock-qty')).toHaveText('3')
 })
 
-test('products shortcut opens the purchase editor and saves a draft before HUIDs are known', async ({ window }) => {
+test('products shortcut opens the purchase editor and finalizes a draft without HUIDs', async ({ window }) => {
   const goldName = `Draft Stud ${Date.now()}`
   const silverName = `Silver Anklet ${Date.now()}`
 
@@ -93,7 +93,8 @@ test('products shortcut opens the purchase editor and saves a draft before HUIDs
   const dialog = window.getByRole('dialog', { name: 'New purchase' })
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('.inward-line-card')).toHaveCount(2)
-  await expect(dialog.getByText('optional for silver')).toBeVisible()
+  await expect(dialog.getByText(/HUID \(Hallmark Unique ID\)/).first()).toBeVisible()
+  await expect(dialog.getByText('optional').first()).toBeVisible()
   await dialog.getByLabel('Rate').first().fill('100')
   await dialog.getByRole('button', { name: 'Save draft' }).click()
   await expect(window.getByText('Draft saved')).toBeVisible()
@@ -103,5 +104,5 @@ test('products shortcut opens the purchase editor and saves a draft before HUIDs
   await expect(draftRow.getByText('Draft', { exact: true })).toBeVisible()
   await draftRow.getByRole('button', { name: 'Finalize' }).click()
   await window.getByRole('dialog', { name: 'Finalize purchase?' }).getByRole('button', { name: 'Finalize' }).click()
-  await expect(window.getByText(`${goldName}: Add 1 HUID for the new piece`)).toBeVisible()
+  await expect(window.getByText('Purchase finalized — stock updated')).toBeVisible()
 })

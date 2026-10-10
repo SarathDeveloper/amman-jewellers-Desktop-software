@@ -97,9 +97,14 @@ describe('validateProductForm', () => {
     expect(errors.stoneWeight).toBe('Stone weight cannot exceed gross weight')
   })
 
-  it('rejects a 5-character HUID', () => {
-    const errors = validateProductForm(form({ huids: ['A1B2C'] }), [], null)
-    expect(errors.huids).toBe('HUID must be 6 letters or digits')
+  it('accepts HUIDs of any length', () => {
+    expect(validateProductForm(form({ huids: ['A1B2C'] }), [], null).huids).toBeUndefined()
+    expect(validateProductForm(form({ huids: ['AB'] }), [], null).huids).toBeUndefined()
+  })
+
+  it('rejects a HUID with symbols', () => {
+    const errors = validateProductForm(form({ huids: ['AB-12'] }), [], null)
+    expect(errors.huids).toBe('HUID can only be letters and digits')
   })
 
   it('rejects a duplicated HUID in the form', () => {
@@ -107,12 +112,17 @@ describe('validateProductForm', () => {
     expect(errors.huids).toBe('HUID A1B2C3 is duplicated')
   })
 
-  it('requires one HUID per piece in stock', () => {
-    const errors = validateProductForm(form({ stockQty: 2, huids: ['A1B2C3'] }), [], null)
-    expect(errors.huids).toBe('Add one HUID for each piece in stock')
+  it('allows gold pieces to be saved without HUIDs', () => {
+    expect(validateProductForm(form({ stockQty: 2, huids: ['A1B2C3'] }), [], null).huids).toBeUndefined()
+    expect(
+      validateProductForm(form({ stockQty: 4, huids: ['', '', '', ''] }), [], null).huids,
+    ).toBeUndefined()
   })
 
-  it('lets silver pieces stay untagged but not exceed the piece count', () => {
+  it('never lets HUIDs exceed the piece count', () => {
+    expect(
+      validateProductForm(form({ stockQty: 1, huids: ['A1B2C3', 'D4E5F6'] }), [], null).huids,
+    ).toBe('A product cannot have more HUIDs than pieces in stock')
     const silver = { metal: 'Silver', purity: '925' }
     expect(validateProductForm(form({ ...silver, stockQty: 2, huids: [''] }), [], null).huids).toBeUndefined()
     expect(

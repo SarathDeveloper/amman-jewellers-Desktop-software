@@ -60,12 +60,7 @@ export async function openNewBill(page: Page, type: 'cash' | 'tax') {
     await expect(page.getByRole('heading', { name: 'New Tax Invoice' })).toBeVisible()
     return
   }
-  const newLink = page.getByRole('link', { name: 'New Quotation' })
-  if (await newLink.isVisible()) {
-    await newLink.click()
-  } else {
-    await page.getByRole('tab', { name: /Quotation/ }).click()
-  }
+  await page.getByRole('tab', { name: /Quotation/ }).click()
   await expect(page.getByRole('heading', { name: 'New Quotation' })).toBeVisible()
 }
 
@@ -93,13 +88,14 @@ export async function addProductToBill(page: Page, productName: string) {
   return row
 }
 
-/** Tagged products require a HUID on the line before the bill can be finalized. */
+/** Tagged products let the cashier type or pick a HUID on the line before the bill is finalized. */
 export async function pickFirstHuid(row: Locator) {
-  const select = row.locator('.sale-bill-huid-select')
-  if ((await select.count()) === 0) return
-  const options = select.locator('option')
-  const first = (await options.nth(1).getAttribute('value')) ?? ''
-  if (first) await select.selectOption(first)
+  const input = row.locator('.sale-bill-huid-input')
+  if ((await input.count()) === 0) return
+  const first = row.locator('datalist option').first()
+  if ((await first.count()) === 0) return
+  const value = (await first.getAttribute('value')) ?? ''
+  if (value) await input.fill(value)
 }
 
 export async function setLineMetalRate(row: Locator, rate: string) {
@@ -171,7 +167,7 @@ export async function openAdaguPosSettings(page: Page) {
     await invoiceTab.click()
   }
   await expect(page.getByRole('heading', { name: 'Invoice Settings' })).toBeVisible()
-  await page.getByRole('button', { name: 'Adagu Bill' }).click()
+  await page.getByRole('tab', { name: 'Adagu Bill' }).click()
   const card = page.locator('.card.padded').filter({ hasText: 'Invoice Settings' })
   await expect(card.getByRole('heading', { name: 'Adagu POS Settings' })).toBeVisible()
   return card
@@ -212,12 +208,7 @@ export async function setAdaguInterestPct(page: Page, pct: string) {
 
 export async function openNewAdaguBill(page: Page) {
   await sidebarLink(page, 'Billing').click()
-  const newLink = page.getByRole('link', { name: 'New Adagu Bill' })
-  if (await newLink.isVisible()) {
-    await newLink.click()
-  } else {
-    await page.getByRole('tab', { name: /Adagu Bill/ }).click()
-  }
+  await page.getByRole('tab', { name: /Adagu Bill/ }).click()
   await expect(page.getByRole('heading', { name: 'Adagu Bill' })).toBeVisible()
 }
 

@@ -60,6 +60,7 @@ const SHOP_KEYS = {
   adaguAuctionNoticeDays: 'adagu_auction_notice_days',
   adaguRequireKyc: 'adagu_require_kyc',
   adaguReminderTemplate: 'adagu_reminder_template',
+  pawnbrokerLicenseNo: 'pawnbroker_license_no',
   cashPreset: 'cash_preset',
   taxPreset: 'tax_preset',
 } as const
@@ -243,6 +244,7 @@ export function loadShopSettings(db: ReturnType<typeof getDatabase>): ShopSettin
     adaguReminderTemplate: parseAdaguReminderTemplate(
       getShopSetting(db, SHOP_KEYS.adaguReminderTemplate, DEFAULT_ADAGU_REMINDER_TEMPLATE),
     ),
+    pawnbrokerLicenseNo: getShopSetting(db, SHOP_KEYS.pawnbrokerLicenseNo, '').trim(),
   }
 }
 
@@ -302,6 +304,7 @@ export function saveShopSettings(db: ReturnType<typeof getDatabase>, input: Shop
     SHOP_KEYS.adaguReminderTemplate,
     input.adaguReminderTemplate?.trim() || DEFAULT_ADAGU_REMINDER_TEMPLATE,
   )
+  setShopSetting(db, SHOP_KEYS.pawnbrokerLicenseNo, (input.pawnbrokerLicenseNo ?? '').trim())
   for (const field of BILL_TEMPLATE_FIELDS) {
     setShopSetting(db, templateSettingKey(field), input.billTemplate[field])
   }

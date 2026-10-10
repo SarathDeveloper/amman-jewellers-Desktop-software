@@ -96,8 +96,7 @@ async function waitForDocumentImages(doc: Document): Promise<void> {
 function saveCanvasAsPdf(
   canvas: HTMLCanvasElement,
   page: { width: number; height: number | 'auto'; format?: 'a4' | 'a5' },
-  filename: string,
-) {
+): jsPDF {
   const image = canvas.toDataURL('image/png')
   const width = page.width
   const contentHeight = (canvas.height / Math.max(canvas.width, 1)) * width
@@ -111,8 +110,7 @@ function saveCanvasAsPdf(
       compress: true,
     })
     pdf.addImage(image, 'PNG', 0, 0, width, height, undefined, 'FAST')
-    pdf.save(safePdfFilename(filename))
-    return
+    return pdf
   }
 
   const pageHeight = page.height
@@ -125,8 +123,7 @@ function saveCanvasAsPdf(
 
   if (contentHeight <= pageHeight + 1) {
     pdf.addImage(image, 'PNG', 0, 0, width, contentHeight, undefined, 'FAST')
-    pdf.save(safePdfFilename(filename))
-    return
+    return pdf
   }
 
   let remaining = contentHeight
@@ -139,18 +136,34 @@ function saveCanvasAsPdf(
     offset += pageHeight
     remaining -= pageHeight
   }
-  pdf.save(safePdfFilename(filename))
+  return pdf
 }
 
-export async function downloadPrintDocument(doc: Document, filename: string): Promise<void> {
+async function savePdfFile(pdf: jsPDF, filename: string): Promise<DesktopExportResult> {
+  const name = safePdfFilename(filename)
+  const savePdf = window.desktopAPI?.savePdf
+  if (savePdf) {
+    const bytes = new Uint8Array(pdf.output('arraybuffer'))
+    return savePdf(bytes, name)
+  }
+  pdf.save(name)
+  return { canceled: false }
+}
+
+export async function downloadPrintDocument(doc: Document, filename: string): Promise<DesktopExportResult> {
   const root = (doc.querySelector('[data-print-root]') as HTMLElement | null) ?? doc.body
   if (!root) {
     throw new Error('Print template is not ready')
   }
   await waitForDocumentImages(doc)
 
-  const captureWidth = Math.max(root.scrollWidth, root.offsetWidth, 1)
-  const captureHeight = Math.max(root.scrollHeight, root.offsetHeight, 1)
+  const fitted = root.dataset.printFitted === '1'
+  const captureWidth = fitted
+    ? Math.max(root.offsetWidth, 1)
+    : Math.max(root.scrollWidth, root.offsetWidth, 1)
+  const captureHeight = fitted
+    ? Math.max(root.offsetHeight, 1)
+    : Math.max(root.scrollHeight, root.offsetHeight, 1)
   const canvas = await html2canvas(root, {
     scale: 2,
     useCORS: true,
@@ -165,10 +178,11 @@ export async function downloadPrintDocument(doc: Document, filename: string): Pr
     windowWidth: captureWidth,
     windowHeight: captureHeight,
   })
-  saveCanvasAsPdf(canvas, paperPageMm(doc.documentElement.dataset.paper), filename)
+  const pdf = saveCanvasAsPdf(canvas, paperPageMm(doc.documentElement.dataset.paper))
+  return savePdfFile(pdf, filename)
 }
 
-export async function downloadPrintPdf(path: string, filename: string): Promise<void> {
+export async function downloadPrintPdf(path: string, filename: string): Promise<DesktopExportResult> {
   const iframe = document.createElement('iframe')
   iframe.setAttribute('aria-hidden', 'true')
   iframe.title = 'PDF export'
@@ -181,7 +195,7 @@ export async function downloadPrintPdf(path: string, filename: string): Promise<
 
   try {
     const doc = await ready
-    await downloadPrintDocument(doc, filename)
+    return await downloadPrintDocument(doc, filename)
   } finally {
     iframe.remove()
   }

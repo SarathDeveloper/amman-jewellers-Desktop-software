@@ -240,11 +240,24 @@ function collectionSql(scope: Scope, mode?: string): { sql: string; params: unkn
                  WHEN 'auction' THEN 'Auction'
                  ELSE 'Cash'
                END
-               WHEN instr(lower(d.note), 'upi') > 0 THEN 'UPI'
-               WHEN instr(lower(d.note), 'card') > 0 THEN 'Card'
-               WHEN instr(lower(d.note), 'mixed') > 0 THEN 'Mixed'
-               WHEN instr(lower(d.note), 'cash') > 0 THEN 'Cash'
-               ELSE 'Cash'
+               WHEN d.mode IS NULL THEN CASE
+                 WHEN instr(lower(d.note), 'upi') > 0 THEN 'UPI'
+                 WHEN instr(lower(d.note), 'card') > 0 THEN 'Card'
+                 WHEN instr(lower(d.note), 'mixed') > 0 THEN 'Mixed'
+                 WHEN instr(lower(d.note), 'cash') > 0 THEN 'Cash'
+                 WHEN i.payment_mode IS NOT NULL THEN ${paymentLabel('i.payment_mode')}
+                 ELSE 'Cash'
+               END
+               ELSE CASE d.mode
+                 WHEN 'cash' THEN 'Cash'
+                 WHEN 'upi' THEN 'UPI'
+                 WHEN 'card' THEN 'Card'
+                 WHEN 'mixed' THEN 'Mixed'
+                 WHEN 'bank_transfer' THEN 'Bank'
+                 WHEN 'transfer' THEN 'Transfer'
+                 WHEN 'auction' THEN 'Auction'
+                 ELSE 'Cash'
+               END
              END AS mode,
              d.amount AS amount,
              d.note AS note,
@@ -1124,6 +1137,7 @@ const runners: Record<ReportId, (db: ReturnType<typeof getDatabase>, scope: Scop
        FROM pledge_payments pp
        JOIN pledges p ON p.id = pp.pledge_id
        WHERE pp.payment_date >= ? AND pp.payment_date <= ?${customer}
+         AND pp.mode != 'transfer'
        GROUP BY pp.mode
        ORDER BY amount DESC`,
       params,

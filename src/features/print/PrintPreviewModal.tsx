@@ -137,6 +137,15 @@ export function PrintPreviewModal({
   }, [scheduleSize])
 
   function printFrame() {
+    // WKWebView does not reliably print an embedded iframe, so on macOS the
+    // document is opened in its own window and printed through the webview.
+    if (window.desktopAPI?.isMac) {
+      window.desktopAPI
+        .openPrintWindow(path)
+        .catch(() => setError('Could not open the print window'))
+      onPrint?.()
+      return
+    }
     frameRef.current?.contentWindow?.print()
     onPrint?.()
   }
@@ -152,7 +161,9 @@ export function PrintPreviewModal({
       setError(null)
       await downloadPrintDocument(doc, pdfFilename)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save PDF')
+      setError(
+        err instanceof Error ? err.message : typeof err === 'string' && err ? err : 'Failed to save PDF',
+      )
     } finally {
       setSavingPdf(false)
     }

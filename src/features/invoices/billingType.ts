@@ -14,7 +14,6 @@ export const BILLING_TAB_OPTIONS: {
   subtitle: string
   path: string
   newPath: string
-  newLabel: string
 }[] = [
   {
     value: 'cash_bill',
@@ -22,7 +21,6 @@ export const BILLING_TAB_OPTIONS: {
     subtitle: 'Quotation without GST',
     path: '/billing/cash',
     newPath: '/billing/cash/new',
-    newLabel: 'New Quotation',
   },
   {
     value: 'tax_invoice',
@@ -30,7 +28,6 @@ export const BILLING_TAB_OPTIONS: {
     subtitle: 'Sale with GST (CGST/SGST/IGST)',
     path: '/billing/tax',
     newPath: '/billing/tax/new',
-    newLabel: 'New Tax Invoice',
   },
   {
     value: 'adagu',
@@ -38,7 +35,6 @@ export const BILLING_TAB_OPTIONS: {
     subtitle: 'Pledge / Loan receipt',
     path: '/billing/adagu',
     newPath: '/billing/adagu/new',
-    newLabel: 'New Adagu Bill',
   },
 ]
 

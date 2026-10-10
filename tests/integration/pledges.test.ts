@@ -1194,4 +1194,35 @@ describe('pledges API', () => {
     ) as { lastRemindedAt: string | null } | undefined
     expect(reminded?.lastRemindedAt).toBeTruthy()
   })
+
+  it('leaves the renewal principal transfer out of collection totals', async () => {
+    const customerId = await createPledgeCustomer('Renew Stats', '9000000045')
+    const created = await createDraftPledge(customerId, [goldItem('Necklace')])
+    const oldId = created.body.id
+    await getTestAgent().post(`/api/pledges/${oldId}/sanction`)
+
+    const renewed = await getTestAgent().post(`/api/pledges/${oldId}/renew`).send({
+      renewDate: '2026-08-31',
+      mode: 'cash',
+      newLoanAmount: 20000,
+    })
+    expect(renewed.status).toBe(201)
+
+    const payments = await getTestAgent().get(`/api/pledges/${oldId}/payments`)
+    expect(payments.body.some((p: { kind: string }) => p.kind === 'transfer')).toBe(true)
+
+    const from = '2026-08-01'
+    const to = '2026-08-31'
+    const daily = await getTestAgent()
+      .get('/api/reports/daily-collection')
+      .query({ from, to })
+    const dailyTotal = (daily.body.rows as Array<{ amount: number }>).reduce(
+      (sum, row) => sum + row.amount,
+      0,
+    )
+    expect(dailyTotal).toBeGreaterThan(0)
+
+    const stats = await getTestAgent().get('/api/invoices/stats').query({ from, to })
+    expect(stats.body.collections).toBe(dailyTotal)
+  })
 })

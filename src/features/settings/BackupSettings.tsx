@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Download, FileSpreadsheet, FolderOpen, ShieldAlert, ShieldCheck, Upload } from 'lucide-react'
 import type { BackupFile, BackupInspection, BackupKind, BackupStatus } from '@shared/types'
-import { daysSinceBackup, healthTitle, healthTone, offsiteCopyCurrent } from '@shared/backupHealth'
+import { BACKUP_STATUS_EVENT, daysSinceBackup, healthTitle, healthTone, offsiteCopyCurrent } from '@shared/backupHealth'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Modal } from '../../components/Modal'
 import { TimeInput } from '../../components/DateInput'
@@ -58,6 +58,7 @@ export function BackupSettings() {
     setOffsiteDir(status.offsiteDir ?? '')
     setLastOffsiteAt(status.lastOffsiteAt ?? null)
     setLastOffsiteError(status.lastOffsiteError ?? null)
+    window.dispatchEvent(new CustomEvent<BackupStatus>(BACKUP_STATUS_EVENT, { detail: status }))
   }
 
   const refresh = useCallback(async () => {

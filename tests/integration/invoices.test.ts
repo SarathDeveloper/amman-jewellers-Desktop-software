@@ -490,9 +490,9 @@ describe('invoices IPC', () => {
     expect(after.huids).not.toContain(product.huids[0])
   })
 
-  it('rejects a HUID that is not tagged on the product', async () => {
+  it('rejects an untagged HUID on finalize when every piece is tagged', async () => {
     const { customer, product } = await seedCustomerAndProduct()
-    const result = await invokeIpcForTests(IPC_CHANNELS.INVOICES_CREATE, {
+    const draft = await ipc(IPC_CHANNELS.INVOICES_CREATE, {
       customerId: customer.id,
       invoiceDate: '2026-09-26',
       tax: 0,
@@ -508,8 +508,148 @@ describe('invoices IPC', () => {
         },
       ],
     })
+    const blocked = await invokeIpcForTests(IPC_CHANNELS.INVOICES_FINALIZE, draft.id)
+    expect(blocked.ok).toBe(false)
+    expect(blocked.error).toMatch(/not tagged/i)
+  })
+
+  it('accepts a HUID typed at sale time for a product with no tagged pieces', async () => {
+    const { customer } = await seedCustomerAndProduct()
+    const untagged = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+      name: 'Untagged chain',
+      category: 'Chain',
+      metal: 'Gold',
+      purity: '22K',
+      grossWeight: 10,
+      netWeight: 2,
+      makingCharges: 0,
+      stockQty: 1,
+      imagePath: '',
+      huids: [],
+    })
+    const draft = await ipc<{ id: number; items: Array<{ huid: string }> }>(IPC_CHANNELS.INVOICES_CREATE, {
+      customerId: customer.id,
+      invoiceDate: '2026-09-26',
+      tax: 0,
+      autoTax: false,
+      items: [
+        { productId: untagged.id, qty: 1, rate: 1000, metalRate: 1000, netWeight: 2, huid: 'ZZZZZZ' },
+      ],
+    })
+    expect(draft.items[0].huid).toBe('ZZZZZZ')
+
+    const finalized = await ipc<{ status: string; items: Array<{ huid: string }> }>(
+      IPC_CHANNELS.INVOICES_FINALIZE,
+      draft.id,
+    )
+    expect(finalized.status).toBe('final')
+    expect(finalized.items[0].huid).toBe('ZZZZZZ')
+
+    const after = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, untagged.id)
+    expect(after.stockQty).toBe(0)
+    expect(after.huids).toEqual([])
+  })
+
+  it('rejects a typed HUID that is tagged on another product', async () => {
+    const { customer } = await seedCustomerAndProduct()
+    const tagged = await ipc<{ id: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
+      name: 'Tagged ring',
+      category: 'Ring',
+      metal: 'Gold',
+      purity: '22K',
+      grossWeight: 5,
+      netWeight: 3,
+      makingCharges: 0,
+      stockQty: 1,
+      imagePath: '',
+    }))
+    const untagged = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+      name: 'Untagged ring',
+      category: 'Ring',
+      metal: 'Gold',
+      purity: '22K',
+      grossWeight: 5,
+      netWeight: 3,
+      makingCharges: 0,
+      stockQty: 1,
+      imagePath: '',
+      huids: [],
+    })
+    const result = await invokeIpcForTests(IPC_CHANNELS.INVOICES_CREATE, {
+      customerId: customer.id,
+      invoiceDate: '2026-09-26',
+      tax: 0,
+      autoTax: false,
+      items: [
+        { productId: untagged.id, qty: 1, rate: 1000, metalRate: 1000, netWeight: 2, huid: tagged.huids[0] },
+      ],
+    })
     expect(result.ok).toBe(false)
-    expect(result.error).toMatch(/not tagged/i)
+    expect(result.error).toMatch(/already tagged/i)
+  })
+
+  it('rejects a typed HUID that is already used on another live bill', async () => {
+    const { customer } = await seedCustomerAndProduct()
+    const makeProduct = (name: string) =>
+      ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+        name,
+        category: 'Ring',
+        metal: 'Gold',
+        purity: '22K',
+        grossWeight: 5,
+        netWeight: 3,
+        makingCharges: 0,
+        stockQty: 1,
+        imagePath: '',
+        huids: [],
+      })
+    const first = await makeProduct('First untagged ring')
+    const second = await makeProduct('Second untagged ring')
+    const line = (productId: number) => ({
+      customerId: customer.id,
+      invoiceDate: '2026-09-26',
+      tax: 0,
+      autoTax: false,
+      items: [{ productId, qty: 1, rate: 1000, metalRate: 1000, netWeight: 2, huid: 'YYYYYY' }],
+    })
+    await ipc(IPC_CHANNELS.INVOICES_CREATE, line(first.id))
+    const blocked = await invokeIpcForTests(IPC_CHANNELS.INVOICES_CREATE, line(second.id))
+    expect(blocked.ok).toBe(false)
+    expect(blocked.error).toMatch(/already used on bill/i)
+  })
+
+  it('re-tags a typed HUID on the product when the bill is cancelled', async () => {
+    const { customer } = await seedCustomerAndProduct()
+    const untagged = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, {
+      name: 'Returnable ring',
+      category: 'Ring',
+      metal: 'Gold',
+      purity: '22K',
+      grossWeight: 5,
+      netWeight: 3,
+      makingCharges: 0,
+      stockQty: 1,
+      imagePath: '',
+      huids: [],
+    })
+    const draft = await ipc<{ id: number }>(IPC_CHANNELS.INVOICES_CREATE, {
+      customerId: customer.id,
+      invoiceDate: '2026-09-26',
+      tax: 0,
+      autoTax: false,
+      items: [
+        { productId: untagged.id, qty: 1, rate: 1000, metalRate: 1000, netWeight: 2, huid: 'XXXXXX' },
+      ],
+    })
+    await ipc(IPC_CHANNELS.INVOICES_FINALIZE, draft.id)
+    const sold = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, untagged.id)
+    expect(sold.stockQty).toBe(0)
+    expect(sold.huids).toEqual([])
+
+    await ipc(IPC_CHANNELS.INVOICES_CANCEL, { id: draft.id, reason: 'Customer returned the ring' })
+    const restored = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, untagged.id)
+    expect(restored.stockQty).toBe(1)
+    expect(restored.huids).toEqual(['XXXXXX'])
   })
 
   it('lets only one of two drafts claim the same HUID', async () => {
@@ -938,5 +1078,47 @@ describe('invoices IPC', () => {
     const second = await getTestAgent().get('/api/invoices').query({ page: 2, pageSize: 5 })
     expect(second.body.items.length).toBe(2)
     expect(second.body.total).toBe(7)
+  })
+
+  it('reports a UPI bill payment as UPI rather than Cash', async () => {
+    const { customer, product } = await seedCustomerAndProduct()
+    const invoiceDate = '2026-09-30'
+    const draft = await ipc<{ id: number }>(IPC_CHANNELS.INVOICES_CREATE, {
+      customerId: customer.id,
+      invoiceDate,
+      tax: 0,
+      autoTax: false,
+      billFormat: 'cash_bill',
+      paymentMode: 'upi',
+      amountPaid: 1000,
+      items: [
+        { productId: product.id, qty: 1, rate: 1000, metalRate: 1000, netWeight: 2, huid: product.huids[0] },
+      ],
+    })
+    const finalized = await ipc<{ id: number; amountPaid: number }>(
+      IPC_CHANNELS.INVOICES_FINALIZE,
+      draft.id,
+    )
+    expect(finalized.amountPaid).toBe(1000)
+
+    const upi = await getTestAgent()
+      .get('/api/reports/upi-collection')
+      .query({ from: invoiceDate, to: invoiceDate })
+    expect(upi.status).toBe(200)
+    const upiRows = upi.body.rows as Array<{ amount: number }>
+    expect(upiRows).toHaveLength(1)
+    expect(upiRows[0].amount).toBe(1000)
+
+    const cash = await getTestAgent()
+      .get('/api/reports/cash-collection')
+      .query({ from: invoiceDate, to: invoiceDate })
+    expect((cash.body.rows as unknown[]).length).toBe(0)
+
+    const daily = await getTestAgent()
+      .get('/api/reports/daily-collection')
+      .query({ from: invoiceDate, to: invoiceDate })
+    const dailyRow = daily.body.rows[0] as { cash: number; upi: number; amount: number }
+    expect(dailyRow.upi).toBe(1000)
+    expect(dailyRow.cash).toBe(0)
   })
 })

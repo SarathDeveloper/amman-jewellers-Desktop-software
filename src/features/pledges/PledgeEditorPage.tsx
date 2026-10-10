@@ -35,7 +35,6 @@ import {
 import {
   isAboveLtv,
   itemValue,
-  maxLoanForValue,
   ratePerGram,
 } from "@shared/billing/pledgeValuation";
 import { localTodayIso } from "@shared/localDate";
@@ -123,7 +122,6 @@ export function PledgeEditorPage() {
   const [pledgeType, setPledgeType] = useState(DEFAULT_PLEDGE_TYPE);
   const [guardianName, setGuardianName] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
-  const [idProofType, setIdProofType] = useState("");
   const [aadhaar, setAadhaar] = useState("");
   const [pan, setPan] = useState("");
   const [requireKyc, setRequireKyc] = useState(false);
@@ -161,13 +159,17 @@ export function PledgeEditorPage() {
   const [redeeming, setRedeeming] = useState(false);
   const [auctioning, setAuctioning] = useState(false);
   const [previewReceiptNo, setPreviewReceiptNo] = useState("");
-  const [pledgeLoading, setPledgeLoading] = useState(!isNew);
+  const [loadedPledgeId, setLoadedPledgeId] = useState<string | null>(null);
+  const pledgeLoading = !isNew && Boolean(id) && loadedPledgeId !== String(id);
 
   const isDraft = !pledge || pledge.status === "draft";
   const isActiveLoan = pledge?.status === "active";
   const canEdit = isDraft;
   const busy = saving || redeeming || auctioning || savingPdf || deleting;
-  const jewelleryItems = items.length > 0 ? items : [newItem()];
+  const jewelleryItems = useMemo(
+    () => (items.length > 0 ? items : [newItem()]),
+    [items],
+  );
   const selectedCustomer = customers.find((c) => c.id === customerId);
   const totalGrossWeight = jewelleryItems.reduce(
     (sum, item) => sum + Number(item.grossWeight || 0),
@@ -235,11 +237,7 @@ export function PledgeEditorPage() {
   }, [isNew]);
 
   useEffect(() => {
-    if (isNew || !id) {
-      setPledgeLoading(false);
-      return;
-    }
-    setPledgeLoading(true);
+    if (isNew || !id) return;
     let active = true;
     void (async () => {
       try {
@@ -255,7 +253,8 @@ export function PledgeEditorPage() {
         setCustomerAddress(data.customerAddress ?? "");
         setPhotos(data.photos ?? []);
         setAssessedValue(data.assessedValue);
-        setAssessedOverridden(true);
+        // A draft keeps tracking its items; a sanctioned loan keeps its stored value.
+        setAssessedOverridden(data.status !== "draft");
         setLoanAmount(data.loanAmount);
         setCharges(data.charges ?? 0);
         setInterestPct(data.interestPct);
@@ -282,7 +281,7 @@ export function PledgeEditorPage() {
           );
         }
       } finally {
-        if (active) setPledgeLoading(false);
+        if (active) setLoadedPledgeId(String(id));
       }
     })();
     return () => {
@@ -325,7 +324,6 @@ export function PledgeEditorPage() {
     if (!customerId) return;
     const customer = customers.find((row) => row.id === customerId);
     if (!customer) return;
-    setIdProofType(customer.idProofType ?? "");
     setAadhaar(customer.aadhaar ?? "");
     setPan(customer.pan ?? "");
   }, [customerId, customers]);
@@ -399,7 +397,6 @@ export function PledgeEditorPage() {
     : computedAssessedValue;
 
   const hasRates = metalRates != null && (metalRates.gold24k > 0 || metalRates.silverFine > 0);
-  const maxLoan = maxLoanForValue(effectiveAssessedValue, ltvPct);
   const aboveLtv = isAboveLtv(
     numericFieldToNumber(loanAmount),
     effectiveAssessedValue,
@@ -421,7 +418,6 @@ export function PledgeEditorPage() {
     setCustomerPhone(customer.phone ?? "");
     setGuardianName(customer.guardianName ?? "");
     setCustomerAddress(customer.address ?? "");
-    setIdProofType(customer.idProofType ?? "");
     setAadhaar(customer.aadhaar ?? "");
     setPan(customer.pan ?? "");
   }
@@ -432,7 +428,6 @@ export function PledgeEditorPage() {
     setCustomerPhone("");
     setGuardianName("");
     setCustomerAddress("");
-    setIdProofType("");
     setAadhaar("");
     setPan("");
   }
@@ -502,7 +497,8 @@ export function PledgeEditorPage() {
         gstin: existing.gstin ?? "",
         aadhaar: aadhaar.replace(/\D/g, "").slice(0, 12),
         pan: pan.trim().toUpperCase(),
-        idProofType: idProofType.trim(),
+        // Preserve whatever ID proof type the customer already has on file.
+        idProofType: existing.idProofType ?? "",
       });
       setCustomers((current) =>
         current.map((row) => (row.id === updated.id ? updated : row)),
@@ -520,7 +516,7 @@ export function PledgeEditorPage() {
       gstin: "",
       aadhaar: aadhaar.replace(/\D/g, "").slice(0, 12),
       pan: pan.trim().toUpperCase(),
-      idProofType: idProofType.trim(),
+      idProofType: "",
     });
     setCustomers((current) => [created, ...current]);
     setCustomerId(created.id);
@@ -565,16 +561,17 @@ export function PledgeEditorPage() {
   function validatePayload(payload: ReturnType<typeof buildPayload>) {
     if (!payload.customerId) throw new Error("Enter customer name");
     if (payload.items.some((item) => !item.description.trim())) {
-      throw new Error("Enter description of jewells");
+      throw new Error("Enter a description for each jewel");
     }
     if (payload.loanAmount <= 0) throw new Error("Enter loan amount");
     return payload;
   }
 
-  async function persistDraft(): Promise<Pledge | null> {
+  /** Saves the draft and throws on failure, so callers can report it where it happened. */
+  async function persistDraftCore(): Promise<Pledge> {
+    setSaving(true);
+    setError(null);
     try {
-      setSaving(true);
-      setError(null);
       const resolvedCustomerId = await ensureCustomerId();
       const payload = validatePayload(buildPayload(resolvedCustomerId));
       if (isNew && !pledge?.id) {
@@ -587,12 +584,24 @@ export function PledgeEditorPage() {
       const updated = await api.updatePledge({ id: targetId, ...payload });
       setPledge(updated);
       return updated;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save pledge");
-      return null;
     } finally {
       setSaving(false);
     }
+  }
+
+  async function persistDraft(): Promise<Pledge | null> {
+    try {
+      return await persistDraftCore();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save pledge");
+      return null;
+    }
+  }
+
+  /** Photos hang off the loan row, so an unsaved draft is created on demand. */
+  async function ensurePledgeIdForPhotos(): Promise<number> {
+    if (pledge?.id) return pledge.id;
+    return (await persistDraftCore()).id;
   }
 
   async function saveDraft() {
@@ -638,10 +647,11 @@ export function PledgeEditorPage() {
     if (pending === "pdf") {
       try {
         setSavingPdf(true);
-        await downloadPrintPdf(
+        const saved = await downloadPrintPdf(
           printPreviewPaths.pledge(result.id),
           `${result.receiptNo}.pdf`,
         );
+        if (!saved.canceled) showToast("PDF saved", "success");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to download PDF");
       } finally {
@@ -654,7 +664,8 @@ export function PledgeEditorPage() {
   async function openPreview() {
     try {
       setError(null);
-      const saved = await persistDraft();
+      // A sanctioned loan is locked server-side, so only a draft is saved first.
+      const saved = isDraft ? await persistDraft() : pledge;
       if (!saved) return;
       setPreviewTargetId(saved.id);
       setPreviewOpen(true);
@@ -667,12 +678,14 @@ export function PledgeEditorPage() {
     try {
       setError(null);
       setSavingPdf(true);
-      const saved = await persistDraft();
+      // A sanctioned loan is locked server-side, so only a draft is saved first.
+      const saved = isDraft ? await persistDraft() : pledge;
       if (!saved) return;
-      await downloadPrintPdf(
+      const exported = await downloadPrintPdf(
         printPreviewPaths.pledge(saved.id),
         `${saved.receiptNo}.pdf`,
       );
+      if (!exported.canceled) showToast("PDF saved", "success");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to download PDF");
     } finally {
@@ -1117,25 +1130,6 @@ export function PledgeEditorPage() {
                 </div>
               </div>
               <div className="adagu-field">
-                <label>ID Proof Type</label>
-                <div className="adagu-input-with-icon">
-                  <IdCard size={16} className="input-icon" />
-                  <select
-                    className="adagu-purity-select"
-                    disabled={!canEdit || busy}
-                    value={idProofType}
-                    onChange={(event) => setIdProofType(event.target.value)}
-                  >
-                    <option value="">Not recorded</option>
-                    <option value="Aadhaar">Aadhaar</option>
-                    <option value="PAN">PAN</option>
-                    <option value="Voter ID">Voter ID</option>
-                    <option value="Driving Licence">Driving Licence</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-              </div>
-              <div className="adagu-field">
                 <label>Aadhaar</label>
                 <div className="adagu-input-with-icon">
                   <IdCard size={16} className="input-icon" />
@@ -1179,28 +1173,6 @@ export function PledgeEditorPage() {
               </div>
             ) : null}
 
-            <div className="adagu-borrower-photos">
-              <PledgePhotosStrip
-                pledgeId={pledge?.id ?? 0}
-                photos={photos}
-                kind="customer"
-                label="Borrower photo"
-                editable={canEdit}
-                busy={busy}
-                onChanged={setPhotos}
-                onError={setError}
-              />
-              <PledgePhotosStrip
-                pledgeId={pledge?.id ?? 0}
-                photos={photos}
-                kind="id_proof"
-                label="ID proof photo"
-                editable={canEdit}
-                busy={busy}
-                onChanged={setPhotos}
-                onError={setError}
-              />
-            </div>
           </div>
 
           <div className="adagu-design-card adagu-design-card--items-panel">
@@ -1223,7 +1195,7 @@ export function PledgeEditorPage() {
               </button>
             </div>
 
-            <div className="adagu-jewellery-table-wrap sale-bill-items-wrap">
+            <div className="adagu-jewellery-table-wrap sale-bill-items-wrap pledge-items-wrap">
             <table className="adagu-jewellery-table adagu-jewellery-table--pledge">
               <thead>
                 <tr>
@@ -1365,7 +1337,7 @@ export function PledgeEditorPage() {
                                   description: event.target.value,
                                 })
                               }
-                              placeholder="Description (Optional)"
+                              placeholder="Description of jewels"
                             />
                           </div>
                         </td>
@@ -1375,6 +1347,38 @@ export function PledgeEditorPage() {
                 })}
               </tbody>
             </table>
+            </div>
+
+            <PledgePhotosStrip
+              pledgeId={pledge?.id ?? 0}
+              photos={photos}
+              kind="item"
+              label="Item photos"
+              editable={canEdit}
+              busy={busy}
+              onChanged={setPhotos}
+              ensurePledgeId={ensurePledgeIdForPhotos}
+            />
+          </div>
+        </div>
+
+        <div className="adagu-grid-col sale-bill-rail">
+          <div className="adagu-design-card">
+            <div className="adagu-card-header">
+              <div className="adagu-card-title-group">
+                <div
+                  className="adagu-card-icon"
+                  style={{
+                    background: "var(--accent-soft)",
+                    color: "var(--accent)",
+                  }}
+                >
+                  <Scale size={14} strokeWidth={1.75} />
+                </div>
+                <div className="adagu-card-titles">
+                  <h2>Weight Summary</h2>
+                </div>
+              </div>
             </div>
 
             <div className="sale-bill-summary-stats sale-bill-summary-stats--weights">
@@ -1406,21 +1410,8 @@ export function PledgeEditorPage() {
                 </div>
               </div>
             </div>
-
-            <PledgePhotosStrip
-              pledgeId={pledge?.id ?? 0}
-              photos={photos}
-              kind="item"
-              label="Item photos"
-              editable={canEdit}
-              busy={busy}
-              onChanged={setPhotos}
-              onError={setError}
-            />
           </div>
-        </div>
 
-        <div className="adagu-grid-col sale-bill-rail">
           <div className="adagu-design-card">
             <div className="adagu-card-header">
               <div className="adagu-card-title-group">
@@ -1505,77 +1496,33 @@ export function PledgeEditorPage() {
                   />
                 </div>
               </div>
-              <div className="adagu-field">
-                <label>Assessed Value</label>
-                <div className="adagu-input-with-icon">
-                  <IndianRupee size={14} className="input-icon" />
-                  <input
-                    type="number"
-                    step="0.01"
-                    disabled={!canEdit || busy}
-                    value={weightInputValue(assessedValue)}
-                    onChange={(event) => {
-                      setAssessedOverridden(true);
-                      setAssessedValue(parseNumericField(event.target.value));
-                    }}
-                  />
+              {!hasRates || aboveLtv ? (
+                <div className="adagu-field" style={{ gridColumn: "1 / -1" }}>
+                  {!hasRates ? (
+                    <div className="adagu-banner adagu-banner--warning">
+                      No metal rates for today.{" "}
+                      <Link to="/rates">Update Rates</Link> to assess value
+                      automatically.
+                    </div>
+                  ) : null}
+                  {aboveLtv ? (
+                    <div className="adagu-banner adagu-banner--warning">
+                      Loan is above the {ltvPct}% LTV limit.
+                      <label className="adagu-banner-check">
+                        <input
+                          type="checkbox"
+                          checked={allowAboveLtv}
+                          disabled={!canEdit || busy}
+                          onChange={(event) =>
+                            setAllowAboveLtv(event.target.checked)
+                          }
+                        />
+                        Admin override (allow above LTV)
+                      </label>
+                    </div>
+                  ) : null}
                 </div>
-                {assessedOverridden ? (
-                  <button
-                    type="button"
-                    className="adagu-link-button"
-                    disabled={!canEdit || busy}
-                    onClick={() => {
-                      setAssessedOverridden(false);
-                      setAssessedValue(0);
-                    }}
-                  >
-                    <RotateCcw size={12} /> Auto from items (
-                    {formatCurrency(computedAssessedValue)})
-                  </button>
-                ) : (
-                  <span className="adagu-field-hint">
-                    Auto-summed from item rates
-                  </span>
-                )}
-              </div>
-              <div className="adagu-field" style={{ gridColumn: "1 / -1" }}>
-                <span className="adagu-ltv-line">
-                  Max loan ({ltvPct}% LTV):{" "}
-                  <strong>{formatCurrency(maxLoan)}</strong>
-                  <button
-                    type="button"
-                    className="adagu-link-button"
-                    disabled={!canEdit || busy || maxLoan <= 0}
-                    onClick={() => setLoanAmount(maxLoan)}
-                  >
-                    Use max
-                  </button>
-                </span>
-                {!hasRates ? (
-                  <div className="adagu-banner adagu-banner--warning">
-                    No metal rates for today.{" "}
-                    <Link to="/rates">Update Rates</Link> to assess value
-                    automatically.
-                  </div>
-                ) : null}
-                {aboveLtv ? (
-                  <div className="adagu-banner adagu-banner--warning">
-                    Loan is above the {ltvPct}% LTV limit.
-                    <label className="adagu-banner-check">
-                      <input
-                        type="checkbox"
-                        checked={allowAboveLtv}
-                        disabled={!canEdit || busy}
-                        onChange={(event) =>
-                          setAllowAboveLtv(event.target.checked)
-                        }
-                      />
-                      Admin override (allow above LTV)
-                    </label>
-                  </div>
-                ) : null}
-              </div>
+              ) : null}
               <div className="adagu-field" style={{ gridColumn: "1 / -1" }}>
                 <label>
                   Due Date <span className="req">*</span>

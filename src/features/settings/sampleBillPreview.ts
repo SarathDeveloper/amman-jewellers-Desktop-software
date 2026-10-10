@@ -8,6 +8,7 @@ export const SAMPLE_CASH_BILL: CashBillData = {
   customerName: "Ravi Kumar",
   customerPhone: "9876543210",
   customerAddressLines: ["Salem, Tamil Nadu"],
+  itemCount: 2,
   total: 42500,
   discount: 250,
   discountBreakdown: [{ label: "Discount", amount: 250 }],

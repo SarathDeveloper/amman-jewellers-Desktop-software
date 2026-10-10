@@ -161,9 +161,9 @@ export function recordPledgePayment(
 
   db.prepare(
     `INSERT INTO customer_dues (
-       customer_id, entry_date, kind, amount, note, pledge_id, pledge_payment_id, created_at
-     ) VALUES (?, ?, 'payment', ?, ?, ?, ?, datetime('now'))`,
-  ).run(pledge.customer_id, input.date, amount, note, pledge.id, paymentId)
+       customer_id, entry_date, kind, amount, note, mode, pledge_id, pledge_payment_id, created_at
+     ) VALUES (?, ?, 'payment', ?, ?, ?, ?, ?, datetime('now'))`,
+  ).run(pledge.customer_id, input.date, amount, note, input.mode, pledge.id, paymentId)
 
   const collected = syncPledgeCollected(db, pledge.id)
 

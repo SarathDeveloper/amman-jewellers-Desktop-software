@@ -284,6 +284,10 @@ function paymentModeFromNote(note: string, fallback: PaymentMode): PaymentMode {
   return fallback
 }
 
+function isPaymentMode(value: string | null | undefined): value is PaymentMode {
+  return value === 'cash' || value === 'upi' || value === 'card' || value === 'mixed'
+}
+
 function loadOldGold(db: ReturnType<typeof getDatabase>, invoiceId: number): OldGoldItem[] {
   const rows = db
     .prepare(
@@ -331,7 +335,7 @@ function loadPayments(
 ): InvoicePayment[] {
   const rows = db
     .prepare(
-      `SELECT id, entry_date, amount, note, created_at
+      `SELECT id, entry_date, amount, note, mode, created_at
        FROM customer_dues
        WHERE invoice_id = ? AND kind = 'payment'
        ORDER BY entry_date ASC, id ASC`,
@@ -341,13 +345,14 @@ function loadPayments(
     entry_date: string
     amount: number
     note: string
+    mode: string | null
     created_at: string
   }>
 
   return rows.map((row) => ({
     id: row.id,
     date: row.entry_date,
-    mode: paymentModeFromNote(row.note ?? '', fallbackMode),
+    mode: isPaymentMode(row.mode) ? row.mode : paymentModeFromNote(row.note ?? '', fallbackMode),
     amount: row.amount,
     note: row.note ?? '',
     createdAt: row.created_at,
@@ -727,8 +732,12 @@ function insertItems(
   }
 }
 
-/** Validates HUIDs picked on bill lines: tagged on the product and unique within the bill. */
-function assertLineHuids(db: ReturnType<typeof getDatabase>, lines: ReturnType<typeof computeInvoiceLines>): void {
+/** Validates HUIDs typed on bill lines: well formed and unique across products and live bills. */
+function assertLineHuids(
+  db: ReturnType<typeof getDatabase>,
+  lines: ReturnType<typeof computeInvoiceLines>,
+  invoiceId?: number,
+): void {
   const seen = new Set<string>()
   for (const line of lines) {
     if (line.lineKind === 'exchange') continue
@@ -744,8 +753,29 @@ function assertLineHuids(db: ReturnType<typeof getDatabase>, lines: ReturnType<t
     const tagged = db
       .prepare('SELECT 1 FROM product_huids WHERE product_id = ? AND huid = ?')
       .get(line.productId, huid)
-    if (!tagged) {
-      throw new Error(`HUID ${huid} is not tagged on this product`)
+    if (tagged) continue
+    const otherProduct = db
+      .prepare(
+        `SELECT p.name AS name
+         FROM product_huids ph
+         JOIN products p ON p.id = ph.product_id
+         WHERE ph.huid = ? AND ph.product_id != ?`,
+      )
+      .get(huid, line.productId) as { name: string } | undefined
+    if (otherProduct) {
+      throw new Error(`HUID ${huid} is already tagged on ${otherProduct.name}`)
+    }
+    const otherBill = db
+      .prepare(
+        `SELECT i.invoice_no AS invoice_no
+         FROM invoice_items ii
+         JOIN invoices i ON i.id = ii.invoice_id
+         WHERE ii.huid = ? AND ii.line_kind != 'exchange'
+           AND i.status != 'cancelled' AND i.id != ?`,
+      )
+      .get(huid, invoiceId ?? -1) as { invoice_no: string } | undefined
+    if (otherBill) {
+      throw new Error(`HUID ${huid} is already used on bill ${otherBill.invoice_no}`)
     }
   }
 }
@@ -866,7 +896,7 @@ function saveDraftInvoice(
   const productsById = loadProductsMap(db)
   const metalRates = getLatestMetalRates(db)
   const computedLines = computeInvoiceLines(input.items, productsById, metalRates)
-  assertLineHuids(db, computedLines)
+  assertLineHuids(db, computedLines, invoiceId)
 
   const paymentMode: PaymentMode = input.paymentMode ?? 'cash'
   const discount = input.discount ?? 0
@@ -1152,12 +1182,16 @@ router.get(
           ? `SELECT COALESCE(SUM(d.amount), 0) AS extra
              FROM customer_dues d
              LEFT JOIN invoices i ON i.id = d.invoice_id
+             LEFT JOIN pledge_payments pp ON pp.id = d.pledge_payment_id
              WHERE d.kind = 'payment' AND d.entry_date >= ? AND d.entry_date <= ?
+               AND (pp.id IS NULL OR pp.mode NOT IN ('transfer', 'auction'))
                AND (d.invoice_id IS NULL OR i.invoice_date < d.entry_date)`
           : `SELECT COALESCE(SUM(d.amount), 0) AS extra
              FROM customer_dues d
              LEFT JOIN invoices i ON i.id = d.invoice_id
+             LEFT JOIN pledge_payments pp ON pp.id = d.pledge_payment_id
              WHERE d.kind = 'payment'
+               AND (pp.id IS NULL OR pp.mode NOT IN ('transfer', 'auction'))
                AND (d.invoice_id IS NULL OR i.invoice_date < d.entry_date)`,
       )
       .get(...rangeParams) as { extra: number }
@@ -1186,23 +1220,28 @@ router.get(
 
     const extraPaymentWhere = from && to
       ? `d.kind = 'payment' AND d.entry_date >= ? AND d.entry_date <= ?
+         AND (pp.id IS NULL OR pp.mode NOT IN ('transfer', 'auction'))
          AND (d.invoice_id IS NULL OR i.invoice_date < d.entry_date)`
-      : `d.kind = 'payment' AND (d.invoice_id IS NULL OR i.invoice_date < d.entry_date)`
+      : `d.kind = 'payment' AND (pp.id IS NULL OR pp.mode NOT IN ('transfer', 'auction'))
+         AND (d.invoice_id IS NULL OR i.invoice_date < d.entry_date)`
     let extraChartSql = `SELECT d.entry_date AS key, COALESCE(SUM(d.amount), 0) AS total
                          FROM customer_dues d
                          LEFT JOIN invoices i ON i.id = d.invoice_id
+                         LEFT JOIN pledge_payments pp ON pp.id = d.pledge_payment_id
                          WHERE ${extraPaymentWhere}
                          GROUP BY d.entry_date`
     if (granularity === 'hour') {
       extraChartSql = `SELECT CAST(strftime('%H', d.created_at) AS INTEGER) AS key, COALESCE(SUM(d.amount), 0) AS total
                        FROM customer_dues d
                        LEFT JOIN invoices i ON i.id = d.invoice_id
+                       LEFT JOIN pledge_payments pp ON pp.id = d.pledge_payment_id
                        WHERE ${extraPaymentWhere}
                        GROUP BY key`
     } else if (granularity === 'month') {
       extraChartSql = `SELECT strftime('%Y-%m', d.entry_date) AS key, COALESCE(SUM(d.amount), 0) AS total
                        FROM customer_dues d
                        LEFT JOIN invoices i ON i.id = d.invoice_id
+                       LEFT JOIN pledge_payments pp ON pp.id = d.pledge_payment_id
                        WHERE ${extraPaymentWhere}
                        GROUP BY key`
     }
@@ -1356,10 +1395,13 @@ router.post(
           .prepare('SELECT metal, stock_qty FROM products WHERE id = ?')
           .get(item.productId) as { metal: string; stock_qty: number } | undefined
         const mustPickHuid =
-          stock != null &&
-          huidRemovalRange(stock.metal, taggedHuids.length, stock.stock_qty, 1).min > 0
+          stock != null && huidRemovalRange(taggedHuids.length, stock.stock_qty, 1).min > 0
         if (mustPickHuid && item.qty === 1 && !huid) {
           throw new Error(`Pick a HUID for ${item.productName || 'this item'}`)
+        }
+        const huidTagged = huid !== '' && taggedHuids.includes(huid)
+        if (mustPickHuid && huid && !huidTagged) {
+          throw new Error(`HUID ${huid} is not tagged on ${item.productName || 'this item'}`)
         }
         recordPieceMovement(db, {
           type: 'sale',
@@ -1372,7 +1414,7 @@ router.post(
           operatorId: req.user?.id ?? null,
           movementDate: row.invoice_date,
         })
-        if (huid) {
+        if (huidTagged) {
           removeHuids(db, item.productId, [huid])
         }
       }
@@ -1473,7 +1515,12 @@ router.post(
         })
         const huid = (item.huid ?? '').trim().toUpperCase()
         if (huid && !listHuids(db, item.productId).includes(huid)) {
-          appendHuids(db, item.productId, [huid])
+          const taggedElsewhere = db
+            .prepare('SELECT 1 FROM product_huids WHERE huid = ? AND product_id != ?')
+            .get(huid, item.productId)
+          if (!taggedElsewhere) {
+            appendHuids(db, item.productId, [huid])
+          }
         }
       }
 
@@ -1519,6 +1566,7 @@ router.post(
         entryDate: input.entryDate || localTodayIso(),
         amount: input.amount,
         note,
+        mode: input.mode ?? row.payment_mode,
         invoiceId: id,
         pledgeId: null,
       })

@@ -417,10 +417,11 @@ export function InvoicesPage() {
     setMenuKey(null)
     setError(null)
     try {
-      await downloadPrintPdf(
+      const result = await downloadPrintPdf(
         billPrintPath(invoice.id, printFormatFor(invoice)),
         `${invoice.invoiceNo}.pdf`,
       )
+      if (!result.canceled) showToast('PDF saved', 'success')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to download PDF')
     }

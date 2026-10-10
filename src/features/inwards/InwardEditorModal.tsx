@@ -19,7 +19,6 @@ import {
 } from 'lucide-react'
 import {
   GOLD_PURITIES,
-  isHuidMandatory,
   newPieceHuidError,
   SILVER_PURITIES,
   STOCK_ITEM_NAMES,
@@ -368,16 +367,16 @@ export function InwardEditorModal({
         }
         const huids = line.huids.map((value) => value.trim().toUpperCase()).filter(Boolean)
         const countError = finalize
-          ? newPieceHuidError(product.metal, huids.length, qty)
+          ? newPieceHuidError(huids.length, qty)
           : huids.length > qty
             ? 'A line cannot have more HUIDs than pieces'
             : null
         if (countError) {
           throw new Error(`${label} (${product.name}): ${countError}`)
         }
-        const invalid = huids.find((huid) => !/^[0-9A-Z]{6}$/.test(huid))
+        const invalid = huids.find((huid) => !/^[0-9A-Z]+$/.test(huid))
         if (invalid) {
-          throw new Error(`${label}: HUID ${invalid} must be 6 letters or digits`)
+          throw new Error(`${label}: HUID ${invalid} can only be letters and digits`)
         }
         const duplicate = huids.find(
           (huid, index) => huids.indexOf(huid) !== index || huidsSeen.includes(huid),
@@ -900,11 +899,7 @@ export function InwardEditorModal({
                           <p className="muted">
                             HUID (Hallmark Unique ID) — {line.huids.filter((value) => value.trim()).length} of{' '}
                             {qty} pieces
-                            {readOnly
-                              ? ''
-                              : isHuidMandatory(metal)
-                                ? ' · can be added later, needed before finalize'
-                                : ' · optional for silver'}
+                            {readOnly ? '' : ' · optional'}
                           </p>
                           <HuidEntryList
                             values={line.huids}

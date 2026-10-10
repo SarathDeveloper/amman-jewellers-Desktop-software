@@ -1,0 +1,7 @@
+{
+  "identifier": "desktop-remote",
+  "description": "App commands for the window served by the local API sidecar",
+  "windows": ["main", "print-*"],
+  "remote": { "urls": ["http://127.0.0.1:*"] },
+  "permissions": ["desktop-commands"]
+}

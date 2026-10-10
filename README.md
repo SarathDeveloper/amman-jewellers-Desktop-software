@@ -40,7 +40,7 @@ npm install
 npm run dev
 ```
 
-This starts the Vite frontend at `http://localhost:5173` and the Express API at `http://localhost:3000`. Vite proxies `/api` and `/uploads` to the API.
+This starts the Vite frontend at `http://localhost:5173` and the Express API at `http://localhost:3000`. Vite proxies `/api` and `/uploads` to the API. If port 3000 is already in use, set `PORT` to another port (PowerShell: `$env:PORT = "3001"`) before `npm run dev` or `npm run tauri:dev`. Vite follows the same `PORT`.
 
 ## Development (desktop)
 
@@ -55,13 +55,42 @@ This opens a Tauri window on the same Vite + Express process as `npm run dev`. W
 ```bash
 npm run tauri:build      # installer for this OS
 npm run tauri:build:win  # Windows NSIS .exe (Windows, or macOS with cargo-xwin)
-npm run tauri:build:mac  # macOS .dmg
+npm run tauri:build:mac  # Apple Silicon .dmg (must run on a Mac)
 ```
 
 Installers land in `src-tauri/target/release/bundle/` (or `src-tauri/target/<triple>/release/bundle/` for a cross target). Shop data (database, uploads, logs, backups) is stored in the OS user-data folder, not next to the program:
 
 - Windows: `%APPDATA%\JewelTrackerPro\`
 - macOS: `~/Library/Application Support/JewelTrackerPro/`
+
+### macOS (Apple Silicon)
+
+The Mac build runs on the build machine only: run it on a Mac, not on Windows. It targets Apple Silicon (`aarch64-apple-darwin`) and produces a `.dmg`.
+
+Prerequisites on the Mac:
+
+- Xcode command-line tools (`xcode-select --install`)
+- Rust (`cargo` on `PATH`) and Node.js **20+** from [nodejs.org](https://nodejs.org) or `nvm` (a Homebrew Node also works, but the official build is the safe choice)
+- `npm install` once in the repository root
+
+```bash
+npm run tauri:build:mac
+```
+
+The build runs in order: the frontend, the Node sidecar (ad-hoc signed), the packaged-resource copy, a source check, the `aarch64-apple-darwin` bundle, then a packaged check. The packaged check verifies the code signature and boots the sidecar against a temporary data directory, so a signing mistake fails the build instead of the shop Mac.
+
+Copy the result to `release/`:
+
+```bash
+cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/JewelTrackerPro_1.0.0_aarch64.dmg \
+  release/JewelTrackerPro-Setup-1.0.0-mac-arm64.dmg
+```
+
+The app is ad-hoc signed, not notarized with an Apple Developer ID, so the first launch on another Mac is blocked by Gatekeeper. On macOS 15 open **System Settings → Privacy & Security**, click **Open Anyway**, and confirm. On older versions right-click the app and choose **Open**. The alternative for either:
+
+```bash
+xattr -cr /Applications/JewelTrackerPro.app
+```
 
 If the window ever goes blank, what happened is written to `logs/crash.log` in that folder and reported with a `JTP-ERR-…` reference ID the user can quote. The log folder is also shown under **Settings → Data**.
 

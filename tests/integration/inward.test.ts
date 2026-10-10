@@ -193,7 +193,7 @@ describe('inward and metal day close', () => {
     }
   })
 
-  it('saves a draft before HUIDs are known and requires them only for gold at finalize', async () => {
+  it('saves a draft before HUIDs are known and finalizes without them', async () => {
     const supplier = await ipc<{ id: number }>(IPC_CHANNELS.SUPPLIERS_CREATE, {
       name: 'Draft Supplier',
       phone: '',
@@ -233,37 +233,12 @@ describe('inward and metal day close', () => {
     })
     expect(draft.status).toBe('draft')
 
-    const blocked = await invokeIpcForTests(IPC_CHANNELS.INWARDS_FINALIZE, draft.id)
-    expect(blocked.ok).toBe(false)
-    if (!blocked.ok) {
-      expect(blocked.error).toMatch(/Gold stud pending hallmark: Add 2 HUIDs for the new pieces/)
-    }
-
-    const goldHuids = testHuids(2)
-    await ipc(IPC_CHANNELS.INWARDS_UPDATE, {
-      id: draft.id,
-      supplierId: supplier.id,
-      inwardDate: '2026-09-29',
-      items: [
-        {
-          productId: gold.id,
-          metal: 'Gold',
-          category: 'Stud',
-          purity: '22K',
-          qty: 2,
-          netWeight: 2,
-          rate: 100,
-          huids: goldHuids,
-        },
-        { productId: silver.id, metal: 'Silver', category: 'Chain', purity: '925', qty: 3, netWeight: 20, rate: 1 },
-      ],
-    })
     const finalized = await ipc<{ status: string }>(IPC_CHANNELS.INWARDS_FINALIZE, draft.id)
     expect(finalized.status).toBe('final')
 
     const goldAfter = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, gold.id)
     expect(goldAfter.stockQty).toBe(2)
-    expect(goldAfter.huids).toEqual(goldHuids)
+    expect(goldAfter.huids).toEqual([])
     const silverAfter = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, silver.id)
     expect(silverAfter.stockQty).toBe(3)
     expect(silverAfter.huids).toEqual([])

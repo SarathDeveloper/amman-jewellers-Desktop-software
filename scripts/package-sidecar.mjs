@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
@@ -30,13 +30,19 @@ const targets = [
 ]
 
 if (process.platform === 'darwin') {
-  const triple = process.arch === 'arm64' ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin'
+  // Apple Silicon only, and always from the official nodejs.org build. Copying
+  // process.execPath is not portable: a Homebrew Node links against Homebrew
+  // dylibs and would not start on another Mac. The official darwin-arm64 tarball
+  // ships a self-contained `bin/node`, so extract that instead.
+  const archiveRoot = `node-v${nodeVersion}-darwin-arm64`
   targets.push({
-    triple,
-    output: join(binariesDir, `jeweltrackerpro-api-${triple}`),
-    nodeUrl: null,
-    cacheName: null,
-    samePlatform: true,
+    triple: 'aarch64-apple-darwin',
+    output: join(binariesDir, 'jeweltrackerpro-api-aarch64-apple-darwin'),
+    nodeUrl: `https://nodejs.org/dist/v${nodeVersion}/${archiveRoot}.tar.gz`,
+    cacheName: `${archiveRoot}.tar.gz`,
+    tarballMember: join(archiveRoot, 'bin', 'node'),
+    samePlatform: false,
+    darwin: true,
   })
 }
 
@@ -56,6 +62,29 @@ function runNode(args) {
   const result = spawnSync(process.execPath, args, { stdio: 'inherit' })
   if (result.status !== 0) {
     throw new Error(`Command failed: node ${args.join(' ')}`)
+  }
+}
+
+function runChecked(command, args) {
+  const result = spawnSync(command, args, { stdio: 'inherit' })
+  if (result.error) {
+    throw result.error
+  }
+  if (result.status !== 0) {
+    throw new Error(`Command failed: ${command} ${args.join(' ')}`)
+  }
+}
+
+/// Extracts a single member (a path inside the archive) out of a .tar.gz.
+function extractTarMember(archivePath, member, destPath) {
+  const staging = join(cacheDir, `staging-${process.pid}`)
+  rmSync(staging, { recursive: true, force: true })
+  mkdirSync(staging, { recursive: true })
+  try {
+    runChecked('tar', ['-xzf', archivePath, '-C', staging, member])
+    copyFileSync(join(staging, member), destPath)
+  } finally {
+    rmSync(staging, { recursive: true, force: true })
   }
 }
 
@@ -99,11 +128,26 @@ runNode(['--experimental-sea-config', configPath])
 for (const target of targets) {
   if (target.samePlatform) {
     copyFileSync(process.execPath, target.output)
+  } else if (target.tarballMember) {
+    const cached = join(cacheDir, target.cacheName)
+    await download(target.nodeUrl, cached)
+    extractTarMember(cached, target.tarballMember, target.output)
   } else {
     const cached = join(cacheDir, target.cacheName)
     await download(target.nodeUrl, cached)
     copyFileSync(cached, target.output)
   }
+
+  if (target.darwin) {
+    // postject rewrites the Mach-O, which invalidates the existing code
+    // signature. On Apple Silicon an invalid signature is a hard launch failure,
+    // so strip the original (tolerating an already-unsigned binary) and ad-hoc
+    // sign the result afterwards. `-` is the ad-hoc identity: no certificate.
+    spawnSync('codesign', ['--remove-signature', target.output], { stdio: 'ignore' })
+  }
   injectSea(target.output, blobPath)
+  if (target.darwin) {
+    runChecked('codesign', ['--sign', '-', '--force', target.output])
+  }
   console.log(`Packaged sidecar ${target.triple} → ${target.output}`)
 }

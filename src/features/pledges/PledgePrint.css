@@ -1,394 +1,455 @@
 .pledge-print-page {
   min-height: 100vh;
-  background: #fff;
-  padding: 1rem;
+  margin: 0;
+  padding: 8mm;
+  background: #fdfbf7;
 }
 
 .pledge-print-status {
+  max-width: 210mm;
+  margin: 0 auto 4mm;
+  font-family: system-ui, sans-serif;
+  font-size: 0.875rem;
+  color: #5c4b46;
   text-align: center;
-  color: #333;
 }
 
 .pledge-print-error {
-  color: #111;
+  color: #5b1916;
 }
 
-.pledge-print-root {
-  display: flex;
-  justify-content: center;
-}
-
-.pledge-print {
-  position: relative;
-  width: 210mm;
-  min-height: 297mm;
-  padding: 10mm 12mm;
-  background: #fff;
-  color: #111;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 11px;
-  line-height: 1.35;
-  box-sizing: border-box;
-  border: 1px solid #333;
-}
-
-.pledge-print > *:not(.print-watermark) {
-  position: relative;
-  z-index: 1;
-}
-
-.print-watermark {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 120mm;
-  height: 120mm;
-  object-fit: contain;
-  opacity: 0.06;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.pledge-print-top {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 12px;
-  align-items: start;
-  border-bottom: 1.5pt solid #111;
-  padding-bottom: 8px;
-  margin-bottom: 8px;
-}
-
-.pledge-print-proprietor {
-  margin-top: 6px;
-}
-
-.pledge-print-proprietor p,
-.pledge-print-contact p {
-  margin: 0;
-  font-size: 10px;
-  line-height: 1.4;
-}
-
-.pledge-print-proprietor p:first-child {
+.adagu-print-license {
+  margin-top: 1mm;
+  font-size: 7.5pt;
   font-weight: 700;
-  font-size: 11px;
-}
-
-.pledge-print-brand {
-  min-width: 0;
-}
-
-.pledge-print-logo {
-  display: block;
-  width: 42px;
-  height: 42px;
-  object-fit: contain;
-  margin-bottom: 4px;
-}
-
-.pledge-print-brand h1 {
-  margin: 0;
-  font-size: 16px;
-  letter-spacing: 0.02em;
-  color: #111;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.pledge-print-title {
-  margin: 4px 0 0;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: #111;
-  text-transform: uppercase;
-}
-
-.pledge-print-contact {
-  min-width: 0;
-  text-align: right;
-}
-
-.pledge-print-contact-label {
-  font-weight: 700;
-  font-size: 9px !important;
-  letter-spacing: 0.06em;
-  color: #111;
-  margin-bottom: 2px !important;
-}
-
-.pledge-print-address {
-  margin-top: 4px !important;
-  font-size: 9px !important;
+  line-height: 1.25;
   overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
-.pledge-print-promo-top,
-.pledge-print-promo-bottom {
-  margin: 0 0 8px;
-  font-size: 9px;
-  color: #111;
+.adagu-print-proprietor {
+  margin: 0.4mm 0 0;
+  font-size: 7.5pt;
+}
+
+.adagu-print-sub {
+  display: block;
+  margin-top: 0.3mm;
+  font-size: 7pt;
+  font-weight: 400;
+}
+
+.adagu-print-col-sno {
+  width: 10mm;
+}
+
+.adagu-print-col-center,
+.adagu-print-check {
   text-align: center;
 }
 
-.pledge-print-meta {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0;
-  margin-bottom: 10px;
-  border: 1px solid #111;
-  background: #fff;
+.adagu-print-sheet .tax-invoice-table tr.adagu-print-total td {
+  font-weight: 700;
 }
 
-.pledge-print-meta > div {
-  padding: 6px 8px;
+.adagu-print-ack,
+.adagu-print-terms {
+  margin: 1.5mm 0 0;
+  font-size: 8pt;
+}
+
+.adagu-print-terms h2 {
+  margin: 0 0 1mm;
+  font-size: 8.5pt;
+  font-weight: 700;
+}
+
+.adagu-print-terms ol {
+  margin: 0;
+  padding-left: 4.5mm;
+}
+
+.adagu-print-terms li,
+.adagu-print-terms p {
+  margin: 0 0 0.8mm;
+}
+
+.tax-invoice-root.paper-a4 .adagu-print-proprietor {
+  font-size: 8.5pt;
+}
+
+.tax-invoice-root.paper-a4 .adagu-print-sub {
+  font-size: 8pt;
+}
+
+.tax-invoice-root.paper-a4 .adagu-print-ack,
+.tax-invoice-root.paper-a4 .adagu-print-terms,
+.tax-invoice-root.paper-a4 .adagu-print-terms h2 {
+  font-size: 9pt;
+}
+
+/* ------------------------------------------------------------------ *
+ * Adagu receipt: the pawn-ticket layout used by PledgePrint.          *
+ * Monochrome, print units (mm/pt), laser-printer friendly.            *
+ * ------------------------------------------------------------------ */
+
+.adagu-receipt-header {
+  display: grid;
+  grid-template-columns: 26mm minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4mm;
+  margin-bottom: 1mm;
+}
+
+.adagu-receipt-header-logo {
+  align-self: center;
+}
+
+.adagu-receipt-header-logo .tax-invoice-logo {
+  width: 100%;
+  height: 24mm;
+  margin: 0;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.adagu-receipt-header-shop {
   min-width: 0;
 }
 
-.pledge-print-meta > div + div {
-  border-left: 1px solid #111;
+.adagu-receipt-header-shop .tax-invoice-shop {
+  margin: 0;
 }
 
-.pledge-print-meta span {
-  display: block;
-  font-size: 9px;
+.adagu-receipt-header-marks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1mm;
+  text-align: right;
+}
+
+.adagu-receipt-lic-label {
+  font-size: 7pt;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #111;
-}
-
-.pledge-print-meta strong {
-  display: block;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-.pledge-print-section {
-  margin-bottom: 10px;
-}
-
-.pledge-print-section h2,
-.pledge-print-declaration h2 {
-  margin: 0 0 6px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: #111;
-  border-bottom: 1px solid #111;
-  padding-bottom: 3px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: #555;
 }
 
-.pledge-print-borrower {
+.adagu-receipt-lic-no {
+  font-size: 10pt;
+  font-weight: 700;
+}
+
+.adagu-receipt-header-marks .tax-invoice-gstin {
+  white-space: nowrap;
+}
+
+.adagu-receipt-title-band {
+  margin: 2mm 0 0;
+  border-top: 1.5pt solid #111;
+  border-bottom: 1.5pt solid #111;
+  background: #f2f2f2;
+  padding: 1.4mm 0;
+  text-align: center;
+  font-size: 13pt;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.adagu-receipt-info {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 12px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 4mm;
+  margin-top: 2.5mm;
 }
 
-.pledge-print-borrower .full,
-.pledge-print-loan-grid .full {
-  grid-column: 1 / -1;
-}
-
-.pledge-print-borrower span,
-.pledge-print-jewells span,
-.pledge-print-loan-grid span {
-  display: block;
-  font-size: 9px;
+.adagu-receipt-party h2 {
+  margin: 0 0 1mm;
+  font-size: 8pt;
   font-weight: 700;
-  color: #111;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  color: #555;
 }
 
-.pledge-print-borrower strong,
-.pledge-print-loan-grid strong {
-  font-size: 12px;
+.adagu-receipt-party .tax-invoice-customer-name {
+  margin: 0 0 0.6mm;
+  font-weight: 700;
+  font-size: 10.5pt;
+}
+
+.adagu-receipt-party .tax-invoice-customer-address {
+  margin: 0;
+  font-size: 8.5pt;
+}
+
+.adagu-receipt-no-box {
+  align-self: start;
+  border: 1pt solid #111;
+  padding: 2mm 2.5mm;
+}
+
+.adagu-receipt-no-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 3mm;
+  padding: 0.5mm 0;
+  font-size: 9pt;
+}
+
+.adagu-receipt-no-row span {
+  color: #555;
   font-weight: 600;
 }
 
-.pledge-print-jewells p {
-  margin: 0 0 4px;
-}
-
-.pledge-print-valuation,
-.pledge-print-items {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 8px;
-  table-layout: fixed;
-}
-
-.pledge-print-valuation th,
-.pledge-print-valuation td,
-.pledge-print-items th,
-.pledge-print-items td {
-  border: 1px solid #111;
-  padding: 4px 6px;
-  text-align: left;
-  vertical-align: top;
-  background: #fff;
-}
-
-.pledge-print-valuation th,
-.pledge-print-items th {
-  background: #fff;
-  font-size: 10px;
+.adagu-receipt-no-row strong {
+  text-align: right;
   font-weight: 700;
 }
 
-.pledge-print-items .num,
-.pledge-print-valuation td:last-child {
+.adagu-receipt-no-row--lead strong {
+  font-size: 14pt;
+  letter-spacing: 0.02em;
+}
+
+.adagu-receipt-key-figures {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  margin-top: 3mm;
+  border: 1.5pt solid #111;
+}
+
+.adagu-receipt-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5mm;
+  min-width: 0;
+  padding: 2mm 2.5mm;
+  border-left: 0.5pt solid #999;
+}
+
+.adagu-receipt-figure--lead {
+  border-left: none;
+  background: #f2f2f2;
+}
+
+.adagu-receipt-figure-label {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #555;
+}
+
+.adagu-receipt-figure-value {
+  font-size: 12pt;
+  font-weight: 800;
+}
+
+.adagu-receipt-figure-value--lead {
+  font-size: 17pt;
+}
+
+.adagu-receipt-figure-sub {
+  font-size: 7.5pt;
+  color: #444;
+}
+
+.adagu-receipt-table {
+  width: 100%;
+  margin-top: 3mm;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 9pt;
+}
+
+.adagu-receipt-table th,
+.adagu-receipt-table td {
+  border: 0.5pt solid #999;
+  padding: 1.1mm 1mm;
+  vertical-align: top;
+  word-wrap: break-word;
+}
+
+.adagu-receipt-table thead th {
+  background: #f2f2f2;
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1.15;
+}
+
+.adagu-receipt-col-sno {
+  width: 8mm;
+}
+
+.adagu-receipt-col-desc {
+  text-align: left;
+}
+
+.adagu-receipt-col-center {
+  text-align: center;
+}
+
+.adagu-receipt-col-num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.pledge-print-loan-boxes {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.pledge-print-loan-box {
-  border: 1.5pt solid #111;
-  border-radius: 0;
-  padding: 8px 10px;
-  text-align: center;
-  background: #fff;
-}
-
-.pledge-print-loan-box span {
-  display: block;
-  font-size: 9px;
+.adagu-receipt-cell-strong {
   font-weight: 700;
-  letter-spacing: 0.05em;
-  color: #111;
 }
 
-.pledge-print-loan-box strong {
+.adagu-receipt-sub {
   display: block;
-  margin-top: 4px;
-  font-size: 18px;
-  color: #111;
+  margin-top: 0.3mm;
+  font-size: 7pt;
+  font-weight: 400;
+  color: #666;
 }
 
-.pledge-print-loan-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 12px;
-}
-
-.pledge-print-declaration ol {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.pledge-print-declaration li,
-.pledge-print-declaration p {
-  margin-bottom: 4px;
-  font-size: 10px;
-}
-
-.pledge-print-signs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-top: 28px;
-  text-align: center;
-}
-
-.pledge-print-sign-line {
-  height: 36px;
-  border-bottom: 1px solid #111;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.pledge-print-sign-img {
-  max-height: 34px;
-  max-width: 100%;
-  object-fit: contain;
-}
-
-.pledge-print-signs span {
-  display: block;
-  font-size: 9px;
+.adagu-receipt-total td {
+  background: #f2f2f2;
   font-weight: 700;
-  letter-spacing: 0.03em;
-  overflow-wrap: anywhere;
 }
 
-.pledge-print-sign-sub {
-  font-weight: 600 !important;
-  color: #111;
-  margin-top: 2px;
+.adagu-receipt-bottom {
+  display: grid;
+  grid-template-columns: 45mm minmax(0, 1fr);
+  align-items: start;
+  gap: 4mm;
+  margin-top: 3mm;
 }
 
-.pledge-print-bottom {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 16px;
-  padding-top: 8px;
-  border-top: 1px solid #111;
-  font-size: 9px;
-  color: #111;
+.adagu-receipt-bottom:not(:has(.adagu-receipt-photo)) {
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.pledge-print-photos {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.pledge-print-photos figure {
+.adagu-receipt-photo {
   margin: 0;
-  width: 46mm;
-  text-align: center;
 }
 
-.pledge-print-photos img {
-  width: 100%;
+.adagu-receipt-photo figcaption {
+  margin-bottom: 0.8mm;
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #555;
+}
+
+.adagu-receipt-photo img {
+  display: block;
+  width: 45mm;
   height: 34mm;
   object-fit: cover;
-  border: 1px solid #111;
+  border: 0.5pt solid #999;
 }
 
-.pledge-print-photos figcaption {
-  margin-top: 3px;
-  font-size: 9px;
+.adagu-receipt-repay {
+  border: 0.5pt solid #999;
+  padding: 2mm 2.5mm;
+}
+
+.adagu-receipt-repay-title {
+  margin-bottom: 1mm;
+  font-size: 7pt;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: #555;
+}
+
+.adagu-receipt-repay-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 3mm;
+  padding: 0.5mm 0;
+  font-size: 9.5pt;
+}
+
+.adagu-receipt-repay-row--grand {
+  margin-top: 0.8mm;
+  padding-top: 1mm;
+  border-top: 0.75pt solid #111;
+  font-weight: 700;
+}
+
+.adagu-receipt-words {
+  margin-top: 1.2mm;
+  padding-top: 1.2mm;
+  border-top: 0.5pt dashed #999;
+  font-size: 8.5pt;
+}
+
+.adagu-receipt-terms {
+  margin-top: 3mm;
+}
+
+.adagu-receipt-terms h2 {
+  margin: 0 0 1mm;
+  font-size: 8pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #555;
+}
+
+.adagu-receipt-terms ol {
+  margin: 0;
+  padding-left: 5mm;
+  font-size: 8.5pt;
+  color: #333;
+}
+
+.adagu-receipt-terms li {
+  margin: 0 0 0.6mm;
+}
+
+.adagu-receipt-term-note {
+  margin: 1.2mm 0 0;
+  font-size: 8.5pt;
+}
+
+/* Long item lists: keep the whole receipt on one A4 page. */
+.tax-invoice-root--dense .adagu-receipt-title-band {
+  font-size: 12pt;
+}
+
+.tax-invoice-root--dense .adagu-receipt-table {
+  font-size: 7.5pt;
+}
+
+.tax-invoice-root--dense .adagu-receipt-table th,
+.tax-invoice-root--dense .adagu-receipt-table td {
+  padding: 0.5mm 0.6mm;
+}
+
+.tax-invoice-root--dense .adagu-receipt-photo img {
+  height: 28mm;
 }
 
 @media print {
-  @page {
-    size: A4;
-    margin: 8mm;
-  }
-
-  html,
-  body {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
   .pledge-print-page {
-    background: #fff;
-    padding: 0;
+    min-height: auto;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
   }
 
-  .pledge-print {
-    width: auto;
-    min-height: auto;
-    border: none;
-    box-shadow: none;
-    padding: 0;
+  .pledge-print-status {
+    display: none !important;
+  }
+
+  .adagu-receipt-key-figures {
+    border-width: 1.25pt;
+  }
+
+  .adagu-receipt-title-band {
+    border-top-width: 1.25pt;
+    border-bottom-width: 1.25pt;
   }
 }

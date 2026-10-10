@@ -345,6 +345,15 @@ function loadInvoicePaymentState(
   }
 }
 
+/** Fallback mode for a bill payment that arrived without an explicit mode. */
+function invoicePaymentMode(db: Database.Database, invoiceId: number | null): string | null {
+  if (invoiceId === null) return null
+  const row = db.prepare('SELECT payment_mode FROM invoices WHERE id = ?').get(invoiceId) as
+    | { payment_mode: string }
+    | undefined
+  return row?.payment_mode ?? null
+}
+
 export function insertPayment(
   db: Database.Database,
   input: {
@@ -352,6 +361,7 @@ export function insertPayment(
     entryDate: string
     amount: number
     note: string
+    mode: string | null
     invoiceId: number | null
     pledgeId: number | null
   },
@@ -367,14 +377,15 @@ export function insertPayment(
 
   const result = db
     .prepare(
-      `INSERT INTO customer_dues (customer_id, entry_date, kind, amount, note, invoice_id, pledge_id, created_at)
-       VALUES (?, ?, 'payment', ?, ?, ?, ?, datetime('now'))`,
+      `INSERT INTO customer_dues (customer_id, entry_date, kind, amount, note, mode, invoice_id, pledge_id, created_at)
+       VALUES (?, ?, 'payment', ?, ?, ?, ?, ?, datetime('now'))`,
     )
     .run(
       input.customerId,
       input.entryDate,
       input.amount,
       input.note,
+      input.mode,
       input.invoiceId,
       input.pledgeId,
     )
@@ -622,6 +633,7 @@ router.post(
         entryDate: input.entryDate,
         amount: input.amount,
         note,
+        mode: input.mode ?? invoicePaymentMode(db, due.invoiceId),
         invoiceId: due.invoiceId,
         pledgeId: null,
       })
@@ -667,6 +679,7 @@ router.post(
         entryDate,
         amount: remaining,
         note: label,
+        mode: invoicePaymentMode(db, due.invoiceId),
         invoiceId: due.invoiceId,
         pledgeId: null,
       })

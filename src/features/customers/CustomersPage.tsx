@@ -260,7 +260,12 @@ export function CustomersPage() {
                   <tr key={customer.id}>
                     <td>{String((page - 1) * TABLE_PAGE_SIZE + index + 1).padStart(2, '0')}</td>
                     <td>
-                      <button type="button" className="btn ghost" onClick={() => setProfile(customer)}>
+                      <button
+                        type="button"
+                        className="btn ghost customer-name-btn"
+                        title={customer.name}
+                        onClick={() => setProfile(customer)}
+                      >
                         {customer.name}
                       </button>
                     </td>

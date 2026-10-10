@@ -435,7 +435,7 @@ router.post(
           })
           continue
         }
-        const huidError = newPieceHuidError(item.metal, (item.huids ?? []).length, item.qty)
+        const huidError = newPieceHuidError((item.huids ?? []).length, item.qty)
         if (huidError) {
           throw new Error(`${item.productName ?? 'Product line'}: ${huidError}`)
         }

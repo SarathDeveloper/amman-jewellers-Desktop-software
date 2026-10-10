@@ -2,6 +2,10 @@ import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
+/** Same `PORT` as `server/index.ts` (default 3000). Set `PORT=3001` when 3000 is taken. */
+const apiPort = process.env.PORT || '3000'
+const apiTarget = `http://127.0.0.1:${apiPort}`
+
 /**
  * Serves `print.html` for `/print/*` during development.
  *
@@ -54,16 +58,16 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     proxy: {
-      '/api': 'http://127.0.0.1:3000',
-      '/uploads': 'http://127.0.0.1:3000',
+      '/api': apiTarget,
+      '/uploads': apiTarget,
     },
   },
   preview: {
     host: '127.0.0.1',
     port: 4173,
     proxy: {
-      '/api': 'http://127.0.0.1:3000',
-      '/uploads': 'http://127.0.0.1:3000',
+      '/api': apiTarget,
+      '/uploads': apiTarget,
     },
   },
 })

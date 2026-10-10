@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, X } from 'lucide-react'
 import type { BackupStatus } from '@shared/types'
-import { backupAttentionMessage, needsAttention } from '@shared/backupHealth'
+import { BACKUP_STATUS_EVENT, backupAttentionMessage, needsAttention } from '@shared/backupHealth'
 import { useAuth } from '../auth/authContext'
 import { api } from '../../lib/api'
 
@@ -21,19 +21,28 @@ export function BackupHealthBanner() {
   useEffect(() => {
     if (!allowed) return
     let cancelled = false
+    let generation = 0
     const load = async () => {
+      const request = ++generation
       try {
         const next = await api.getBackupStatus()
-        if (!cancelled) setStatus(next)
+        if (!cancelled && request === generation) setStatus(next)
       } catch {
         // A status failure must never take the shell down.
       }
     }
     void load()
     const timer = window.setInterval(() => void load(), REFRESH_MS)
+    const onStatus = (event: Event) => {
+      generation += 1
+      const next = (event as CustomEvent<BackupStatus>).detail
+      if (next) setStatus(next)
+    }
+    window.addEventListener(BACKUP_STATUS_EVENT, onStatus)
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      window.removeEventListener(BACKUP_STATUS_EVENT, onStatus)
     }
   }, [allowed])
 

@@ -23,7 +23,7 @@ export function GsRefundPrint({
     refund.totalPaid > 0 ? Math.round((refund.deduction / refund.totalPaid) * 1000) / 10 : 0
 
   return (
-    <div className={`gs-receipt-root ${paperClassName(paperSize)}`} data-print-root>
+    <div className={`gs-receipt-root ${paperClassName(paperSize)}`} data-print-root data-print-fit="page">
       <article className="gs-receipt">
         <header className="gs-receipt-header">
           <div className="gs-receipt-brand">

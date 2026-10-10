@@ -62,6 +62,7 @@ describe('settings IPC', () => {
     expect(settings.pincode).toBe('636138')
     expect(settings.proprietorLine1).toBe('')
     expect(settings.promoLine).toBe('')
+    expect(settings.pawnbrokerLicenseNo).toBe('')
   })
 
   it('persists proprietor and promo lines', async () => {

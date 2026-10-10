@@ -5,6 +5,9 @@ export type BackupHealthTone = 'ok' | 'warn' | 'stale'
 export const ATTENTION_DAYS = 2
 export const OFFSITE_ATTENTION_DAYS = 2
 
+/** Dispatched by Backup settings whenever a fresh BackupStatus is applied. */
+export const BACKUP_STATUS_EVENT = 'backup-status-changed'
+
 function startOfLocalDay(date: Date): number {
   return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
 }
@@ -46,8 +49,9 @@ export function healthTitle(days: number | null, offsiteCurrent: boolean): strin
 /**
  * True when the backup state needs staff attention and should surface outside
  * the Settings page: no backup for `ATTENTION_DAYS`, no off-machine folder at
- * all, a failed/never-run off-machine copy, or an off-machine copy older than
- * `OFFSITE_ATTENTION_DAYS`.
+ * all, a failed off-machine copy, or an off-machine copy older than
+ * `OFFSITE_ATTENTION_DAYS`. A folder that is set but has not been copied to
+ * yet is not a warning; the next backup or Copy now covers it.
  */
 export function needsAttention(status: BackupStatus, now = new Date()): boolean {
   const days = daysSinceBackup(status.lastBackupAt, now)
@@ -55,8 +59,8 @@ export function needsAttention(status: BackupStatus, now = new Date()): boolean 
   if (!status.offsiteDir.trim()) return true
   if (status.lastOffsiteError) return true
   const offsiteDays = daysSinceBackup(status.lastOffsiteAt, now)
-  if (offsiteDays === null || offsiteDays >= OFFSITE_ATTENTION_DAYS) return true
-  return false
+  if (offsiteDays === null) return false
+  return offsiteDays >= OFFSITE_ATTENTION_DAYS
 }
 
 export function backupAttentionMessage(status: BackupStatus, now = new Date()): string {

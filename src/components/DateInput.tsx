@@ -1,6 +1,18 @@
 import { Calendar } from 'lucide-react'
 import { formatDisplayDate, formatDisplayClock } from '../lib/format'
 
+// macOS WebKit has no `::-webkit-calendar-picker-indicator`, so the invisible
+// overlay only focuses a segment instead of opening a picker. showPicker() is a
+// no-op where it is unsupported and harmless elsewhere.
+function openNativePicker(input: HTMLInputElement): void {
+  if (typeof input.showPicker !== 'function') return
+  try {
+    input.showPicker()
+  } catch {
+    /* blocked without user activation, or the picker is already open */
+  }
+}
+
 export function DateInput({
   value,
   onChange,
@@ -32,6 +44,7 @@ export function DateInput({
         min={min}
         max={max}
         aria-label={ariaLabel}
+        onClick={(event) => openNativePicker(event.currentTarget)}
         onChange={(event) => onChange(event.target.value)}
       />
     </span>
@@ -52,7 +65,7 @@ export function TimeInput({
   ariaLabel?: string
 }) {
   return (
-    <span className={`date-display-input${className ? ` ${className}` : ''}`}>
+    <span className={`date-display-input is-time${className ? ` ${className}` : ''}`}>
       <span className="date-display-input-value">{value ? formatDisplayClock(value) : '—'}</span>
       <input
         type="time"

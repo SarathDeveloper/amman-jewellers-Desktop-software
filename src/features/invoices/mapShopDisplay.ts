@@ -30,6 +30,7 @@ export interface ShopDisplayInfo {
   billTemplate: BillTemplateSettings
   cashVisibility: CashBillVisibility
   taxVisibility: TaxInvoiceVisibility
+  pawnbrokerLicenseNo: string
 }
 
 export const EMPTY_SHOP_DISPLAY: ShopDisplayInfo = {
@@ -50,6 +51,7 @@ export const EMPTY_SHOP_DISPLAY: ShopDisplayInfo = {
   billTemplate: DEFAULT_BILL_TEMPLATE,
   cashVisibility: DEFAULT_CASH_VISIBILITY,
   taxVisibility: DEFAULT_TAX_VISIBILITY,
+  pawnbrokerLicenseNo: '',
 }
 
 export function composeShopAddressLines(settings: ShopSettings): string[] {
@@ -114,5 +116,6 @@ export function shopSettingsToDisplay(settings: ShopSettings | null): ShopDispla
     billTemplate: settings.billTemplate ?? DEFAULT_BILL_TEMPLATE,
     cashVisibility: settings.cashVisibility ?? DEFAULT_CASH_VISIBILITY,
     taxVisibility: settings.taxVisibility ?? DEFAULT_TAX_VISIBILITY,
+    pawnbrokerLicenseNo: settings.pawnbrokerLicenseNo?.trim() ?? '',
   }
 }

@@ -35,14 +35,28 @@ Tauri does not serve the app through its asset protocol. [main.rs](src-tauri/src
 - [src-tauri/src/main.rs](src-tauri/src/main.rs): `windows_browser_args()` leaves the GPU enabled and adds `--disable-gpu --disable-software-rasterizer` only when `JEWELTRACKERPRO_SAFE_GRAPHICS=1`. Never make that the default; it caused the white-screen crash loop (`exit -36861`) on the i3-7100U. Keep `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (set only when unset), the five `JEWELTRACKERPRO_*` sidecar env vars, and `recovery::attach_renderer_guard`.
 - [src-tauri/src/recovery.rs](src-tauri/src/recovery.rs) and [src-tauri/Cargo.toml](src-tauri/Cargo.toml): keep the renderer guard (`MAX_AUTO_RELOADS = 3`, 5-minute decay, 1.5 s reload delay). Keep `webview2-com = "0.39"` and `windows-core = "0.62"`, pinned to wry 0.57; bump them only together with `tauri`.
 
+## macOS (Apple Silicon)
+
+Windows stays the only fully tested path. macOS support is Apple Silicon only and ad-hoc signed (no Apple Developer ID).
+
+- Build only on a Mac, with `npm run tauri:build:mac`. It runs `desktop:prepare:mac` (no `nsis:prepare`), then `verify-sidecar.mjs --mac`, `run-tauri.mjs build --target aarch64-apple-darwin --bundles app,dmg`, then `verify-sidecar.mjs --packaged --mac`.
+- [scripts/package-sidecar.mjs](scripts/package-sidecar.mjs): the darwin target always uses `aarch64-apple-darwin` and downloads the official `node-<version>-darwin-arm64.tar.gz` (never `process.execPath`; a Homebrew Node is not portable). It removes the Mach-O signature before postject and ad-hoc signs (`codesign --sign - --force`) after. Without both steps Apple Silicon kills the sidecar at launch.
+- [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json): the `bundle.macOS` block keeps `signingIdentity: "-"` and `hardenedRuntime: false` (the Node SEA needs JIT; hardened runtime is only needed for notarization).
+- [scripts/verify-sidecar.mjs](scripts/verify-sidecar.mjs): `--mac` mirrors `resolve_sqlite_addon()` at `Contents/Resources/binaries/better-sqlite3-darwin-arm64.node`, checks the sidecar's Mach-O magic and `codesign`, then boots the packaged sidecar against a temp data dir and requires `GET /api/version` 200. Change it together with `main.rs`.
+- Print on macOS: `WebviewWindow::print()` (the `print_webview` command) replaces the iframe print. `PrintPreviewModal` calls `open_print_window` when `desktopAPI.isMac`. Keep `print-*` in both capability `windows` lists if that window label changes.
+- Fonts: keep `Selawik` second in the `:root` stack in [src/index.css](src/index.css). It is the metric-compatible Segoe UI stand-in; Windows still matches Segoe UI first and never loads it.
+
 ## Do / don't
 
 - **Do** build the installer only with `npm run tauri:build:win`, then copy `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/JewelTrackerPro_1.0.0_x64-setup.exe` to `release/JewelTrackerPro-Setup-1.0.0.exe`.
+- **Do** build the Mac installer only with `npm run tauri:build:mac` on a Mac; it must pass the packaged sidecar smoke test.
 - **Don't** reintroduce Electron or its leftovers (`electron`, `electron-builder`, `build/icon.*`).
 - **Don't** add `--disable-gpu` for everyone, weaken `verify-sidecar.mjs`, or bump the pinned WebView2 crates on their own.
+- **Don't** copy `process.execPath` for the darwin sidecar or drop its `codesign` steps; that is the "killed at launch" failure.
 
 ## Before changing any protected file
 
 - `cargo check` in `src-tauri` for any Rust or `Cargo.toml` change.
 - `npm run tauri:build:win`. It must finish with "OK packaged Windows SQLite addon".
+- On a Mac, `npm run tauri:build:mac` must finish with the packaged sidecar smoke test passing.
 - Confirm `src-tauri/resources/dist/print.html` exists and references `/assets/print-*.js`.

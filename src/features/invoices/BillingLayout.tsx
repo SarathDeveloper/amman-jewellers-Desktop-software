@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ChevronDown, Plus, Banknote, FileText, Handshake } from 'lucide-react'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Banknote, FileText, Handshake } from 'lucide-react'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import {
   BILLING_TAB_OPTIONS,
@@ -33,10 +33,7 @@ export function BillingLayout() {
   const listMode = useMemo(() => location.pathname === '/billing', [location.pathname])
   const [preferredType, setPreferredType] = useState<BillingType>(getBillingType)
   const activeType = listMode ? preferredType : (pathType ?? preferredType)
-  const activeTab = BILLING_TAB_OPTIONS.find((tab) => tab.value === activeType) ?? BILLING_TAB_OPTIONS[0]
-  const [menuOpen, setMenuOpen] = useState(false)
   const [pendingLeave, setPendingLeave] = useState<PendingLeave | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
   const dirtyRef = useRef(false)
 
   useEffect(() => {
@@ -55,17 +52,6 @@ export function BillingLayout() {
     return () => window.removeEventListener('billing-editor-dirty', onDirty)
   }, [])
 
-  useEffect(() => {
-    if (!menuOpen) return
-    function onPointerDown(event: PointerEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [menuOpen])
-
   function goHome() {
     navigate('/billing')
   }
@@ -79,8 +65,7 @@ export function BillingLayout() {
 
   function selectTab(type: BillingType) {
     if (listMode) {
-      setBillingType(type)
-      setPreferredType(type)
+      goToTab(type)
       return
     }
     if (type === activeType) return
@@ -161,55 +146,6 @@ export function BillingLayout() {
             )
           })}
         </div>
-        {listMode ? (
-          <div className="billing-chrome-actions" ref={menuRef}>
-            <div className="billing-new-split">
-              <Link
-                to={activeTab.newPath}
-                className="btn billing-new-primary"
-                onClick={() => setBillingType(activeTab.value)}
-              >
-                <Plus size={22} strokeWidth={2.25} aria-hidden />
-                {activeTab.newLabel}
-              </Link>
-              <button
-                type="button"
-                className="btn billing-new-chevron"
-                aria-label="More new bill options"
-                aria-expanded={menuOpen}
-                onClick={() => setMenuOpen((open) => !open)}
-              >
-                <ChevronDown size={20} strokeWidth={2.25} aria-hidden />
-              </button>
-              {menuOpen ? (
-                <div className="billing-new-menu" role="menu">
-                  {BILLING_TAB_OPTIONS.map((tab) => (
-                    <Link
-                      key={tab.value}
-                      to={tab.newPath}
-                      role="menuitem"
-                      className="billing-new-menu-item"
-                      onClick={() => {
-                        setBillingType(tab.value)
-                        setMenuOpen(false)
-                      }}
-                    >
-                      {tab.newLabel}
-                    </Link>
-                  ))}
-                  <Link
-                    to="/billing/old"
-                    role="menuitem"
-                    className="billing-new-menu-item"
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    Record old bill
-                  </Link>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
       </div>
       <Outlet />
       {pendingLeave ? (

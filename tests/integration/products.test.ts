@@ -162,7 +162,7 @@ describe('products IPC', () => {
     expect(afterReduce.huids).not.toContain(afterAdd.huids[0])
     expect(afterReduce.huids).not.toContain(afterAdd.huids[1])
 
-    const missingAdd = await invokeIpcForTests(IPC_CHANNELS.STOCK_ADJUSTMENT_CREATE, {
+    await ipc(IPC_CHANNELS.STOCK_ADJUSTMENT_CREATE, {
       adjustmentDate: '2026-09-28',
       reason: 'Stock addition',
       lines: [
@@ -175,10 +175,12 @@ describe('products IPC', () => {
         },
       ],
     })
-    expect(missingAdd.ok).toBe(false)
-    if (!missingAdd.ok) {
-      expect(missingAdd.error).toMatch(/Add 1 HUID for the new piece/)
-    }
+    const afterUntaggedAdd = await ipc<{ stockQty: number; huids: string[] }>(
+      IPC_CHANNELS.PRODUCTS_GET,
+      created.id,
+    )
+    expect(afterUntaggedAdd.stockQty).toBe(7)
+    expect(afterUntaggedAdd.huids).toHaveLength(6)
   })
 
   it('stores unique per-piece HUIDs and rejects duplicates', async () => {
@@ -199,15 +201,23 @@ describe('products IPC', () => {
     })
     expect(updated.huids).toEqual(['D4E5F6'])
 
-    const tooFew = await invokeIpcForTests(IPC_CHANNELS.PRODUCTS_CREATE, {
+    const partlyTagged = await ipc<{ huids: string[] }>(IPC_CHANNELS.PRODUCTS_CREATE, {
       ...sampleProduct,
-      name: 'Missing huid chain',
+      name: 'Partly tagged chain',
       stockQty: 2,
       huids: ['ZZZZZ1'],
     })
-    expect(tooFew.ok).toBe(false)
-    if (!tooFew.ok) {
-      expect(tooFew.error).toMatch(/Add one HUID for each piece in stock/)
+    expect(partlyTagged.huids).toEqual(['ZZZZZ1'])
+
+    const tooMany = await invokeIpcForTests(IPC_CHANNELS.PRODUCTS_CREATE, {
+      ...sampleProduct,
+      name: 'Over-tagged chain',
+      stockQty: 1,
+      huids: ['ZZZZZ2', 'ZZZZZ3'],
+    })
+    expect(tooMany.ok).toBe(false)
+    if (!tooMany.ok) {
+      expect(tooMany.error).toMatch(/more HUIDs than pieces/)
     }
 
     const duplicate = await invokeIpcForTests(IPC_CHANNELS.PRODUCTS_CREATE, {

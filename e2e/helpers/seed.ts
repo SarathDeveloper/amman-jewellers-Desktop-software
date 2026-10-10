@@ -88,6 +88,36 @@ export async function seedFinalInvoice(page: Page): Promise<number> {
   }, invoiceDate)
 }
 
+/** Create a single-piece product tagged with one known HUID, for scan-to-bill tests. */
+export async function seedTaggedProduct(
+  page: Page,
+  values: { name: string; huid: string },
+): Promise<number> {
+  return page.evaluate(async ({ name, huid }) => {
+    const response = await fetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        category: 'Ring',
+        metal: 'Gold',
+        purity: '22K',
+        grossWeight: 3,
+        netWeight: 2.5,
+        makingCharges: 0,
+        stockQty: 1,
+        imagePath: '',
+        huids: [huid],
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(await response.text())
+    }
+    const product = (await response.json()) as { id: number }
+    return product.id
+  }, values)
+}
+
 export async function seedShopName(page: Page, shopName: string): Promise<void> {
   await page.evaluate(async (name) => {
     async function api<T>(path: string, init?: RequestInit): Promise<T> {

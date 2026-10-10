@@ -5,15 +5,14 @@ import { defaultShopLogoUrl, EMPTY_SHOP_DISPLAY, localImageSrc, type ShopDisplay
 import { paperClassName } from './paperSize'
 import './CashBillPrint.css'
 
-const MIN_BODY_ROWS = 4
+const MIN_BODY_ROWS_A5 = 5
+const MIN_BODY_ROWS_A4 = 6
 
 function formatWeight(value: number): string {
-  if (!value) return ''
   return value.toFixed(3)
 }
 
 function formatAmount(value: number): string {
-  if (!value) return ''
   return value.toFixed(2)
 }
 
@@ -39,7 +38,8 @@ export function CashBillPrint({
   const labels = shopInfo.billTemplate
   const vis = shopInfo.cashVisibility
   const filled = data.lines
-  const emptyCount = paperSize === 'thermal' ? 0 : Math.max(0, MIN_BODY_ROWS - filled.length)
+  const minRows = paperSize === 'a4' ? MIN_BODY_ROWS_A4 : MIN_BODY_ROWS_A5
+  const emptyCount = paperSize === 'thermal' ? 0 : Math.max(0, minRows - filled.length)
   const emptyRows = Array.from({ length: emptyCount }, (_, index) => index)
   const [phone1, phone2] = shopInfo.phones
   const phoneLine = [
@@ -52,8 +52,9 @@ export function CashBillPrint({
 
   return (
     <div
-      className={`cash-bill-root ${paperClassName(paperSize)}${filled.length > 6 ? ' cash-bill-root--dense' : ''}`}
+      className={`cash-bill-root ${paperClassName(paperSize)}${filled.length > 8 ? ' cash-bill-root--dense' : ''}`}
       data-print-root
+      data-print-fit="page"
     >
       <article className="cash-bill">
         <img
@@ -140,72 +141,50 @@ export function CashBillPrint({
 
         <hr className="cash-bill-rule" />
 
-        <div className="cash-bill-table-wrap">
-          <table className="cash-bill-table">
-            <thead>
-              <tr>
-                <th className="cash-bill-col-particulars">{labels.taxColParticulars}</th>
-                <th>{labels.taxColTotWgt}</th>
-                <th>{labels.taxColGrsWgt}</th>
-                <th>{labels.taxColStnWgt}</th>
-                <th>{labels.taxColVamc}</th>
-                <th>{labels.taxColStoneRate}</th>
-                <th>{labels.taxColMetalRate}</th>
-                <th className="cash-bill-col-amount">{labels.taxColAmount}</th>
+        <table className="cash-bill-table">
+          <thead>
+            <tr>
+              <th className="cash-bill-col-particulars">{labels.taxColParticulars}</th>
+              <th>{labels.taxColTotWgt}</th>
+              <th>{labels.taxColGrsWgt}</th>
+              <th>{labels.taxColStnWgt}</th>
+              <th>{labels.taxColVamc}</th>
+              <th>{labels.taxColStoneRate}</th>
+              <th>{labels.taxColMetalRate}</th>
+              <th className="cash-bill-col-amount">{labels.taxColAmount}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filled.map((line) => (
+              <tr key={line.sno}>
+                <td className="cash-bill-col-particulars">{line.particulars}</td>
+                <td className="cash-bill-col-num">{formatWeight(line.totalWeight ?? line.netWeight)}</td>
+                <td className="cash-bill-col-num">{formatWeight(line.grossWeight)}</td>
+                <td className="cash-bill-col-num">{formatWeight(line.stoneWeight ?? 0)}</td>
+                <td className="cash-bill-col-num">{formatAmount(line.vamc)}</td>
+                <td className="cash-bill-col-num">{formatAmount(line.stoneRate)}</td>
+                <td className="cash-bill-col-num">{formatAmount(line.metalRate)}</td>
+                <td className="cash-bill-col-num cash-bill-col-amount">{formatAmount(line.amount)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {filled.map((line) => (
-                <tr key={line.sno}>
-                  <td className="cash-bill-col-particulars">{line.particulars}</td>
-                  <td className="cash-bill-col-num">{formatWeight(line.totalWeight ?? line.netWeight)}</td>
-                  <td className="cash-bill-col-num">{formatWeight(line.grossWeight)}</td>
-                  <td className="cash-bill-col-num">{formatWeight(line.stoneWeight ?? 0)}</td>
-                  <td className="cash-bill-col-num">{formatAmount(line.vamc)}</td>
-                  <td className="cash-bill-col-num">{formatAmount(line.stoneRate)}</td>
-                  <td className="cash-bill-col-num">{formatAmount(line.metalRate)}</td>
-                  <td className="cash-bill-col-num cash-bill-col-amount">{formatAmount(line.amount)}</td>
-                </tr>
-              ))}
-              {emptyRows.map((index) => (
-                <tr key={`empty-${index}`} className="empty">
-                  <td className="cash-bill-col-particulars">&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td className="cash-bill-col-amount">&nbsp;</td>
-                </tr>
-              ))}
-              {data.oldGoldLines.map((line, index) => (
-                <tr key={`old-gold-${index}`}>
-                  <td className="cash-bill-col-particulars">{line.particulars}</td>
-                  <td className="cash-bill-col-num">{formatWeight(line.weight)}</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td className="cash-bill-col-num cash-bill-col-amount">-{formatAmount(line.amount)}</td>
-                </tr>
-              ))}
-              {(data.schemeCreditLines ?? []).map((line, index) => (
-                <tr key={`scheme-credit-${index}`}>
-                  <td className="cash-bill-col-particulars">{line.particulars}</td>
-                  <td className="cash-bill-col-num">{formatWeight(line.weight)}</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td>&nbsp;</td>
-                  <td className="cash-bill-col-num cash-bill-col-amount">-{formatAmount(line.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+            {emptyRows.map((index) => (
+              <tr key={`empty-${index}`} className="empty">
+                <td className="cash-bill-col-particulars">&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td className="cash-bill-col-amount">&nbsp;</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <p className="cash-bill-item-count">
+          {labels.taxItemCountLabel} {data.itemCount}
+        </p>
 
         <div
           className={`cash-bill-footer-grid${vis.showDiscountBreakdown ? '' : ' cash-bill-footer-grid--single'}`}
@@ -239,6 +218,18 @@ export function CashBillPrint({
               <div className="cash-bill-totals-row">
                 <span>{labels.taxLessDiscountLabel}</span>
                 <span>{formatMoney(discountTotal)}</span>
+              </div>
+            ) : null}
+            {data.oldGoldTotal > 0 ? (
+              <div className="cash-bill-totals-row">
+                <span>Old gold</span>
+                <span>-{formatMoney(data.oldGoldTotal)}</span>
+              </div>
+            ) : null}
+            {(data.schemeCreditTotal ?? 0) > 0 ? (
+              <div className="cash-bill-totals-row">
+                <span>Gold savings credit</span>
+                <span>-{formatMoney(data.schemeCreditTotal)}</span>
               </div>
             ) : null}
             <div className="cash-bill-totals-row">

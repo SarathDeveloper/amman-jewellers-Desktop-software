@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Calculator, X } from 'lucide-react'
-import { huidRemovalRange, isHuidMandatory, newPieceHuidError } from '@shared/itemTypes'
+import { huidRemovalRange, newPieceHuidError } from '@shared/itemTypes'
 import { localTodayIso } from '@shared/localDate'
 import type { Product } from '@shared/types'
 import { DateInput } from '../../components/DateInput'
@@ -46,10 +46,9 @@ export function AdjustStockModal({
   const qtyDelta = direction === 'add' ? qty : -qty
   const newStock = currentStock + qtyDelta
   const existingHuids = product.huids ?? []
-  const huidsMandatory = isHuidMandatory(product.metal)
   const removeRange =
     direction === 'reduce'
-      ? huidRemovalRange(product.metal, existingHuids.length, currentStock, qty)
+      ? huidRemovalRange(existingHuids.length, currentStock, qty)
       : { min: 0, max: 0 }
 
   const validationError = useMemo(() => {
@@ -58,7 +57,7 @@ export function AdjustStockModal({
     if (newStock < 0) return `Cannot reduce below 0 pcs (current stock is ${currentStock})`
     if (direction === 'add') {
       const filled = huids.map((value) => value.trim().toUpperCase()).filter(Boolean)
-      const countError = newPieceHuidError(product.metal, filled.length, qty)
+      const countError = newPieceHuidError(filled.length, qty)
       if (countError) return countError
       const duplicate = filled.find((huid, index) => filled.indexOf(huid) !== index)
       if (duplicate) return `HUID ${duplicate} is duplicated`
@@ -81,7 +80,6 @@ export function AdjustStockModal({
     currentStock,
     direction,
     huids,
-    product.metal,
     existingHuids.length,
     removedHuids.length,
     removeRange.min,
@@ -222,9 +220,7 @@ export function AdjustStockModal({
           {direction === 'add' && qty > 0 ? (
             <div>
               <p className="muted">
-                {huidsMandatory
-                  ? 'HUID (Hallmark Unique ID) for each new piece'
-                  : 'HUID (Hallmark Unique ID) for new pieces · optional for silver'}
+                HUID (Hallmark Unique ID) for new pieces · optional
               </p>
               <HuidEntryList values={resizeHuidRows(huids, qty)} onChange={setHuids} />
             </div>

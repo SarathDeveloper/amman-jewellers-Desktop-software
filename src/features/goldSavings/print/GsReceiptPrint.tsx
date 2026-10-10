@@ -35,7 +35,7 @@ export function GsReceiptPrint({
   const totalGold = payments.reduce((sum, row) => sum + row.goldWeight, 0)
 
   return (
-    <div className={`gs-receipt-root ${paperClassName(paperSize)}`} data-print-root>
+    <div className={`gs-receipt-root ${paperClassName(paperSize)}`} data-print-root data-print-fit="page">
       <article className="gs-receipt">
         <header className="gs-receipt-header">
           <div className="gs-receipt-brand">

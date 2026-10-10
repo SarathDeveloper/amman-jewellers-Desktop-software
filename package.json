@@ -20,10 +20,11 @@
     "sidecar:package": "node scripts/build-sidecar.mjs && node scripts/package-sidecar.mjs && node scripts/verify-sidecar.mjs",
     "nsis:prepare": "node scripts/prepare-tauri-nsis.mjs",
     "desktop:prepare": "npm run build && npm run sidecar:package && node scripts/prepare-tauri-resources.mjs && npm run nsis:prepare",
+    "desktop:prepare:mac": "npm run build && npm run sidecar:package && node scripts/prepare-tauri-resources.mjs",
     "tauri:dev": "node scripts/run-tauri.mjs dev",
     "tauri:build": "npm run desktop:prepare && node scripts/run-tauri.mjs build",
     "tauri:build:win": "npm run desktop:prepare && node scripts/run-tauri.mjs build --target x86_64-pc-windows-msvc && node scripts/verify-sidecar.mjs --packaged",
-    "tauri:build:mac": "npm run desktop:prepare && node scripts/run-tauri.mjs build",
+    "tauri:build:mac": "npm run desktop:prepare:mac && node scripts/verify-sidecar.mjs --mac && node scripts/run-tauri.mjs build --target aarch64-apple-darwin --bundles app,dmg && node scripts/verify-sidecar.mjs --packaged --mac",
     "rebuild:native": "npm rebuild better-sqlite3"
   },
   "dependencies": {

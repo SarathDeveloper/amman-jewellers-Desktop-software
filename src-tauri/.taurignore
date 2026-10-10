@@ -1,0 +1,2 @@
+# Dev watcher must not rebuild while Cargo is copying the sidecar.
+binaries/

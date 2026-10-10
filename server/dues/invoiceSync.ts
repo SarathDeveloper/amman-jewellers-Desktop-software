@@ -10,6 +10,7 @@ type FinalInvoiceRow = {
   amount_paid: number
   balance_due: number
   amount_payable: number
+  payment_mode: string
   status: string
   is_estimate: number
 }
@@ -18,7 +19,7 @@ export function syncDueEntryForFinalInvoice(db: Database.Database, invoiceId: nu
   const invoice = db
     .prepare(
       `SELECT id, customer_id, invoice_date, invoice_no, total, amount_paid, balance_due,
-              COALESCE(amount_payable, total) AS amount_payable, status, is_estimate
+              COALESCE(amount_payable, total) AS amount_payable, payment_mode, status, is_estimate
        FROM invoices WHERE id = ?`,
     )
     .get(invoiceId) as FinalInvoiceRow | undefined
@@ -57,14 +58,15 @@ export function syncDueEntryForFinalInvoice(db: Database.Database, invoiceId: nu
 
   if (amountPaid > 0) {
     db.prepare(
-      `INSERT INTO customer_dues (customer_id, entry_date, kind, amount, note, invoice_id, created_at)
-       VALUES (?, ?, 'payment', ?, ?, ?, datetime('now'))`,
+      `INSERT INTO customer_dues (customer_id, entry_date, kind, amount, note, invoice_id, mode, created_at)
+       VALUES (?, ?, 'payment', ?, ?, ?, ?, datetime('now'))`,
     ).run(
       invoice.customer_id,
       invoice.invoice_date,
       amountPaid,
       `Partial payment ${invoice.invoice_no}`,
       invoiceId,
+      invoice.payment_mode,
     )
   }
 }

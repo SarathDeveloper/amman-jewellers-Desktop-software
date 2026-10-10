@@ -35,7 +35,7 @@ export function HuidEntryList({
   labelledBy?: string
 }) {
   function update(index: number, value: string) {
-    const next = value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 6)
+    const next = value.toUpperCase().replace(/[^0-9A-Z]/g, '')
     onChange(values.map((huid, rowIndex) => (rowIndex === index ? next : huid)))
   }
 
@@ -60,7 +60,6 @@ export function HuidEntryList({
             <input
               className={`input${error ? ' is-invalid' : ''}`}
               value={huid}
-              maxLength={6}
               disabled={disabled}
               placeholder="e.g. A1B2C3"
               aria-label={`HUID ${index + 1}`}

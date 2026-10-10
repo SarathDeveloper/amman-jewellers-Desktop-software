@@ -46,10 +46,11 @@ export function AuctionModal({
   const [categories, setCategories] = useState<string[]>([])
   const [itemCategories, setItemCategories] = useState<Record<number, string>>({})
   const [payoff, setPayoff] = useState(summary.remaining)
+  const [formPledgeId, setFormPledgeId] = useState(summary.pledgeId)
 
-  // Reset the form whenever the modal is reused for a different loan, so a buyer
-  // name or category choice from the previous pledge never leaks in.
-  useEffect(() => {
+  // A reused modal must not carry the previous loan's buyer or categories over.
+  if (formPledgeId !== summary.pledgeId) {
+    setFormPledgeId(summary.pledgeId)
     setBuyerName('')
     setBuyerType('outside')
     setItemCategories({})
@@ -58,8 +59,7 @@ export function AuctionModal({
     setNoticeDate(localTodayIso())
     setAuctionDate(localTodayIso())
     setSaleAmount(summary.remaining)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on a different pledge
-  }, [summary.pledgeId])
+  }
 
   useEffect(() => {
     if (mode !== 'auction') return

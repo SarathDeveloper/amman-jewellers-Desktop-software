@@ -171,11 +171,11 @@ Menu: **Inventory > Products**, then the **Add product** button. The form has fo
 
 ### HUID rules (important)
 
-- A HUID is exactly **6 letters or digits** (for example `AB12C3`). The field accepts capital
-  letters and digits only.
-- You must enter **one HUID for each piece in stock**. If stock quantity is `2`, the form asks
-  for two HUIDs. The helper line under the heading shows the progress, for example
-  *"2 of 2 pieces tagged"*.
+- A HUID can be any length, using capital letters and digits only (for example `AB12C3`).
+- Entering HUIDs is **optional**. Add the ones you know now and leave the rest blank; you can
+  also type a piece's HUID later while billing it. The helper line under the heading shows the
+  progress, for example *"2 of 3 pieces tagged"*.
+- You cannot add **more HUIDs than pieces in stock**.
 - HUIDs must be **unique across the whole shop**. If you type one that is already used, the form
   stops you with a message.
 - If stock is `0`, no HUID is needed (*"No HUID needed while stock is 0."*). Add HUIDs when you
@@ -233,9 +233,9 @@ Menu: **Billing**, choose the **Tax Invoice** tab, then **New Tax Invoice**.
    - `2 in stock` - both chain pieces are free,
    - `All 1 on this bill` - you have already put the only piece on the bill,
    - `Out of stock` - the option is greyed out and cannot be picked.
-3. Pick **Rope Chain**. Because the piece is tagged, a **HUID dropdown** appears on the line -
-   select `AB12C3`.
-4. In the same way, search and add **Lakshmi Ring**, and select HUID `RG45T7`.
+3. Pick **Rope Chain**. A **HUID box** appears on the line. Type `AB12C3`, or pick it from the
+   suggestions that list the product's already-tagged HUIDs.
+4. In the same way, search and add **Lakshmi Ring**, and enter HUID `RG45T7`.
 
 You can also click **Add Item** to create a blank line and type an item that is not in the
 catalog (for example a loose stone).
@@ -301,7 +301,8 @@ stamp so it is never mistaken for a final bill.
 Click **Finalize**.
 
 Before it saves, the app checks your work and stops you with a clear message if something is
-missing (a HUID on a tagged line, or a line that asks for more pieces than you have in stock).
+missing (a HUID on a line whose pieces are all tagged, or a line that asks for more pieces than
+you have in stock).
 
 When it succeeds, several things happen at once:
 
@@ -490,12 +491,14 @@ A purchase cannot be cancelled while one of its items is in a batch.
 
 | Message | What it means | What to do |
 | --- | --- | --- |
-| *Pick a HUID for &lt;item&gt;* | A tagged product line has no HUID selected | Choose a HUID in the line's dropdown |
+| *Pick a HUID for &lt;item&gt;* | Every piece of the product is tagged, but the line has no HUID | Type or pick one of the tagged HUIDs on the line |
 | *Insufficient stock for &lt;item&gt; (n available, m on this bill)* | A line asks for more pieces than are in stock | Reduce the quantity, or add stock / inward first |
 | *Insufficient stock* (on save) | Same problem caught by the server | Same fix as above |
-| *HUID must be 6 letters or digits* | The HUID is the wrong length or has symbols | Enter exactly 6 letters/digits |
-| *Add one HUID for each piece in stock* | Stock quantity and HUID count differ | Add or remove HUIDs to match the quantity |
+| *HUID can only be letters and digits* | The HUID has symbols | Use capital letters and digits only |
+| *HUID &lt;code&gt; is not tagged on &lt;item&gt;* | Every piece is tagged, but you typed a different code | Pick one of the tagged HUIDs |
+| *A product cannot have more HUIDs than pieces in stock* | You entered more HUIDs than the quantity | Add pieces, or remove the extra HUIDs |
 | *HUID &lt;code&gt; is already used by &lt;product&gt;* | The HUID is tagged on another product | Use the correct HUID for this piece |
+| *HUID &lt;code&gt; is already used on bill &lt;no&gt;* | The HUID is on another bill that is still active | Use the correct HUID, or cancel the other bill |
 | *Rates last updated ...* banner | Today's rates are missing for the bill date | Update rates on the Gold & Silver Rates page |
 | *Only a draft invoice can be modified* | You tried to edit a finalized bill | Cancel the bill, or create a new one |
 | *Only a finalized bill can be cancelled* | You tried to cancel a draft / estimate | Finalize it first, or just delete the draft |
@@ -534,7 +537,7 @@ A purchase cannot be cancelled while one of its items is in a batch.
 ### Keys to remember
 
 - Set today's rates first, then bill.
-- One HUID per piece, 6 characters, never reused.
+- HUIDs are optional, can be any length, and are never reused on two pieces.
 - A bill number is born at **finalize** - drafts carry a `DRAFT-` placeholder.
 - Stock and HUIDs move only at finalize, and move back if you cancel.
 - Reprints always show the original customer and rates, even after later changes.

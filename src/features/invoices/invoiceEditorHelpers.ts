@@ -16,7 +16,7 @@ import type {
   Product,
 } from '@shared/types'
 import { numericFieldToNumber, type NumericField } from '../../lib/numericField'
-import { variantDisplayName } from '../products/productDisplay'
+import { sellableProducts, variantDisplayName } from '../products/productDisplay'
 
 type EditorLineNumericKey = 'qty' | 'rate' | 'netWeight' | 'metalRate' | 'makingCharges' | 'otherCharges'
 
@@ -427,26 +427,91 @@ export function availableHuidsForLine(
   return (product.huids ?? []).filter((huid) => !used.has(huid) || huid === selected)
 }
 
-/** True when a single-piece product line can pick a HUID because the product has tagged pieces. */
+/** True when a single-piece sale line has a saved product, so a HUID can be recorded for it. */
 export function lineOffersHuid(line: EditorLine, products: Product[]): boolean {
   if (line.lineKind === 'exchange' || isEmptyEditorLine(line)) return false
   if (numericFieldToNumber(line.qty, 1) !== 1) return false
-  const product = productForLine(line, products)
-  if (!product) return false
-  return (product.huids ?? []).length > 0
+  return productForLine(line, products) != null
 }
 
-/** True when the line must pick a HUID: always for tagged gold, and for silver once every piece is tagged. */
+/** True when the line must pick a tagged HUID: every piece in stock is already tagged. */
 export function lineNeedsHuid(line: EditorLine, products: Product[]): boolean {
   if (!lineOffersHuid(line, products)) return false
   const product = productForLine(line, products)
   if (!product) return false
-  return huidRemovalRange(product.metal, (product.huids ?? []).length, product.stockQty, 1).min > 0
+  return huidRemovalRange((product.huids ?? []).length, product.stockQty, 1).min > 0
 }
 
-/** Product lines that must pick a HUID but have none chosen yet. */
-export function linesMissingHuid(lines: EditorLine[], products: Product[]): EditorLine[] {
-  return lines.filter((line) => lineNeedsHuid(line, products) && !line.huid.trim())
+/**
+ * Why the HUID typed on `line` is not acceptable, or null when it is fine.
+ * The owner may type any 6-character HUID that no other product or live piece uses.
+ */
+export function lineHuidError(line: EditorLine, products: Product[], lines: EditorLine[]): string | null {
+  const huid = line.huid.trim().toUpperCase()
+  if (!huid) return null
+  if (!/^[0-9A-Z]+$/.test(huid)) return 'HUID can only be letters and digits'
+  if (huidsUsedByOtherLines(lines, line.key).has(huid)) return `HUID ${huid} is used twice on this bill`
+  if (lineNeedsHuid(line, products) && !availableHuidsForLine(line, products, lines).includes(huid)) {
+    return `HUID ${huid} is not tagged on this product`
+  }
+  return null
+}
+
+/** Product lines whose HUID is invalid, or missing where a tag is required. */
+export function linesWithHuidError(
+  lines: EditorLine[],
+  products: Product[],
+): Array<{ line: EditorLine; error: string }> {
+  const rows: Array<{ line: EditorLine; error: string }> = []
+  for (const line of lines) {
+    const error = lineHuidError(line, products, lines)
+    if (error) {
+      rows.push({ line, error })
+    } else if (lineNeedsHuid(line, products) && !line.huid.trim()) {
+      rows.push({ line, error: 'Select a HUID for this tagged item' })
+    }
+  }
+  return rows
+}
+
+/**
+ * The sellable product that has `huid` tagged, unless another line of this bill
+ * already claims it. Mirrors the exact-match HUID lookup in `BillProductSearch`.
+ */
+export function productForHuid(
+  huid: string,
+  products: Product[],
+  lines: EditorLine[],
+  exceptKey = '',
+): Product | null {
+  const code = huid.trim().toUpperCase()
+  if (code.length === 0) return null
+  if (huidsUsedByOtherLines(lines, exceptKey).has(code)) return null
+  return (
+    sellableProducts(products).find((product) =>
+      (product.huids ?? []).some((tag) => tag.toUpperCase() === code),
+    ) ?? null
+  )
+}
+
+export type HuidCellState = {
+  state: 'empty' | 'product' | 'disabled'
+  /** Why the cell is disabled, shown as a tooltip. */
+  reason?: string
+}
+
+/**
+ * How the HUID cell should render on a row: an enabled scan field on the empty
+ * row, the tagged-HUID picker on a matching product line, and a disabled field
+ * everywhere else.
+ */
+export function huidCellState(line: EditorLine, products: Product[]): HuidCellState {
+  if (isEmptyEditorLine(line)) return { state: 'empty' }
+  if (lineOffersHuid(line, products)) return { state: 'product' }
+  if (!productForLine(line, products)) {
+    return { state: 'disabled', reason: 'HUID needs a catalog item' }
+  }
+  return { state: 'disabled', reason: 'One HUID per line' }
 }
 
 /** Pieces of each product asked for by the bill, counting every line. */

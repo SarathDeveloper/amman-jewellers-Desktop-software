@@ -6,13 +6,13 @@ mod recovery;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::Serialize;
 use tauri::path::BaseDirectory;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_dialog::{DialogExt, FilePath};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
@@ -310,6 +310,9 @@ fn focus_main_window(app: &AppHandle) {
     }
 }
 
+/// Increments for each native print window so a reused label never collides.
+static PRINT_WINDOW_SEQ: AtomicU32 = AtomicU32::new(0);
+
 #[tauri::command]
 fn get_app_version(app: AppHandle) -> String {
     app.package_info().version.to_string()
@@ -364,6 +367,57 @@ fn write_backup_file(path: String, bytes: Vec<u8>) -> Result<DesktopExportResult
     })
 }
 
+/// Opens a `/print/*` route in its own native window so it can be printed
+/// through the webview's own print panel. macOS (WKWebView) does not reliably
+/// honour `iframe.contentWindow.print()`, which the in-app preview relies on.
+#[tauri::command]
+async fn open_print_window(app: AppHandle, path: String) -> Result<(), String> {
+    if !path.starts_with("/print/")
+        || path.contains("..")
+        || path.contains('\n')
+        || path.contains('\r')
+    {
+        return Err("Invalid print path".to_string());
+    }
+
+    let main = app
+        .get_webview_window("main")
+        .ok_or_else(|| "The main window is not available".to_string())?;
+    let origin = main
+        .url()
+        .map_err(|error| error.to_string())?
+        .origin()
+        .ascii_serialization();
+    let url = format!("{origin}{path}");
+    let parsed = url.parse().map_err(|error| format!("{error}"))?;
+
+    // Only one print window at a time; a second Print click replaces it.
+    for (label, window) in app.webview_windows() {
+        if label.starts_with("print-") {
+            let _ = window.close();
+        }
+    }
+
+    let label = format!("print-{}", PRINT_WINDOW_SEQ.fetch_add(1, Ordering::SeqCst) + 1);
+    let script = format!(
+        "window.__JTP_DESKTOP_PRINT__ = true;\n{}",
+        include_str!("desktop_api.js")
+    );
+    WebviewWindowBuilder::new(&app, label, WebviewUrl::External(parsed))
+        .title("Print")
+        .inner_size(1024.0, 800.0)
+        .initialization_script(script)
+        .build()
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+/// Prints a print window through the native webview print panel.
+#[tauri::command]
+fn print_webview(window: WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|error| error.to_string())
+}
+
 fn main() {
     #[cfg(target_os = "windows")]
     {
@@ -391,7 +445,9 @@ fn main() {
             get_app_version,
             choose_backup_path,
             choose_backup_folder,
-            write_backup_file
+            write_backup_file,
+            open_print_window,
+            print_webview
         ])
         .setup(|app| {
             let handle = app.handle().clone();

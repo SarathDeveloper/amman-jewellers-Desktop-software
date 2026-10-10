@@ -3,6 +3,7 @@ import { localTodayIso } from './helpers/dates'
 import { openInventoryTab, sidebarLink } from './helpers/nav'
 import { fillProductDialog, saveProductDialog } from './helpers/productForm'
 import { pickFirstHuid } from './helpers/inventoryBilling'
+import { seedTaggedProduct } from './helpers/seed'
 
 test('billing create, finalize, and stock deduction', async ({ window }) => {
   const today = localTodayIso()
@@ -30,9 +31,8 @@ test('billing create, finalize, and stock deduction', async ({ window }) => {
 
   await sidebarLink(window, 'Billing').click()
   await expect(window.getByRole('tab', { name: /Quotation/ })).toBeVisible()
-  await window.getByRole('tab', { name: /Quotation/ }).click()
   await expect(window.getByRole('button', { name: 'Reprint last' })).toBeVisible()
-  await window.getByRole('link', { name: 'New Quotation' }).click()
+  await window.getByRole('tab', { name: /Quotation/ }).click()
   await expect(window.getByRole('heading', { name: 'New Quotation' })).toBeVisible()
 
   const customerSearch = window.getByPlaceholder('Search customer by name, phone or ID…')
@@ -70,7 +70,6 @@ test('billing add customer from new bill page', async ({ window }) => {
 
   await sidebarLink(window, 'Billing').click()
   await window.getByRole('tab', { name: /Quotation/ }).click()
-  await window.getByRole('link', { name: 'New Quotation' }).click()
 
   await window.getByPlaceholder('Search customer by name, phone or ID…').fill(customerName)
   await window.getByRole('button', { name: 'No customer found — Add new' }).click()
@@ -80,4 +79,25 @@ test('billing add customer from new bill page', async ({ window }) => {
   await window.getByRole('dialog', { name: 'Add customer' }).getByRole('button', { name: 'Save' }).click()
 
   await expect(window.getByText(customerName).first()).toBeVisible()
+})
+
+test('typing a tagged HUID on the empty bill row adds that piece', async ({ window }) => {
+  const stamp = Date.now()
+  const productName = `Scan Item ${stamp}`
+  const huid = `H${String(stamp).slice(-5)}`
+  await seedTaggedProduct(window, { name: productName, huid })
+
+  await sidebarLink(window, 'Billing').click()
+  await window.getByRole('tab', { name: /Quotation/ }).click()
+  await expect(window.getByRole('heading', { name: 'New Quotation' })).toBeVisible()
+
+  const emptyRow = window.locator('.sale-bill-items-table tbody tr').last()
+  await expect(emptyRow.locator('.sale-bill-huid-input')).toBeEnabled()
+  await emptyRow.locator('.sale-bill-huid-input').fill(huid)
+
+  const itemRow = window.locator('.sale-bill-items-table tbody tr').filter({
+    has: window.locator(`.sale-bill-product-name[value*="${productName}"]`),
+  })
+  await expect(itemRow).toBeVisible()
+  await expect(itemRow.locator('.sale-bill-huid-input')).toHaveValue(huid)
 })

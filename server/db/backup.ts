@@ -112,6 +112,7 @@ export function updateBackupSchedule(input: BackupSchedule & { offsiteDir?: stri
     if (prev !== resolved) {
       setShopSetting(db, LAST_OFFSITE_SOURCE_KEY, '')
       setShopSetting(db, LAST_OFFSITE_ERROR_KEY, '')
+      setShopSetting(db, LAST_OFFSITE_AT_KEY, '')
     }
     setShopSetting(db, OFFSITE_DIR_KEY, resolved)
   }

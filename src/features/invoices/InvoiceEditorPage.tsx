@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -81,12 +81,14 @@ import {
   editorLineFromInvoiceItem,
   ensureTrailingEmptyLine,
   forgetHeldBill,
+  huidCellState,
   huidsUsedByOtherLines,
   isEmptyEditorLine,
+  lineHuidError,
   lineNeedsHuid,
-  lineOffersHuid,
-  linesMissingHuid,
+  linesWithHuidError,
   newEditorLine,
+  productForHuid,
   puritiesForMetal,
   qtyByProduct,
   rateForSalePurity,
@@ -157,7 +159,7 @@ export function InvoiceEditorPage() {
   const [tax, setTax] = useState<NumericField>(0)
   const [discount, setDiscount] = useState<NumericField>(0)
   const [autoTax, setAutoTax] = useState(true)
-  const useIgst = false
+  const [useIgst, setUseIgst] = useState(false)
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash')
   const [amountPaid, setAmountPaid] = useState<number | ''>('')
   const [mixedPayments, setMixedPayments] = useState<MixedPaymentPart[]>([])
@@ -182,8 +184,8 @@ export function InvoiceEditorPage() {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [previewInvoiceNo, setPreviewInvoiceNo] = useState('')
-  const [invoiceLoading, setInvoiceLoading] = useState(!isNew)
-  const loadedInvoiceIdRef = useRef<string | null>(null)
+  const [loadedInvoiceId, setLoadedInvoiceId] = useState<string | null>(null)
+  const invoiceLoading = !isNew && Boolean(id) && loadedInvoiceId !== String(id)
 
   const isDetailView = location.pathname.endsWith('/detail')
   const isCancelled = invoice?.status === 'cancelled'
@@ -220,7 +222,7 @@ export function InvoiceEditorPage() {
   )
   const stockUsed = useMemo(() => qtyByProduct(lines), [lines])
   const overStockLines = useMemo(() => stockShortages(lines, products), [lines, products])
-  const staleRates = Boolean(metalRates && metalRates.effectiveDate !== localTodayIso())
+  const staleRates = Boolean(metalRates && metalRates.effectiveDate !== invoiceDate)
   const selectedScheme = useMemo(
     () => schemeAccounts.find((account) => account.accountId === schemeAccountId) ?? null,
     [schemeAccounts, schemeAccountId],
@@ -332,19 +334,12 @@ export function InvoiceEditorPage() {
   }, [])
 
   useEffect(() => {
-    if (isNew || !id) {
-      setInvoiceLoading(false)
-      return
-    }
-    // Deps include customers/products, so only gate when the bill id actually changes.
-    const openingNewBill = loadedInvoiceIdRef.current !== String(id)
-    if (openingNewBill) setInvoiceLoading(true)
+    if (isNew || !id) return
     let active = true
     void (async () => {
       try {
         const data = await api.getInvoice(Number(id))
         if (!active) return
-        loadedInvoiceIdRef.current = String(id)
         setInvoice(data)
         setCustomerId(data.customerId)
         setCustomerName(data.customerName ?? '')
@@ -356,6 +351,7 @@ export function InvoiceEditorPage() {
         setAmountPaid(data.amountPaid)
         setIsEstimate(data.isEstimate)
         setAutoTax(data.billFormat === 'tax_invoice')
+        setUseIgst(data.igst > 0)
         setRoundOff(data.roundOff ?? 0)
         setRoundOffTouched(true)
         if (data.billFormat !== billFormat) {
@@ -425,7 +421,7 @@ export function InvoiceEditorPage() {
           setError(err instanceof Error ? err.message : 'Failed to load invoice')
         }
       } finally {
-        if (active) setInvoiceLoading(false)
+        if (active) setLoadedInvoiceId(String(id))
       }
     })()
     return () => {
@@ -515,11 +511,13 @@ export function InvoiceEditorPage() {
 
   function applyProduct(product: Product, huid?: string) {
     setLines((current) => {
-      const used = huidsUsedByOtherLines(current, '')
-      const requested = (huid ?? '').trim().toUpperCase()
+      const emptyIndex = current.findIndex(isEmptyEditorLine)
+      const targetKey = emptyIndex >= 0 ? current[emptyIndex].key : ''
+      const used = huidsUsedByOtherLines(current, targetKey)
+      const typed = emptyIndex >= 0 ? current[emptyIndex].huid.trim().toUpperCase() : ''
+      const requested = (huid ?? '').trim().toUpperCase() || typed
       const safeHuid = requested && !used.has(requested) ? requested : undefined
       const patch = applyProductToLine(product, 1, metalRates, safeHuid)
-      const emptyIndex = current.findIndex(isEmptyEditorLine)
       const next =
         emptyIndex >= 0
           ? current.map((line, index) => (index === emptyIndex ? { ...line, ...patch } : line))
@@ -685,12 +683,10 @@ export function InvoiceEditorPage() {
       setSavingAction('finalize')
       setSaving(true)
       setError(null)
-      const missing = linesMissingHuid(lines, products)
-      if (missing.length > 0) {
-        const first = missing[0]
-        throw new Error(
-          `Pick a HUID for ${first.description || 'the tagged item'} before finalizing`,
-        )
+      const huidErrors = linesWithHuidError(lines, products)
+      if (huidErrors.length > 0) {
+        const first = huidErrors[0]
+        throw new Error(`${first.error} — ${first.line.description || 'item'}`)
       }
       if (overStockLines.length > 0) {
         throw new Error(stockShortageMessage(overStockLines[0]))
@@ -748,7 +744,8 @@ export function InvoiceEditorPage() {
       setError(null)
       const saved = await ensureInvoiceSavedForBill()
       setInvoice(saved)
-      await downloadPrintPdf(billPrintPath(saved.id, billFormat), `${saved.invoiceNo}.pdf`)
+      const result = await downloadPrintPdf(billPrintPath(saved.id, billFormat), `${saved.invoiceNo}.pdf`)
+      if (!result.canceled) showToast('PDF saved', 'success')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to download PDF')
     } finally {
@@ -931,7 +928,9 @@ export function InvoiceEditorPage() {
         <div className="sale-bill-rate-banner" role="status">
           <TriangleAlert size={16} strokeWidth={1.75} aria-hidden />
           <span>
-            Rates last updated {formatDisplayDate(metalRates.effectiveDate)}. Update today&apos;s rates
+            {invoiceDate === localTodayIso()
+              ? `Rates last updated ${formatDisplayDate(metalRates.effectiveDate)}. Update today's rates`
+              : `Rates shown are from ${formatDisplayDate(metalRates.effectiveDate)}, but this bill is dated ${formatDisplayDate(invoiceDate)}.`}
           </span>
           <Link to="/rates" className="btn ghost">
             Metal Rates
@@ -1042,6 +1041,7 @@ export function InvoiceEditorPage() {
                   <tr>
                     <th className="adagu-col-index">#</th>
                     <th className="adagu-col-particular">{DEFAULT_BILL_TEMPLATE.taxColParticulars}</th>
+                    <th className="adagu-col-huid">HUID</th>
                     <th className="adagu-col-purity">Purity</th>
                     <th className="adagu-col-net-weight">{DEFAULT_BILL_TEMPLATE.taxColTotWgt}</th>
                     <th className="adagu-col-weight">{DEFAULT_BILL_TEMPLATE.taxColGrsWgt}</th>
@@ -1057,9 +1057,10 @@ export function InvoiceEditorPage() {
                   {lines.map((line, index) => {
                     const empty = isEmptyEditorLine(line)
                     const purity = line.purity || inferSalePurity(line.metal)
-                    const offersHuid = lineOffersHuid(line, products)
+                    const huidCell = huidCellState(line, products)
                     const needsHuid = lineNeedsHuid(line, products)
                     const lineHuids = availableHuidsForLine(line, products, lines)
+                    const huidError = lineHuidError(line, products, lines)
                     const shortage = overStockLines.find((row) => row.key === line.key)
                     return (
                       <tr
@@ -1084,26 +1085,10 @@ export function InvoiceEditorPage() {
                                 <div className="sale-bill-product-meta">
                                   <span>{line.category || line.metal || 'Item'}</span>
                                 </div>
-                                {offersHuid ? (
-                                  <label className="sale-bill-huid">
-                                    <Hash size={12} strokeWidth={1.75} aria-hidden />
-                                    <select
-                                      className={`sale-bill-huid-select${line.huid.trim() || !needsHuid ? '' : ' is-missing'}`}
-                                      disabled={!canEdit || busy}
-                                      aria-label="Hallmark Unique ID"
-                                      value={line.huid}
-                                      onChange={(event) =>
-                                        updateLine(line.key, { huid: event.target.value })
-                                      }
-                                    >
-                                      <option value="">{needsHuid ? 'Select HUID…' : 'No HUID'}</option>
-                                      {lineHuids.map((huid) => (
-                                        <option key={huid} value={huid}>
-                                          {huid}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
+                                {huidError ? (
+                                  <span className="sale-bill-line-warning" role="alert">
+                                    {huidError}
+                                  </span>
                                 ) : null}
                                 {shortage ? (
                                   <span className="sale-bill-line-warning" role="alert">
@@ -1112,6 +1097,49 @@ export function InvoiceEditorPage() {
                                 ) : null}
                               </div>
                             </div>
+                        </td>
+                        <td className="adagu-col-huid" data-label="HUID">
+                          {huidCell.state === 'disabled' ? (
+                            <input
+                              type="text"
+                              className="sale-bill-huid-input"
+                              disabled
+                              readOnly
+                              aria-label="Hallmark Unique ID"
+                              title={huidCell.reason}
+                              placeholder="—"
+                              value={line.huid}
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              className={`sale-bill-huid-input${huidError || (huidCell.state === 'product' && needsHuid && !line.huid.trim()) ? ' is-missing' : ''}`}
+                              disabled={!canEdit || busy}
+                              aria-label="Hallmark Unique ID"
+                              list={`huid-options-${line.key}`}
+                              placeholder={
+                                huidCell.state === 'empty'
+                                  ? 'Type HUID'
+                                  : needsHuid
+                                    ? 'Enter HUID'
+                                    : 'HUID (optional)'
+                              }
+                              value={line.huid}
+                              onChange={(event) => {
+                                const value = event.target.value.toUpperCase().replace(/[^0-9A-Z]/g, '')
+                                updateLine(line.key, { huid: value })
+                                if (huidCell.state === 'empty' && value) {
+                                  const match = productForHuid(value, products, lines, line.key)
+                                  if (match) applyProduct(match, value)
+                                }
+                              }}
+                            />
+                          )}
+                          <datalist id={`huid-options-${line.key}`}>
+                            {lineHuids.map((huid) => (
+                              <option key={huid} value={huid} />
+                            ))}
+                          </datalist>
                         </td>
                         <td className="adagu-col-purity" data-label="Purity">
                           <select
@@ -1331,6 +1359,11 @@ export function InvoiceEditorPage() {
             itemCount={saleBreakdown.itemCount}
             totalGrossWeight={saleBreakdown.totalGrossWeight}
             showTax={billFormat === 'tax_invoice'}
+            useIgst={useIgst}
+            onUseIgstChange={(value) => {
+              setUseIgst(value)
+              markDirty()
+            }}
             disabled={!canEdit || busy}
             discount={numericFieldToNumber(discount)}
             onDiscountChange={(value) => {
@@ -1550,9 +1583,13 @@ export function InvoiceEditorPage() {
             void downloadPrintPdf(
               billPrintPath(successInvoice.id, billFormat),
               `${successInvoice.invoiceNo}.pdf`,
-            ).catch((err) => {
-              setError(err instanceof Error ? err.message : 'Failed to download PDF')
-            })
+            )
+              .then((result) => {
+                if (!result.canceled) showToast('PDF saved', 'success')
+              })
+              .catch((err) => {
+                setError(err instanceof Error ? err.message : 'Failed to download PDF')
+              })
           }}
           onView={() => {
             setSuccessInvoice(null)

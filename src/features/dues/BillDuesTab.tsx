@@ -7,6 +7,7 @@ import type {
   DueEntryKind,
   DueEntryUpdateInput,
   DuesLedger,
+  PledgePaymentMode,
 } from '@shared/types'
 import { localTodayIso } from '@shared/localDate'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -31,8 +32,14 @@ import {
   runningBalances,
   totalNetWeight,
 } from './duesHelpers'
+import { PLEDGE_PAYMENT_MODES } from './pledgePaymentModes'
 
 type DueFilter = 'all' | 'overdue' | 'due' | 'paid' | 'month'
+
+/** Bill payments never use the internal pledge modes. */
+const BILL_PAYMENT_MODES = PLEDGE_PAYMENT_MODES.filter(
+  (option) => option.value !== 'transfer' && option.value !== 'auction',
+)
 
 const emptyEntry: DueEntryInput = {
   customerId: 0,
@@ -70,6 +77,7 @@ export function BillDuesTab({
   const [paymentAmount, setPaymentAmount] = useState(0)
   const [paymentDate, setPaymentDate] = useState(localTodayIso())
   const [paymentNote, setPaymentNote] = useState('')
+  const [paymentMode, setPaymentMode] = useState<PledgePaymentMode>('cash')
   const [settling, setSettling] = useState(false)
   const [entryBusy, setEntryBusy] = useState(false)
   const [deleteEntry, setDeleteEntry] = useState<DueEntry | null>(null)
@@ -78,6 +86,7 @@ export function BillDuesTab({
   const [recordAmount, setRecordAmount] = useState(0)
   const [recordDate, setRecordDate] = useState(localTodayIso())
   const [recordNote, setRecordNote] = useState('')
+  const [recordMode, setRecordMode] = useState<PledgePaymentMode>('cash')
 
   const columns = useMemo(() => billColumns(ledger.columns), [ledger.columns])
 
@@ -128,6 +137,7 @@ export function BillDuesTab({
       setRecordCustomerId(first?.customerId ?? list[0]?.id ?? 0)
       setRecordAmount(first?.balance ?? 0)
       setRecordDate(localTodayIso())
+      setRecordMode('cash')
       setRecordNote('')
       setRecordOpen(true)
     } catch (err) {
@@ -149,6 +159,7 @@ export function BillDuesTab({
         amount: recordAmount,
         entryDate: recordDate,
         note: recordNote,
+        mode: recordMode,
       })
       setRecordOpen(false)
       showToast('Payment recorded', 'success')
@@ -235,6 +246,7 @@ export function BillDuesTab({
     setPaymentAmount(remaining)
     setPaymentDate(localTodayIso())
     setPaymentNote('')
+    setPaymentMode('cash')
   }
 
   function refreshDetail(data: DuesLedger, dueEntryId: number, customerId: number) {
@@ -262,10 +274,12 @@ export function BillDuesTab({
         amount: paymentAmount,
         entryDate: paymentDate,
         note: paymentNote,
+        mode: paymentMode,
       })
       const data = await onReload()
       refreshDetail(data, detail.entry.id, detail.column.customerId)
       setPaymentNote('')
+      setPaymentMode('cash')
       showToast('Payment recorded', 'success')
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Failed to record payment')
@@ -541,6 +555,20 @@ export function BillDuesTab({
                     onChange={(event) => setPaymentAmount(Number(event.target.value) || 0)}
                   />
                 </label>
+                <label>
+                  Payment mode
+                  <select
+                    className="select"
+                    value={paymentMode}
+                    onChange={(event) => setPaymentMode(event.target.value as PledgePaymentMode)}
+                  >
+                    {BILL_PAYMENT_MODES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label className="full">
                   Note
                   <input
@@ -615,6 +643,20 @@ export function BillDuesTab({
             <label>
               Date
               <DateInput className="input" value={recordDate} onChange={setRecordDate} />
+            </label>
+            <label>
+              Payment mode
+              <select
+                className="select"
+                value={recordMode}
+                onChange={(event) => setRecordMode(event.target.value as PledgePaymentMode)}
+              >
+                {BILL_PAYMENT_MODES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="full">
               Note

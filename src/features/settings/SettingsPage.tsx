@@ -715,6 +715,15 @@ export function SettingsPage() {
                     <h3 className="settings-subsection-title">Adagu POS Settings</h3>
                     <div className="settings-form-grid">
                       <label className="span-3">
+                        Pawnbroker licence no.
+                        <input
+                          className="input"
+                          maxLength={60}
+                          value={shop.pawnbrokerLicenseNo}
+                          onChange={(e) => patchShop({ pawnbrokerLicenseNo: e.target.value })}
+                        />
+                      </label>
+                      <label className="span-3">
                         Adagu LTV (% of assessed value)
                         <input
                           className="input"
