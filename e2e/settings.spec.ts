@@ -84,15 +84,15 @@ test('invoice settings preview opens from Test Print', async ({ window }) => {
   await window.getByRole('textbox', { name: /Address Line 1/ }).fill('1 Market Street')
   await window.getByRole('textbox', { name: /City/ }).fill('Salem')
 
-  const invoiceTabs = window.locator('.billing-chrome-tabs')
-  await invoiceTabs.getByRole('button', { name: 'Tax Invoice' }).click()
+  const invoiceTabs = window.getByRole('tablist', { name: 'Bill template' })
+  await invoiceTabs.getByRole('tab', { name: 'Tax Invoice' }).click()
   await expect(window.locator('.settings-bill-preview-placeholder')).toContainText('Tax invoice')
 
-  await invoiceTabs.getByRole('button', { name: 'Adagu Bill' }).click()
+  await invoiceTabs.getByRole('tab', { name: 'Adagu Bill' }).click()
   await expect(window.locator('.settings-bill-preview-placeholder')).toContainText('Adagu bill')
   await expect(window.getByText('Adagu POS Settings')).toBeVisible()
 
-  await invoiceTabs.getByRole('button', { name: 'Cash Bill' }).click()
+  await invoiceTabs.getByRole('tab', { name: 'Cash Bill' }).click()
   await expect(window.locator('.settings-bill-preview-placeholder')).toContainText('Cash bill')
 
   await window

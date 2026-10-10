@@ -23,7 +23,7 @@ async function selectScheme(window: Page, name: string) {
 async function closePrintPreview(window: Page, title: string) {
   const dialog = await expectPrintPreviewModal(window, title)
   await expect(dialog.getByRole('button', { name: 'Close' })).toBeVisible()
-  await dialog.getByRole('button', { name: 'Close' }).click({ force: true })
+  await dialog.getByRole('button', { name: 'Close' }).click()
   await expect(dialog).toBeHidden()
 }
 
@@ -109,7 +109,8 @@ test('enroll without terms stays disabled; duplicate Ravi is blocked; new custom
   const accountHeading = window.getByRole('heading', { name: /^GS-/ })
   await expect(receiptDialog.or(accountHeading)).toBeVisible({ timeout: 15_000 })
   if (await receiptDialog.isVisible()) {
-    await receiptDialog.getByRole('button', { name: 'Close' }).click({ force: true })
+    await receiptDialog.getByRole('button', { name: 'Close' }).click()
+    await expect(receiptDialog).toBeHidden()
   }
   await expect(accountHeading).toBeVisible({ timeout: 15_000 })
   await expect(window.getByText(/E2E Gold Customer/).first()).toBeVisible()
