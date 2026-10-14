@@ -8,7 +8,9 @@ const port = isSidecar
   ? Number.parseInt(process.env.PORT ?? '0', 10) || 0
   : Number.parseInt(process.env.PORT ?? '3000', 10)
 
-const host = '127.0.0.1'
+const host = isSidecar
+  ? '127.0.0.1'
+  : (process.env.HOST ?? (process.env.RAILWAY_ENVIRONMENT ? '0.0.0.0' : '127.0.0.1'))
 
 try {
   initDatabase()

@@ -103,6 +103,14 @@ npm start
 
 The Express server serves the built SPA from `dist/` plus the JSON API on `http://localhost:3000`.
 
+## Deploy on Railway
+
+Railway builds with `npm run build` and starts with `npm start` (see `railway.json`). The server listens on `0.0.0.0` when `RAILWAY_ENVIRONMENT` is set, or when `HOST` is set. Requires Node 22 or newer (`engines` in `package.json`).
+
+- Mount a Railway Volume, for example at `/data`, and set `JEWELTRACKERPRO_DATA_DIR=/data`. The SQLite database and uploads live under that directory; without a volume they are wiped on every redeploy.
+- Do not set `NODE_ENV=production` as a build variable. The frontend build uses Vite, which is a devDependency.
+- Commit `package-lock.json`. Railway installs from git, and `npm ci` fails if the lockfile is out of sync with `package.json`.
+
 ## Database
 
 - Web/dev SQLite file: `data/jeweltrackerpro.db` (override with `JEWELTRACKERPRO_DATA_DIR`)
