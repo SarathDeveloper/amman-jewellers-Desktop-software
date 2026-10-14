@@ -195,13 +195,6 @@ export const invoiceItemInputSchema = z
         path: ['productId'],
       })
     }
-    if (kind === 'sale' && data.huid?.trim() && (data.productId == null || data.productId <= 0)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'HUID can only be set on a saved product line',
-        path: ['huid'],
-      })
-    }
     if (kind === 'sale' && (data.wastagePct ?? 0) > 0 && (data.makingCharges ?? 0) > 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

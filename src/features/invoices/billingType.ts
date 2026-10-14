@@ -25,7 +25,7 @@ export const BILLING_TAB_OPTIONS: {
   {
     value: 'tax_invoice',
     label: 'Tax Invoice',
-    subtitle: 'Sale with GST (CGST/SGST/IGST)',
+    subtitle: 'Sale with GST (CGST/SGST)',
     path: '/billing/tax',
     newPath: '/billing/tax/new',
   },

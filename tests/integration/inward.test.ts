@@ -465,4 +465,59 @@ describe('inward and metal day close', () => {
     expect(september?.cgst).toBe(15.75)
     expect(september?.sgst).toBe(15.75)
   })
+
+  it('stock addition adjustment creates a finalized inward and feeds autoPurchaseIn', async () => {
+    const stockDate = '2026-09-28'
+    const product = await ipc<{ id: number }>(
+      IPC_CHANNELS.PRODUCTS_CREATE,
+      withHuids({
+        name: 'Adjust ring',
+        category: 'Ring',
+        metal: 'Gold',
+        purity: '22K',
+        grossWeight: 4,
+        netWeight: 3.8,
+        makingCharges: 0,
+        stockQty: 1,
+        imagePath: '',
+      }),
+    )
+
+    await ipc(IPC_CHANNELS.STOCK_UPSERT, {
+      stockDate,
+      metal: 'Gold',
+      itemName: 'Ring',
+      openingWeight: 10,
+    })
+
+    await ipc(IPC_CHANNELS.STOCK_ADJUSTMENT_CREATE, {
+      adjustmentDate: stockDate,
+      reason: 'Stock addition',
+      lines: [
+        {
+          productId: product.id,
+          metal: 'Gold',
+          category: 'Ring',
+          qtyDelta: 1,
+          weightDelta: 3.8,
+        },
+      ],
+    })
+
+    const inwards = await ipc<Array<{ source: string; status: string; items: Array<{ qty: number }> }>>(
+      IPC_CHANNELS.INWARDS_LIST,
+    )
+    expect(inwards).toHaveLength(1)
+    expect(inwards[0].source).toBe('stock_add')
+    expect(inwards[0].status).toBe('final')
+    expect(inwards[0].items[0]?.qty).toBe(1)
+
+    const rows = await ipc<Array<{ itemName: string; autoPurchaseIn: number; closingWeight: number }>>(
+      IPC_CHANNELS.STOCK_LIST,
+      { stockDate, metal: 'Gold' },
+    )
+    const ring = rows.find((row) => row.itemName === 'Ring')
+    expect(ring?.autoPurchaseIn).toBe(3.8)
+    expect(ring?.closingWeight).toBe(13.8)
+  })
 })

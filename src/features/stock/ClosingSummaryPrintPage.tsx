@@ -88,6 +88,8 @@ export function ClosingSummaryPrintPage() {
         />
         <ClosingMetalBlock
           metal="Silver"
+          className="stock-closing-metal--new-page"
+          breakBeforePage
           date={date}
           rows={silverSheet.rows}
           status={silverSheet.status}

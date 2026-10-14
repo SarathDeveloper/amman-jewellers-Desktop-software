@@ -65,6 +65,9 @@ export function AdaguDuesTab({
   const [reminders, setReminders] = useState<PledgeReminderEntry[]>([])
   const [remindersLoading, setRemindersLoading] = useState(false)
   const remindersLoadedRef = useRef(false)
+  const isFullRedeem = redeemTarget
+    ? Math.round((redeemAmount + redeemDiscount) * 100) >= Math.round(redeemTarget.remaining * 100)
+    : false
 
   async function loadReminders(background = false) {
     try {
@@ -519,12 +522,19 @@ export function AdaguDuesTab({
               <button type="button" className="btn secondary" onClick={() => setRedeemTarget(null)} disabled={busy}>
                 Cancel
               </button>
-              <button type="button" className="btn secondary" disabled={busy} onClick={() => void collectPartial()}>
+              <button
+                type="button"
+                className={isFullRedeem ? 'btn secondary' : 'btn'}
+                disabled={busy}
+                onClick={() => void collectPartial()}
+              >
                 {redeemAction === 'partial' ? 'Recording…' : 'Record collection'}
               </button>
-              <button type="button" className="btn" disabled={busy} onClick={() => void redeemFull()}>
-                {redeemAction === 'full' ? 'Closing…' : 'Full redeem'}
-              </button>
+              {isFullRedeem ? (
+                <button type="button" className="btn" disabled={busy} onClick={() => void redeemFull()}>
+                  {redeemAction === 'full' ? 'Closing…' : 'Full redeem'}
+                </button>
+              ) : null}
             </div>
           }
         >
@@ -595,8 +605,9 @@ export function AdaguDuesTab({
             </label>
           </div>
           <p className="muted">
-            Collect {formatCurrency(redeemAmount)} and write off {formatCurrency(redeemDiscount)} to close. Discount
-            applies to full redeem only.
+            {isFullRedeem
+              ? `Collect ${formatCurrency(redeemAmount)} and write off ${formatCurrency(redeemDiscount)} to close. Discount applies to full redeem only.`
+              : `Collect ${formatCurrency(redeemAmount)}. Discount applies to full redeem only.`}
           </p>
           <button
             type="button"

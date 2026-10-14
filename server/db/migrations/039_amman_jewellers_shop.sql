@@ -5,7 +5,7 @@ INSERT OR IGNORE INTO shop_settings (key, value) VALUES
   ('phone1', '8903457570'),
   ('phone2', '9583512688'),
   ('address_line1', 'No. 4, Kavitha Complex'),
-  ('address_line2', 'Karumandurai, Salem Main Road, Periya Karaiyan Hills, Vadakku Nadu'),
+  ('address_line2', 'Karumandurai, Salem Main Road, Periya Kalvarayan Hills, Vadakku Nadu'),
   ('city', 'Salem'),
   ('state', 'Tamil Nadu'),
   ('pincode', '636138');
@@ -25,7 +25,7 @@ WHERE key = 'phone2' AND trim(value) = '';
 UPDATE shop_settings SET value = 'No. 4, Kavitha Complex'
 WHERE key = 'address_line1' AND trim(value) = '';
 
-UPDATE shop_settings SET value = 'Karumandurai, Salem Main Road, Periya Karaiyan Hills, Vadakku Nadu'
+UPDATE shop_settings SET value = 'Karumandurai, Salem Main Road, Periya Kalvarayan Hills, Vadakku Nadu'
 WHERE key = 'address_line2' AND trim(value) = '';
 
 UPDATE shop_settings SET value = 'Salem'

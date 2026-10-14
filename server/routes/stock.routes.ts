@@ -128,6 +128,21 @@ function getOpeningMovementsOnDate(stockDate: string, metal: string, itemName: s
   return row.total
 }
 
+function getAutoAdjustmentNet(stockDate: string, metal: string, itemName: string): number {
+  const db = getDatabase()
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(weight_delta), 0) AS total
+       FROM stock_movements
+       WHERE movement_date = ?
+         AND movement_type IN ('adjustment', 'damaged', 'lost')
+         AND lower(trim(metal)) = lower(trim(?))
+         AND lower(trim(category)) = lower(trim(?))`,
+    )
+    .get(stockDate, metal, itemName) as { total: number }
+  return row.total
+}
+
 const MAX_CARRY_BACK_DAYS = 366
 
 function getClosingForDate(stockDate: string, metal: string, itemName: string, depth = 0): number {
@@ -136,8 +151,9 @@ function getClosingForDate(stockDate: string, metal: string, itemName: string, d
   const saved = getSavedRow(stockDate, metal, itemName)
   const autoSales = getAutoSales(stockDate, metal, itemName)
   const autoPurchaseIn = getAutoPurchaseIn(stockDate, metal, itemName)
+  const autoAdjustmentNet = getAutoAdjustmentNet(stockDate, metal, itemName)
   const effectiveSales = saved?.sales_override ?? autoSales
-  return opening + openingMovements + autoPurchaseIn - effectiveSales
+  return opening + openingMovements + autoPurchaseIn + autoAdjustmentNet - effectiveSales
 }
 
 function getOpeningForDate(stockDate: string, metal: string, itemName: string, depth = 0): number {
@@ -180,6 +196,7 @@ function buildLiveRow(stockDate: string, metal: string, itemName: string): ItemS
   const openingWeight = getOpeningForDate(stockDate, metal, itemName) + openingMovements
   const autoSales = getAutoSales(stockDate, metal, itemName)
   const autoPurchaseIn = getAutoPurchaseIn(stockDate, metal, itemName)
+  const autoAdjustmentNet = getAutoAdjustmentNet(stockDate, metal, itemName)
   const salesOverride = saved?.sales_override ?? null
   const effectiveSales = salesOverride ?? autoSales
   return {
@@ -192,7 +209,7 @@ function buildLiveRow(stockDate: string, metal: string, itemName: string): ItemS
     overrideReason: saved?.override_reason ?? '',
     overrideReferenceId: saved?.override_reference_id ?? null,
     effectiveSales,
-    closingWeight: openingWeight + autoPurchaseIn - effectiveSales,
+    closingWeight: openingWeight + autoPurchaseIn + autoAdjustmentNet - effectiveSales,
   }
 }
 

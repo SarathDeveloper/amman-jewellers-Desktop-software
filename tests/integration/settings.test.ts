@@ -55,7 +55,7 @@ describe('settings IPC', () => {
     expect(settings.phone2).toBe('9583512688')
     expect(settings.addressLine1).toBe('No. 4, Kavitha Complex')
     expect(settings.addressLine2).toBe(
-      'Karumandurai, Salem Main Road, Periya Karaiyan Hills, Vadakku Nadu',
+      'Karumandurai, Salem Main Road, Periya Kalvarayan Hills, Vadakku Nadu',
     )
     expect(settings.city).toBe('Salem')
     expect(settings.state).toBe('Tamil Nadu')

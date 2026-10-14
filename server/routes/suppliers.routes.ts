@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { supplierInputSchema } from '@shared/schemas'
 import type { Supplier, SupplierInput } from '@shared/types'
 import { getDatabase } from '../db'
-import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
+import { asyncHandler, HttpError, parseBody, parseIdParam } from '../lib/http'
 
 const router = Router()
 
@@ -13,6 +13,7 @@ type SupplierRow = {
   address: string
   notes: string
   gstin: string
+  is_system: number | null
   created_at: string
 }
 
@@ -24,7 +25,22 @@ function mapSupplier(row: SupplierRow): Supplier {
     address: row.address,
     notes: row.notes,
     gstin: row.gstin ?? '',
+    isSystem: Boolean(row.is_system),
     createdAt: row.created_at,
+  }
+}
+
+function getSupplierRow(db: ReturnType<typeof getDatabase>, id: number): SupplierRow {
+  const row = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(id) as SupplierRow | undefined
+  if (!row) {
+    throw new Error('Supplier not found')
+  }
+  return row
+}
+
+function assertNotSystemSupplier(row: SupplierRow, action: string): void {
+  if (row.is_system) {
+    throw new HttpError(400, `Cannot ${action} the system Stock addition supplier`)
   }
 }
 
@@ -50,13 +66,7 @@ router.get(
   '/:id',
   asyncHandler((req, res) => {
     const id = parseIdParam(req.params.id)
-    const row = getDatabase().prepare('SELECT * FROM suppliers WHERE id = ?').get(id) as
-      | SupplierRow
-      | undefined
-    if (!row) {
-      throw new Error('Supplier not found')
-    }
-    res.json(mapSupplier(row))
+    res.json(mapSupplier(getSupplierRow(getDatabase(), id)))
   }),
 )
 
@@ -71,7 +81,7 @@ router.post(
          VALUES (?, ?, ?, ?, ?, datetime('now'))`,
       )
       .run(input.name, input.phone, input.address, input.notes, input.gstin ?? '')
-    const row = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(result.lastInsertRowid) as SupplierRow
+    const row = getSupplierRow(db, Number(result.lastInsertRowid))
     res.status(201).json(mapSupplier(row))
   }),
 )
@@ -82,15 +92,14 @@ router.put(
     const id = parseIdParam(req.params.id)
     const input = parseBody(supplierInputSchema, req.body) as SupplierInput
     const db = getDatabase()
-    const existing = db.prepare('SELECT id FROM suppliers WHERE id = ?').get(id)
-    if (!existing) {
-      throw new Error('Supplier not found')
+    const existing = getSupplierRow(db, id)
+    if (existing.is_system && input.name.trim() !== existing.name) {
+      throw new HttpError(400, 'Cannot rename the system Stock addition supplier')
     }
     db.prepare(
       `UPDATE suppliers SET name = ?, phone = ?, address = ?, notes = ?, gstin = ? WHERE id = ?`,
     ).run(input.name, input.phone, input.address, input.notes, input.gstin ?? '', id)
-    const row = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(id) as SupplierRow
-    res.json(mapSupplier(row))
+    res.json(mapSupplier(getSupplierRow(db, id)))
   }),
 )
 
@@ -99,10 +108,8 @@ router.delete(
   asyncHandler((req, res) => {
     const id = parseIdParam(req.params.id)
     const db = getDatabase()
-    const existing = db.prepare('SELECT id FROM suppliers WHERE id = ?').get(id)
-    if (!existing) {
-      throw new Error('Supplier not found')
-    }
+    const existing = getSupplierRow(db, id)
+    assertNotSystemSupplier(existing, 'delete')
     const inward = db.prepare('SELECT id FROM inwards WHERE supplier_id = ? LIMIT 1').get(id)
     if (inward) {
       throw new Error('Cannot delete supplier with existing inwards')

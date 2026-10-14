@@ -25,7 +25,7 @@ Tauri does not serve the app through its asset protocol. [main.rs](src-tauri/src
 
 ## Protected files and invariants
 
-- [package.json](package.json) scripts: keep `desktop:prepare` and `tauri:build:win` in their current order. `tauri:build:win` must keep `--target x86_64-pc-windows-msvc` and end with `verify-sidecar.mjs --packaged`. Do not skip `nsis:prepare`, which avoids the bundler's NSIS download timeout (tauri-apps/tauri#13147).
+- [package.json](package.json) scripts: keep `desktop:prepare` and `tauri:build:win` in their current order. `tauri:build:win` must keep `--target x86_64-pc-windows-msvc` and end with `verify-sidecar.mjs --packaged`. Do not skip `nsis:prepare`, which avoids the bundler's NSIS download timeout (tauri-apps/tauri#13147). On macOS, [scripts/run-tauri.mjs](scripts/run-tauri.mjs) injects `--runner cargo-xwin` and `--bundles nsis` for that target; do not add those flags to the npm script (Windows hosts must keep using MSVC cargo). One-time Mac setup is `npm run tauri:setup:win-cross`.
 - [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json): `frontendDist: "splash"`, `devUrl: "http://127.0.0.1:5173"`, `externalBin: ["binaries/jeweltrackerpro-api"]`, the four `resources` entries, `webviewInstallMode: downloadBootstrapper`, NSIS `installMode: currentUser`, `csp: null`. `version` stays equal to `package.json`.
 - [scripts/build-sidecar.mjs](scripts/build-sidecar.mjs): esbuild stays `node20`/`cjs`, the `@shared` alias stays, `.node` stays external, and the four `better-sqlite3-<platform>.node` addons are copied into `src-tauri/binaries`.
 - [scripts/package-sidecar.mjs](scripts/package-sidecar.mjs): the SEA sentinel fuse `NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2` and the output name `jeweltrackerpro-api-x86_64-pc-windows-msvc.exe` must match `externalBin`. The postject "signature seems corrupted" warning is expected.
@@ -45,6 +45,7 @@ Windows stays the only fully tested path. macOS support is Apple Silicon only an
 - [scripts/verify-sidecar.mjs](scripts/verify-sidecar.mjs): `--mac` mirrors `resolve_sqlite_addon()` at `Contents/Resources/binaries/better-sqlite3-darwin-arm64.node`, checks the sidecar's Mach-O magic and `codesign`, then boots the packaged sidecar against a temp data dir and requires `GET /api/version` 200. Change it together with `main.rs`.
 - Print on macOS: `WebviewWindow::print()` (the `print_webview` command) replaces the iframe print. `PrintPreviewModal` calls `open_print_window` when `desktopAPI.isMac`. Keep `print-*` in both capability `windows` lists if that window label changes.
 - Fonts: keep `Selawik` second in the `:root` stack in [src/index.css](src/index.css). It is the metric-compatible Segoe UI stand-in; Windows still matches Segoe UI first and never loads it.
+- Cross-compiling the Windows NSIS installer from this Mac: `npm run tauri:setup:win-cross` then `npm run tauri:build:win`. Requires Homebrew `nsis` + `llvm` + `lld`, `rustup target add x86_64-pc-windows-msvc`, and `cargo-xwin`. [scripts/run-tauri.mjs](scripts/run-tauri.mjs) prepends Homebrew `llvm`/`lld` bins and sets `XWIN_CACHE_DIR` to `~/.cache/cargo-xwin`. Do not use GNU `x86_64-pc-windows-gnu`; Tauri only supports MSVC.
 
 ## Do / don't
 

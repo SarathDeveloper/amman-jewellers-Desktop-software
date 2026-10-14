@@ -21,13 +21,12 @@ import { localTodayIso } from '@shared/localDate'
 import type {
   DuesLedger,
   GoldSavingDashboard,
-  Invoice,
   InvoiceListStats,
   ItemStockRow,
   MetalRates,
   StockReconciliationRow,
 } from '@shared/types'
-import { formatCurrency, formatDisplayDate, formatInr, formatPaymentMode, formatWeight } from '../../lib/format'
+import { formatCurrency, formatDisplayDate, formatInr, formatWeight } from '../../lib/format'
 import { api } from '../../lib/api'
 import { useAuth } from '../auth/authContext'
 import { CategoryStockCard } from './CategoryStockCard'
@@ -36,7 +35,6 @@ import {
   applyInvoiceStats,
   buildDashboardAlerts,
   periodGranularity,
-  RECENT_BILLS_LIMIT,
   resolvePeriodRange,
   type DashboardStats,
   type OldGoldTodayStats,
@@ -250,7 +248,6 @@ export function DashboardPage() {
   const displayName = user?.username || 'Shop Owner'
   const avatarLetter = displayName.charAt(0).toUpperCase()
   const [invoiceStats, setInvoiceStats] = useState<InvoiceListStats | null>(null)
-  const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([])
   const [ledger, setLedger] = useState<DuesLedger | undefined>(undefined)
   const [goldStock, setGoldStock] = useState<ItemStockRow[]>([])
   const [silverStock, setSilverStock] = useState<ItemStockRow[]>([])
@@ -280,7 +277,7 @@ export function DashboardPage() {
   }
   const stats: DashboardStats = applyInvoiceStats(
     invoiceStats ?? emptyStats,
-    recentInvoices,
+    [],
     ledger,
     goldStock,
     silverStock,
@@ -300,7 +297,6 @@ export function DashboardPage() {
         }
         const [
           statsPayload,
-          recentPage,
           dues,
           goldRows,
           silverRows,
@@ -310,12 +306,6 @@ export function DashboardPage() {
           oldGoldPayload,
         ] = await Promise.all([
             api.getInvoiceStats({ from: range.from, to: range.to, granularity }).catch(() => emptyStats),
-            api.listInvoices({ page: 1, pageSize: RECENT_BILLS_LIMIT, sort: 'desc' }).catch(() => ({
-              items: [] as Invoice[],
-              total: 0,
-              page: 1,
-              pageSize: RECENT_BILLS_LIMIT,
-            })),
             api.listDues().catch(() => undefined),
             api.listItemStock({ stockDate: today, metal: STOCK_METALS[0] }).catch(() => [] as ItemStockRow[]),
             api.listItemStock({ stockDate: today, metal: STOCK_METALS[1] }).catch(() => [] as ItemStockRow[]),
@@ -326,7 +316,6 @@ export function DashboardPage() {
           ])
         if (active) {
           setInvoiceStats(statsPayload ?? emptyStats)
-          setRecentInvoices(recentPage.items ?? [])
           setLedger(dues)
           setGoldStock(goldRows)
           setSilverStock(silverRows)
@@ -352,7 +341,6 @@ export function DashboardPage() {
     }
   }, [today, refreshKey, range.from, range.to, granularity, can])
 
-  const recentBills = stats.recentBills ?? []
   const sales = stats.salesOverview
   const outstandingHint =
     stats.outstandingCustomerCount > 0
@@ -464,125 +452,28 @@ export function DashboardPage() {
 
           <section className="dashboard-quick-section" aria-label="Quick actions">
             <h2 className="dashboard-quick-title">
-              <Zap size={18} strokeWidth={1.75} aria-hidden />
+              <Zap size={20} strokeWidth={1.75} aria-hidden />
               Quick actions
             </h2>
             <div className="dashboard-quick-actions">
               <Link to="/billing/cash/new" className="btn dashboard-quick-primary">
-                <Plus size={18} strokeWidth={2} aria-hidden />
+                <Plus size={22} strokeWidth={2} aria-hidden />
                 New bill
               </Link>
               <Link to="/customers" className="btn secondary dashboard-quick-btn">
-                <Users size={18} strokeWidth={1.75} aria-hidden />
+                <Users size={22} strokeWidth={1.75} aria-hidden />
                 Customers
               </Link>
               <Link to="/inventory/products" className="btn secondary dashboard-quick-btn">
-                <Package size={18} strokeWidth={1.75} aria-hidden />
+                <Package size={22} strokeWidth={1.75} aria-hidden />
                 Products
               </Link>
               <Link to="/dues" className="btn secondary dashboard-quick-btn">
-                <UserPlus size={18} strokeWidth={1.75} aria-hidden />
+                <UserPlus size={22} strokeWidth={1.75} aria-hidden />
                 Record payment
               </Link>
             </div>
           </section>
-
-          <div className="dashboard-lower-grid">
-            <section>
-              <div className="dashboard-section-head">
-                <h2 className="dashboard-section-title">Recent bills</h2>
-                <Link to="/billing" className="dashboard-panel-link">View all</Link>
-              </div>
-              {recentBills.length === 0 ? (
-                <div className="card padded dashboard-empty-state">No bills yet.</div>
-              ) : (
-                <div className="card table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Bill #</th>
-                        <th>Customer</th>
-                        <th>Date</th>
-                        <th className="num">Amount</th>
-                        <th>Payment</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentBills.map((invoice) => (
-                        <tr key={invoice.id}>
-                          <td>
-                            <Link
-                              to={
-                                invoice.billFormat === 'tax_invoice'
-                                  ? `/billing/tax/${invoice.id}`
-                                  : `/billing/cash/${invoice.id}`
-                              }
-                            >
-                              {invoice.invoiceNo}
-                            </Link>
-                          </td>
-                          <td>{invoice.customerName}</td>
-                          <td>{formatDisplayDate(invoice.invoiceDate)}</td>
-                          <td className="num">{formatCurrency(invoice.total)}</td>
-                          <td>{formatPaymentMode(invoice.paymentMode)}</td>
-                          <td>
-                            {invoice.status === 'draft' ? (
-                              <span className="badge draft">Draft</span>
-                            ) : invoice.balanceDue > 0 ? (
-                              <span className="badge due">Due</span>
-                            ) : (
-                              <span className="badge final">Final</span>
-                            )}
-                            {invoice.isEstimate === true && (
-                              <span className="badge draft"> estimate</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-
-            <section>
-              <div className="dashboard-section-head">
-                <h2 className="dashboard-section-title">Due collections</h2>
-                <Link to="/dues" className="dashboard-panel-link">View all</Link>
-              </div>
-              {stats.dueCollections.length === 0 ? (
-                <div className="card padded dashboard-empty-state">No outstanding balances.</div>
-              ) : (
-                <div className="card table-wrap dashboard-due-table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Customer</th>
-                        <th className="num">Amount</th>
-                        <th className="num">Days</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stats.dueCollections.map((row) => (
-                        <tr key={row.customerId}>
-                          <td>{row.customerName}</td>
-                          <td className="num dashboard-due-amount">₹ {formatInr(row.balance)}</td>
-                          <td className="num dashboard-due-days">{row.daysOverdue}</td>
-                          <td>
-                            <Link to="/dues" className="btn secondary dashboard-due-collect">
-                              Collect
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-          </div>
         </>
       )}
     </div>

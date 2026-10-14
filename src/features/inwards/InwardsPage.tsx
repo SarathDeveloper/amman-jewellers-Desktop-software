@@ -263,7 +263,10 @@ export function InwardsPage() {
                 <tr key={inward.id}>
                   <td>{inward.inwardNo}</td>
                   <td>{formatDisplayDate(inward.inwardDate)}</td>
-                  <td>{inward.supplierName}</td>
+                  <td>
+                    {inward.supplierName}
+                    {inward.source === 'stock_add' ? <span className="badge stock-add">Stock add</span> : null}
+                  </td>
                   <td>
                     <span className={`badge ${inward.status}`}>{inward.status === 'draft' ? 'Draft' : 'Final'}</span>
                   </td>

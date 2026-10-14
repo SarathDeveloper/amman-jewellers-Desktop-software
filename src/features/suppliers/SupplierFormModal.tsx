@@ -64,6 +64,7 @@ export function SupplierFormModal({
 
   return (
     <Modal
+      className="supplier-form-modal"
       title={editing ? 'Edit supplier' : 'Add supplier'}
       onClose={onClose}
       footer={

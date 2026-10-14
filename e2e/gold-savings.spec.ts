@@ -243,6 +243,16 @@ test('staff without gold_savings does not see the sidebar item', async ({ window
   await expect(window.locator('.sidebar-nav').getByRole('link', { name: 'Gold Savings' })).toHaveCount(0)
 })
 
+test('accounts list Print passbook opens the passbook preview', async ({ window }) => {
+  seedGoldSavingsDemo()
+
+  await openGoldSavingsTab(window, 'Accounts')
+  const row = window.getByRole('row').filter({ hasText: 'Ravi Kumar' })
+  await expect(row.getByRole('button', { name: 'Print passbook' })).toBeVisible()
+  await row.getByRole('button', { name: 'Print passbook' }).click()
+  await closePrintPreview(window, 'Scheme passbook')
+})
+
 test('receipt and passbook print routes render without errors', async ({ window }) => {
   seedGoldSavingsDemo()
   await seedShopName(window, 'Gold Savings Print Shop')

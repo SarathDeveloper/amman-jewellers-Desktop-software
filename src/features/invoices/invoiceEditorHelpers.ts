@@ -114,35 +114,63 @@ export function isEmptyEditorLine(line: EditorLine): boolean {
   return !(line.productId ?? 0) && !line.description.trim()
 }
 
+/** True when the row has cashier-entered content and must not be reused as a blank slot. */
+export function isOccupiedEditorLine(line: EditorLine): boolean {
+  if ((line.productId ?? 0) > 0 || line.description.trim() || line.huid.trim()) return true
+  if (numericFieldToNumber(line.netWeight) > 0) return true
+  if ((line.grossWeight ?? 0) > 0 || (line.stoneWeight ?? 0) > 0) return true
+  if (numericFieldToNumber(line.wastagePct) > 0 || numericFieldToNumber(line.makingCharges) > 0) return true
+  return false
+}
+
 export function isActiveEditorLine(line: EditorLine): boolean {
   return (line.productId ?? 0) > 0 || Boolean(line.description.trim())
 }
 
-export function ensureTrailingEmptyLine(lines: EditorLine[]): EditorLine[] {
-  if (lines.some(isEmptyEditorLine)) return lines
-  return [...lines, newEditorLine()]
+export function ensureTrailingEmptyLine(
+  lines: EditorLine[],
+  metalRates: MetalRates | null = null,
+): EditorLine[] {
+  if (lines.some((line) => !isOccupiedEditorLine(line))) return lines
+  return [...lines, newEditorLine(metalRates)]
 }
 
-export function newEditorLine(): EditorLine {
-  return {
-    key: crypto.randomUUID(),
-    productId: 0,
-    qty: 1,
-    rate: '',
-    grossWeight: 0,
-    netWeight: '',
-    stoneWeight: 0,
-    metalRate: '',
-    makingCharges: '',
-    wastagePct: 0,
-    stoneRate: 0,
-    otherCharges: '',
-    vamcMode: 'pct',
-    lineKind: 'sale',
-    description: '',
-    purity: '',
-    huid: '',
+/** Slot for a catalog pick: the unnamed HUID-scan row when `huid` matches, else a true placeholder. */
+export function catalogApplyIndex(lines: EditorLine[], huid?: string): number {
+  const requested = (huid ?? '').trim().toUpperCase()
+  if (requested) {
+    const scanIndex = lines.findIndex(
+      (line) => isEmptyEditorLine(line) && line.huid.trim().toUpperCase() === requested,
+    )
+    if (scanIndex >= 0) return scanIndex
   }
+  return lines.findIndex((line) => !isOccupiedEditorLine(line))
+}
+
+export function newEditorLine(metalRates: MetalRates | null = null): EditorLine {
+  return applyCurrentMetalRate(
+    {
+      key: crypto.randomUUID(),
+      productId: 0,
+      qty: 1,
+      rate: '',
+      grossWeight: 0,
+      netWeight: '',
+      stoneWeight: 0,
+      metalRate: '',
+      makingCharges: '',
+      wastagePct: 0,
+      stoneRate: 0,
+      otherCharges: '',
+      vamcMode: 'pct',
+      lineKind: 'sale',
+      description: '',
+      purity: '22K',
+      huid: '',
+      metalRateAuto: true,
+    },
+    metalRates,
+  )
 }
 
 export function newExchangeLine(metalRates: MetalRates | null): EditorLine {
@@ -197,7 +225,7 @@ export function editorLineFromInvoiceItem(item: InvoiceItem, product?: Product |
 }
 
 export function applyCurrentMetalRate(line: EditorLine, metalRates: MetalRates | null): EditorLine {
-  if (!line.metalRateAuto || isEmptyEditorLine(line) || line.lineKind === 'exchange') return line
+  if (!line.metalRateAuto || line.lineKind === 'exchange') return line
   const purity = line.purity || inferSalePurity(line.metal)
   const nextRate = rateForSalePurity(purity, metalRates, line.metal)
   if (!nextRate) return line
@@ -393,7 +421,7 @@ export function toInvoiceItems(lines: EditorLine[]): InvoiceItemInput[] {
         metal: line.metal,
         category: line.category,
         purity: line.purity,
-        huid: (line.productId ?? 0) > 0 && line.huid.trim() ? line.huid.trim().toUpperCase() : undefined,
+        huid: line.huid.trim() ? line.huid.trim().toUpperCase() : undefined,
       }
     })
 }
@@ -495,23 +523,26 @@ export function productForHuid(
 }
 
 export type HuidCellState = {
-  state: 'empty' | 'product' | 'disabled'
+  state: 'empty' | 'product' | 'manual' | 'disabled'
   /** Why the cell is disabled, shown as a tooltip. */
   reason?: string
 }
 
 /**
- * How the HUID cell should render on a row: an enabled scan field on the empty
- * row, the tagged-HUID picker on a matching product line, and a disabled field
- * everywhere else.
+ * How the HUID cell should render on a row: scan on the blank row, picker on a
+ * catalog line, free entry on manual lines, and disabled only when qty ≠ 1.
  */
 export function huidCellState(line: EditorLine, products: Product[]): HuidCellState {
-  if (isEmptyEditorLine(line)) return { state: 'empty' }
-  if (lineOffersHuid(line, products)) return { state: 'product' }
-  if (!productForLine(line, products)) {
-    return { state: 'disabled', reason: 'HUID needs a catalog item' }
+  if (line.lineKind === 'exchange') {
+    return { state: 'disabled', reason: 'Not used on exchange lines' }
   }
-  return { state: 'disabled', reason: 'One HUID per line' }
+  if (isEmptyEditorLine(line)) return { state: 'empty' }
+  if (numericFieldToNumber(line.qty, 1) !== 1) {
+    return { state: 'disabled', reason: 'One HUID per line' }
+  }
+  if (lineOffersHuid(line, products)) return { state: 'product' }
+  if (isActiveEditorLine(line)) return { state: 'manual' }
+  return { state: 'disabled', reason: 'Enter item details first' }
 }
 
 /** Pieces of each product asked for by the bill, counting every line. */

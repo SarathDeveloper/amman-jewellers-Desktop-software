@@ -412,6 +412,13 @@ export function PledgeEditorPage() {
     return { monthlyInterest, totalPayable };
   }, [loanAmount, interestPct, pledgeDate]);
 
+  const redeemPayoff = payoff?.payoff ?? duePreview.remaining;
+  const isFullRedeem =
+    Math.round(
+      (numericFieldToNumber(amountCollected) + numericFieldToNumber(redeemDiscount)) *
+        100,
+    ) >= Math.round(redeemPayoff * 100);
+
   function applyCustomerBorrower(customer: Customer) {
     setCustomerId(customer.id);
     setCustomerName(customer.name ?? "");
@@ -1318,7 +1325,7 @@ export function PledgeEditorPage() {
                           <button
                             type="button"
                             className="adagu-action-btn-red"
-                            disabled={!canEdit || busy || jewelleryItems.length <= 1}
+                            disabled={!canEdit || busy}
                             onClick={() => removeItem(item.key)}
                           >
                             <Trash2 size={14} />
@@ -1616,20 +1623,22 @@ export function PledgeEditorPage() {
               </button>
               <button
                 type="button"
-                className="btn secondary"
+                className={isFullRedeem ? "btn secondary" : "btn"}
                 disabled={busy}
                 onClick={() => void collectPartial()}
               >
                 Record collection
               </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() => void redeemFull()}
-              >
-                Full redeem
-              </button>
+              {isFullRedeem ? (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy}
+                  onClick={() => void redeemFull()}
+                >
+                  Full redeem
+                </button>
+              ) : null}
             </div>
           }
         >
@@ -1719,9 +1728,9 @@ export function PledgeEditorPage() {
             </label>
           </div>
           <p className="muted">
-            Collect {formatCurrency(numericFieldToNumber(amountCollected))} and write
-            off {formatCurrency(numericFieldToNumber(redeemDiscount))} to close.
-            Discount applies to full redeem only.
+            {isFullRedeem
+              ? `Collect ${formatCurrency(numericFieldToNumber(amountCollected))} and write off ${formatCurrency(numericFieldToNumber(redeemDiscount))} to close. Discount applies to full redeem only.`
+              : `Collect ${formatCurrency(numericFieldToNumber(amountCollected))}. Discount applies to full redeem only.`}
           </p>
           <button
             type="button"

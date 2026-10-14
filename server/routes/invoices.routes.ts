@@ -743,37 +743,58 @@ function assertLineHuids(
     if (line.lineKind === 'exchange') continue
     const huid = (line.input.huid ?? '').trim().toUpperCase()
     if (!huid) continue
-    if (line.productId == null) {
-      throw new Error('HUID can only be set on a saved product line')
-    }
     if (seen.has(huid)) {
       throw new Error(`HUID ${huid} is used twice on this bill`)
     }
     seen.add(huid)
-    const tagged = db
-      .prepare('SELECT 1 FROM product_huids WHERE product_id = ? AND huid = ?')
-      .get(line.productId, huid)
-    if (tagged) continue
-    const otherProduct = db
-      .prepare(
-        `SELECT p.name AS name
-         FROM product_huids ph
-         JOIN products p ON p.id = ph.product_id
-         WHERE ph.huid = ? AND ph.product_id != ?`,
-      )
-      .get(huid, line.productId) as { name: string } | undefined
-    if (otherProduct) {
-      throw new Error(`HUID ${huid} is already tagged on ${otherProduct.name}`)
+    if (line.productId == null) {
+      const taggedElsewhere = db
+        .prepare(
+          `SELECT p.name AS name
+           FROM product_huids ph
+           JOIN products p ON p.id = ph.product_id
+           WHERE ph.huid = ?`,
+        )
+        .get(huid) as { name: string } | undefined
+      if (taggedElsewhere) {
+        throw new Error(`HUID ${huid} is already tagged on ${taggedElsewhere.name}`)
+      }
+    } else {
+      const tagged = db
+        .prepare('SELECT 1 FROM product_huids WHERE product_id = ? AND huid = ?')
+        .get(line.productId, huid)
+      if (!tagged) {
+        const otherProduct = db
+          .prepare(
+            `SELECT p.name AS name
+             FROM product_huids ph
+             JOIN products p ON p.id = ph.product_id
+             WHERE ph.huid = ? AND ph.product_id != ?`,
+          )
+          .get(huid, line.productId) as { name: string } | undefined
+        if (otherProduct) {
+          throw new Error(`HUID ${huid} is already tagged on ${otherProduct.name}`)
+        }
+      }
     }
+    // Final bills always reserve a HUID. Parallel sale drafts may share one catalog
+    // product's tag until one finalizes; estimates and cross-product typed HUIDs do not.
     const otherBill = db
       .prepare(
         `SELECT i.invoice_no AS invoice_no
          FROM invoice_items ii
          JOIN invoices i ON i.id = ii.invoice_id
          WHERE ii.huid = ? AND ii.line_kind != 'exchange'
-           AND i.status != 'cancelled' AND i.id != ?`,
+           AND i.status != 'cancelled' AND i.id != ?
+           AND (
+             i.status = 'final'
+             OR (
+               i.status = 'draft' AND i.is_estimate = 0
+               AND (ii.product_id IS NULL OR ii.product_id != ?)
+             )
+           )`,
       )
-      .get(huid, invoiceId ?? -1) as { invoice_no: string } | undefined
+      .get(huid, invoiceId ?? -1, line.productId ?? -1) as { invoice_no: string } | undefined
     if (otherBill) {
       throw new Error(`HUID ${huid} is already used on bill ${otherBill.invoice_no}`)
     }

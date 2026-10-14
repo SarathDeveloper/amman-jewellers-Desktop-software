@@ -69,6 +69,8 @@ export function getMigrations(): { version: number; sql: string; disableForeignK
     { version: 59, sql: loadMigrationSql('059_old_gold_buy_rates_touch.sql') },
     { version: 60, sql: loadMigrationSql('060_old_gold_batches.sql') },
     { version: 61, sql: loadMigrationSql('061_due_payment_mode.sql') },
+    { version: 62, sql: loadMigrationSql('062_stock_add_inward.sql') },
+    { version: 63, sql: loadMigrationSql('063_shop_address_line_break.sql') },
   ]
 }
 

@@ -118,6 +118,62 @@ export async function seedTaggedProduct(
   }, values)
 }
 
+export async function seedActiveAdaguLoan(
+  page: Page,
+  values: { name: string; phone: string; amount: number },
+): Promise<{ id: number; receiptNo: string }> {
+  const pledgeDate = localTodayIso()
+  return page.evaluate(
+    async ({ name, phone, amount, pledgeDate }) => {
+      async function api<T>(path: string, init?: RequestInit): Promise<T> {
+        const response = await fetch(path, {
+          ...init,
+          headers: { 'Content-Type': 'application/json', ...init?.headers },
+        })
+        if (!response.ok) {
+          throw new Error(await response.text())
+        }
+        if (response.status === 204) return undefined as T
+        return (await response.json()) as T
+      }
+
+      const customer = await api<{ id: number }>('/api/customers', {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          phone,
+          address: 'Salem',
+          notes: '',
+          aadhaar: '234567890123',
+        }),
+      })
+      const created = await api<{ id: number; receiptNo: string }>('/api/pledges', {
+        method: 'POST',
+        body: JSON.stringify({
+          customerId: customer.id,
+          pledgeDate,
+          assessedValue: amount * 2,
+          loanAmount: amount,
+          interestPct: 2,
+          items: [
+            {
+              description: 'Gold chain',
+              metal: 'Gold',
+              purity: '22K',
+              grossWeight: 12,
+              netWeight: 12,
+              pieces: 1,
+            },
+          ],
+        }),
+      })
+      await api(`/api/pledges/${created.id}/sanction`, { method: 'POST', body: JSON.stringify({}) })
+      return created
+    },
+    { ...values, pledgeDate },
+  )
+}
+
 export async function seedShopName(page: Page, shopName: string): Promise<void> {
   await page.evaluate(async (name) => {
     async function api<T>(path: string, init?: RequestInit): Promise<T> {

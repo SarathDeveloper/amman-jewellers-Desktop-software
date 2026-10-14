@@ -112,7 +112,7 @@ test.describe('Manual QA: New bill generation', () => {
 
     await expect(window.getByPlaceholder('Search customer by name, phone or ID…')).toHaveValue('')
     await expect(window.getByText('Reset Test')).toHaveCount(0)
-    await expect(window.locator('.sale-bill-items-table tbody tr')).toHaveCount(1)
+    await expect(window.locator('.sale-bill-items-table tbody tr')).toHaveCount(0)
     await expect(window.locator('.sale-bill-product-name').first()).toHaveValue('')
   })
 })

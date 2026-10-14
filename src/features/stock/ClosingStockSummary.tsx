@@ -23,9 +23,20 @@ type ClosingMetalBlockProps = {
   rows: ItemStockRow[]
   status: MetalDayClosingStatus
   mode: ClosingSummaryMode
+  className?: string
+  /** Start this metal on a new printed/PDF page. */
+  breakBeforePage?: boolean
 }
 
-export function ClosingMetalBlock({ metal, date, rows, status, mode }: ClosingMetalBlockProps) {
+export function ClosingMetalBlock({
+  metal,
+  date,
+  rows,
+  status,
+  mode,
+  className,
+  breakBeforePage,
+}: ClosingMetalBlockProps) {
   const displayed = filterClosingRows(rows, mode)
   const full = sumMetalStock(rows)
   const subtotal = sumMetalStock(displayed)
@@ -34,7 +45,10 @@ export function ClosingMetalBlock({ metal, date, rows, status, mode }: ClosingMe
   const categoryLabel = categoryCount === 1 ? 'category' : 'categories'
 
   return (
-    <section className="stock-closing-metal">
+    <section
+      className={`stock-closing-metal${className ? ` ${className}` : ''}`}
+      data-print-break-before={breakBeforePage ? 'page' : undefined}
+    >
       <div className="stock-closing-metal-head">
         <h2>{metal}</h2>
         <span className={`badge ${status === 'closed' ? 'final' : 'draft'}`}>

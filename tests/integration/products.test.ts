@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { invokeIpcForTests, testHuids, withHuids } from './helpers/testEnv'
+import { getTestAgent, invokeIpcForTests, testHuids, withHuids } from './helpers/testEnv'
 import { IPC_CHANNELS, ipc, useIntegrationEnv } from './helpers/testEnv'
 
 const sampleProduct = withHuids({
@@ -121,26 +121,69 @@ describe('products IPC', () => {
     const created = await ipc<{ id: number; stockQty: number }>(IPC_CHANNELS.PRODUCTS_CREATE, sampleProduct)
     expect(created.stockQty).toBe(5)
 
-    const added = await ipc<{ lines: Array<{ qtyDelta: number }> }>(IPC_CHANNELS.STOCK_ADJUSTMENT_CREATE, {
-      adjustmentDate: '2026-09-28',
-      reason: 'Stock addition',
-      note: 'Count correction',
-      lines: [
-        {
-          productId: created.id,
-          metal: 'Gold',
-          category: 'Chain',
-          qtyDelta: 3,
-          weightDelta: 28.5,
-          huids: testHuids(3),
-        },
-      ],
-    })
+    const added = await ipc<{ lines: Array<{ qtyDelta: number }>; inwardId: number | null }>(
+      IPC_CHANNELS.STOCK_ADJUSTMENT_CREATE,
+      {
+        adjustmentDate: '2026-09-28',
+        reason: 'Stock addition',
+        note: 'Count correction',
+        lines: [
+          {
+            productId: created.id,
+            metal: 'Gold',
+            category: 'Chain',
+            qtyDelta: 3,
+            weightDelta: 28.5,
+            huids: testHuids(3),
+          },
+        ],
+      },
+    )
     expect(added.lines[0].qtyDelta).toBe(3)
+    expect(added.inwardId).toBeGreaterThan(0)
 
     const afterAdd = await ipc<{ stockQty: number; huids: string[] }>(IPC_CHANNELS.PRODUCTS_GET, created.id)
     expect(afterAdd.stockQty).toBe(8)
     expect(afterAdd.huids).toHaveLength(8)
+
+    const inwardsAfterAdd = await ipc<
+      Array<{
+        id: number
+        source: string
+        status: string
+        supplierName: string
+        items: Array<{ productId: number | null; qty: number; netWeight: number }>
+      }>
+    >(IPC_CHANNELS.INWARDS_LIST)
+    expect(inwardsAfterAdd).toHaveLength(1)
+    expect(inwardsAfterAdd[0].id).toBe(added.inwardId)
+    expect(inwardsAfterAdd[0].source).toBe('stock_add')
+    expect(inwardsAfterAdd[0].status).toBe('final')
+    expect(inwardsAfterAdd[0].supplierName).toBe('Stock addition')
+    expect(inwardsAfterAdd[0].items[0]?.qty).toBe(3)
+    expect(inwardsAfterAdd[0].items[0]?.netWeight).toBe(9.5)
+
+    const stockAfterAdd = await ipc<
+      Array<{ itemName: string; autoPurchaseIn: number; closingWeight: number }>
+    >(IPC_CHANNELS.STOCK_LIST, { stockDate: '2026-09-28', metal: 'Gold' })
+    const chainAfterAdd = stockAfterAdd.find((row) => row.itemName === 'Chain')
+    expect(chainAfterAdd?.autoPurchaseIn).toBe(28.5)
+    expect(chainAfterAdd?.closingWeight).toBe(28.5)
+
+    const dayLines = await ipc<Array<{ documentNo: string; weightTotal: number }>>(IPC_CHANNELS.STOCK_DAY_LINES, {
+      stockDate: '2026-09-28',
+      metal: 'Gold',
+      itemName: 'Chain',
+      kind: 'inward',
+    })
+    expect(dayLines).toHaveLength(1)
+    expect(dayLines[0].weightTotal).toBe(28.5)
+
+    const sheet = await ipc<{ pieceRows: Array<{ productId: number; qtyIn: number; qtyOut: number }> }>(
+      IPC_CHANNELS.STOCK_DAY_CLOSING_GET,
+      { businessDate: '2026-09-28', metal: 'Gold' },
+    )
+    expect(sheet.pieceRows.find((row) => row.productId === created.id)?.qtyIn).toBe(3)
 
     await ipc(IPC_CHANNELS.STOCK_ADJUSTMENT_CREATE, {
       adjustmentDate: '2026-09-28',
@@ -162,6 +205,16 @@ describe('products IPC', () => {
     expect(afterReduce.huids).not.toContain(afterAdd.huids[0])
     expect(afterReduce.huids).not.toContain(afterAdd.huids[1])
 
+    const inwardsAfterReduce = await ipc<Array<{ id: number }>>(IPC_CHANNELS.INWARDS_LIST)
+    expect(inwardsAfterReduce).toHaveLength(1)
+
+    const stockAfterReduce = await ipc<
+      Array<{ itemName: string; autoPurchaseIn: number; closingWeight: number }>
+    >(IPC_CHANNELS.STOCK_LIST, { stockDate: '2026-09-28', metal: 'Gold' })
+    const chainAfterReduce = stockAfterReduce.find((row) => row.itemName === 'Chain')
+    expect(chainAfterReduce?.autoPurchaseIn).toBe(28.5)
+    expect(chainAfterReduce?.closingWeight).toBe(9.5)
+
     await ipc(IPC_CHANNELS.STOCK_ADJUSTMENT_CREATE, {
       adjustmentDate: '2026-09-28',
       reason: 'Stock addition',
@@ -181,6 +234,25 @@ describe('products IPC', () => {
     )
     expect(afterUntaggedAdd.stockQty).toBe(7)
     expect(afterUntaggedAdd.huids).toHaveLength(6)
+
+    const inwardsAfterUntagged = await ipc<Array<{ source: string }>>(IPC_CHANNELS.INWARDS_LIST)
+    expect(inwardsAfterUntagged.filter((row) => row.source === 'stock_add')).toHaveLength(2)
+
+    const register = await ipc<{ rows: Array<{ supplier: string; total: number }> }>(IPC_CHANNELS.REPORTS_RUN, {
+      id: 'purchase-register',
+      from: '2026-09-01',
+      to: '2026-09-30',
+    })
+    expect(register.rows).toHaveLength(0)
+
+    const suppliers = await ipc<Array<{ id: number; name: string; isSystem: boolean }>>(
+      IPC_CHANNELS.SUPPLIERS_LIST,
+    )
+    const systemSupplier = suppliers.find((row) => row.isSystem)
+    expect(systemSupplier?.name).toBe('Stock addition')
+    const denied = await getTestAgent().delete(`/api/suppliers/${systemSupplier!.id}`)
+    expect(denied.status).toBeGreaterThanOrEqual(400)
+    expect(String(denied.body.error)).toMatch(/system Stock addition/)
   })
 
   it('stores unique per-piece HUIDs and rejects duplicates', async () => {

@@ -98,7 +98,7 @@ export function StockPage() {
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState<StockTab>('category')
-  const [summaryMode, setSummaryMode] = useState<ClosingSummaryMode>('transacted')
+  const [summaryMode, setSummaryMode] = useState<ClosingSummaryMode>('all')
   const [selectedName, setSelectedName] = useState<string | null>(null)
   const [panelMode, setPanelMode] = useState<PanelMode | null>(null)
   const [form, setForm] = useState<CategoryForm>(emptyForm)
@@ -845,7 +845,10 @@ export function StockPage() {
                         </td>
                         <td>{formatDisplayDateTime(stampedAt)}</td>
                         <td>{row.inwardNo}</td>
-                        <td>{row.supplierName}</td>
+                        <td>
+                          {row.supplierName}
+                          {row.source === 'stock_add' ? <span className="badge stock-add">Stock add</span> : null}
+                        </td>
                         <td className="stock-inward-notes">{(row.notes ?? '').trim() || '—'}</td>
                         <td className="num stock-qty in">{formatWeight(totalWeight)}</td>
                         <td className="num">{formatCurrency(row.total)}</td>

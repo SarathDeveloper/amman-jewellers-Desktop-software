@@ -5,16 +5,17 @@ import type {
   InwardInput,
   InwardItem,
   InwardItemInput,
+  InwardSource,
   InwardUpdateInput,
   PurchasePaymentMode,
 } from '@shared/types'
 import { getDatabase } from '../db'
 import { assertMetalsOpenForDate } from '../db/metalDayClosing'
 import { assertCategoryExists } from '../db/stockCategories'
+import { applyInwardStock } from '../inwards/finalize'
+import { inwardNoPrefix, nextInwardNo } from '../inwards/numbering'
 import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
-import { recordPieceMovement, recordWeightMovement } from '../stock/movements'
-import { appendHuids, assertUniqueHuids, parseHuidsJson, stringifyHuids } from '../products/huids'
-import { newPieceHuidError } from '@shared/itemTypes'
+import { assertUniqueHuids, parseHuidsJson, stringifyHuids } from '../products/huids'
 import { computePurchaseTotals } from '@shared/billing/billSummary'
 import { computePurchaseLineAmount, DEFAULT_HSN } from '@shared/billing/pricing'
 
@@ -38,6 +39,7 @@ type InwardRow = {
   round_off: number
   total: number
   notes: string
+  source: string | null
   created_at: string
   finalized_at: string | null
 }
@@ -65,23 +67,8 @@ function mapPaymentMode(value: string | null | undefined): PurchasePaymentMode {
   return 'cash'
 }
 
-function inwardPrefix(inwardDate: string): string {
-  const year = inwardDate.slice(0, 4)
-  return `IN-${/^\d{4}$/.test(year) ? year : new Date().getFullYear()}-`
-}
-
-/** Uses a numeric max so the series keeps counting past 9999 (a text sort puts "-10000" before "-9999"). */
-function nextInwardNo(db: ReturnType<typeof getDatabase>, inwardDate: string): string {
-  const prefix = inwardPrefix(inwardDate)
-  const row = db
-    .prepare(
-      `SELECT MAX(CAST(substr(inward_no, ?) AS INTEGER)) AS max_seq
-       FROM inwards
-       WHERE inward_no LIKE ?`,
-    )
-    .get(prefix.length + 1, `${prefix}%`) as { max_seq: number | null } | undefined
-  const next = (row?.max_seq ?? 0) + 1
-  return `${prefix}${String(next).padStart(4, '0')}`
+function mapInwardSource(value: string | null | undefined): InwardSource {
+  return value === 'stock_add' ? 'stock_add' : 'purchase'
 }
 
 function mapItem(row: InwardItemRow): InwardItem {
@@ -173,6 +160,7 @@ function mapInward(db: ReturnType<typeof getDatabase>, row: InwardRow, items?: I
     roundOff: row.round_off ?? 0,
     total: row.total,
     notes: row.notes,
+    source: mapInwardSource(row.source),
     createdAt: row.created_at,
     finalizedAt: row.finalized_at,
     items: items ?? loadItems(db, row.id),
@@ -311,7 +299,7 @@ function saveDraftInward(
     const current = db.prepare('SELECT inward_no FROM inwards WHERE id = ?').get(existingId) as {
       inward_no: string
     }
-    if (!current.inward_no.startsWith(inwardPrefix(input.inwardDate))) {
+    if (!current.inward_no.startsWith(inwardNoPrefix(input.inwardDate))) {
       db.prepare('UPDATE inwards SET inward_no = ? WHERE id = ?').run(
         nextInwardNo(db, input.inwardDate),
         existingId,
@@ -417,45 +405,12 @@ router.post(
         row.inward_date,
         items.map((item) => item.metal),
       )
-
-      for (const item of items) {
-        if (item.productId == null) {
-          const weight = item.netWeight * item.qty
-          if (weight <= 0) continue
-          recordWeightMovement(db, {
-            type: 'purchase',
-            metal: item.metal,
-            category: item.category,
-            weightDelta: weight,
-            refType: 'inward',
-            refId: id,
-            reason: 'Raw metal inward',
-            operatorId: req.user?.id ?? null,
-            movementDate: row.inward_date,
-          })
-          continue
-        }
-        const huidError = newPieceHuidError((item.huids ?? []).length, item.qty)
-        if (huidError) {
-          throw new Error(`${item.productName ?? 'Product line'}: ${huidError}`)
-        }
-        appendHuids(db, item.productId, item.huids ?? [])
-        recordPieceMovement(db, {
-          type: 'purchase',
-          productId: item.productId,
-          qtyDelta: item.qty,
-          weightDelta: item.netWeight * item.qty,
-          refType: 'inward',
-          refId: id,
-          reason: 'Inward finalize',
-          operatorId: req.user?.id ?? null,
-          movementDate: row.inward_date,
-        })
-      }
-
-      db.prepare(
-        `UPDATE inwards SET status = 'final', finalized_at = datetime('now') WHERE id = ?`,
-      ).run(id)
+      applyInwardStock(db, {
+        inwardId: id,
+        inwardDate: row.inward_date,
+        items,
+        operatorId: req.user?.id ?? null,
+      })
       return mapInward(db, getInwardRow(db, id))
     })
     res.json(tx())

@@ -79,10 +79,10 @@ import {
   computeEditorTotals,
   computeSaleBreakdown,
   editorLineFromInvoiceItem,
-  ensureTrailingEmptyLine,
   forgetHeldBill,
   huidCellState,
   huidsUsedByOtherLines,
+  catalogApplyIndex,
   isEmptyEditorLine,
   lineHuidError,
   lineNeedsHuid,
@@ -159,7 +159,6 @@ export function InvoiceEditorPage() {
   const [tax, setTax] = useState<NumericField>(0)
   const [discount, setDiscount] = useState<NumericField>(0)
   const [autoTax, setAutoTax] = useState(true)
-  const [useIgst, setUseIgst] = useState(false)
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash')
   const [amountPaid, setAmountPaid] = useState<number | ''>('')
   const [mixedPayments, setMixedPayments] = useState<MixedPaymentPart[]>([])
@@ -171,7 +170,7 @@ export function InvoiceEditorPage() {
   const [roundOff, setRoundOff] = useState(0)
   const [roundOffTouched, setRoundOffTouched] = useState(false)
   const [isEstimate, setIsEstimate] = useState(false)
-  const [lines, setLines] = useState<EditorLine[]>([newEditorLine()])
+  const [lines, setLines] = useState<EditorLine[]>([])
   const [successInvoice, setSuccessInvoice] = useState<Invoice | null>(null)
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -232,7 +231,7 @@ export function InvoiceEditorPage() {
       lines,
       numericFieldToNumber(discount),
       autoTax && billFormat === 'tax_invoice',
-      useIgst,
+      false,
       numericFieldToNumber(tax),
       oldGoldInputs,
       0,
@@ -245,14 +244,14 @@ export function InvoiceEditorPage() {
       lines,
       numericFieldToNumber(discount),
       autoTax && billFormat === 'tax_invoice',
-      useIgst,
+      false,
       numericFieldToNumber(tax),
       oldGoldInputs,
       0,
       linkedOldGoldTotal,
       schemeCredit,
     )
-  }, [lines, discount, autoTax, billFormat, useIgst, tax, oldGoldInputs, linkedOldGoldTotal, selectedScheme])
+  }, [lines, discount, autoTax, billFormat, tax, oldGoldInputs, linkedOldGoldTotal, selectedScheme])
   const appliedRoundOff = roundOffTouched ? roundOff : suggestRoundOff(totalsBase.amountBeforeRoundOff)
   const totals = useMemo(
     () => ({
@@ -351,7 +350,6 @@ export function InvoiceEditorPage() {
         setAmountPaid(data.amountPaid)
         setIsEstimate(data.isEstimate)
         setAutoTax(data.billFormat === 'tax_invoice')
-        setUseIgst(data.igst > 0)
         setRoundOff(data.roundOff ?? 0)
         setRoundOffTouched(true)
         if (data.billFormat !== billFormat) {
@@ -388,8 +386,8 @@ export function InvoiceEditorPage() {
                 )
                 return canFillRates ? applyCurrentMetalRate(line, metalRates) : line
               })
-            : [newEditorLine()]
-        setLines(settled ? mappedLines : ensureTrailingEmptyLine(mappedLines))
+            : []
+        setLines(mappedLines)
         setOldGoldLinks(data.oldGoldLinks ?? [])
         setSchemeAccountId(data.goldSavingLinks?.[0]?.accountId ?? null)
         if ((data.oldGold ?? []).length > 0) {
@@ -482,7 +480,12 @@ export function InvoiceEditorPage() {
   }
 
   function updateLine(key: string, patch: Partial<EditorLine>) {
-    setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)))
+    setLines((current) => {
+      return current.map((line) => {
+        if (line.key !== key) return line
+        return applyCurrentMetalRate({ ...line, ...patch }, metalRates)
+      })
+    })
     markDirty()
   }
 
@@ -505,34 +508,29 @@ export function InvoiceEditorPage() {
   }
 
   function addLine() {
-    setLines((current) => ensureTrailingEmptyLine(current))
+    setLines((current) => [...current, newEditorLine(metalRates)])
     markDirty()
   }
 
   function applyProduct(product: Product, huid?: string) {
     setLines((current) => {
-      const emptyIndex = current.findIndex(isEmptyEditorLine)
+      const hinted = (huid ?? '').trim().toUpperCase()
+      const emptyIndex = catalogApplyIndex(current, hinted || undefined)
       const targetKey = emptyIndex >= 0 ? current[emptyIndex].key : ''
       const used = huidsUsedByOtherLines(current, targetKey)
       const typed = emptyIndex >= 0 ? current[emptyIndex].huid.trim().toUpperCase() : ''
-      const requested = (huid ?? '').trim().toUpperCase() || typed
+      const requested = hinted || typed
       const safeHuid = requested && !used.has(requested) ? requested : undefined
       const patch = applyProductToLine(product, 1, metalRates, safeHuid)
-      const next =
-        emptyIndex >= 0
-          ? current.map((line, index) => (index === emptyIndex ? { ...line, ...patch } : line))
-          : [...current, { ...newEditorLine(), ...patch }]
-      return canEdit ? ensureTrailingEmptyLine(next) : next
+      return emptyIndex >= 0
+        ? current.map((line, index) => (index === emptyIndex ? { ...line, ...patch } : line))
+        : [...current, { ...newEditorLine(metalRates), ...patch }]
     })
     markDirty()
   }
 
   function removeLine(key: string) {
-    setLines((current) => {
-      const next = current.filter((line) => line.key !== key)
-      const remaining = next.length > 0 ? next : [newEditorLine()]
-      return canEdit ? ensureTrailingEmptyLine(remaining) : remaining
-    })
+    setLines((current) => current.filter((line) => line.key !== key))
     markDirty()
   }
 
@@ -587,7 +585,7 @@ export function InvoiceEditorPage() {
       amountPaid: paid,
       discount: numericFieldToNumber(discount),
       autoTax: autoTax && billFormat === 'tax_invoice',
-      useIgst,
+      useIgst: false,
       isEstimate: isEstimateFlag,
       oldGold: oldGoldInputs,
       oldGoldLinks: oldGoldLinks.map((link) => ({
@@ -780,7 +778,7 @@ export function InvoiceEditorPage() {
     setCustomerName('')
     setCustomerPhone('')
     setCustomerAddress('')
-    setLines([newEditorLine()])
+    setLines([])
     setOldGoldLinks([])
     setLegacyOldGold([])
     setDiscount(0)
@@ -1359,11 +1357,6 @@ export function InvoiceEditorPage() {
             itemCount={saleBreakdown.itemCount}
             totalGrossWeight={saleBreakdown.totalGrossWeight}
             showTax={billFormat === 'tax_invoice'}
-            useIgst={useIgst}
-            onUseIgstChange={(value) => {
-              setUseIgst(value)
-              markDirty()
-            }}
             disabled={!canEdit || busy}
             discount={numericFieldToNumber(discount)}
             onDiscountChange={(value) => {

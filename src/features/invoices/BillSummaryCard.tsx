@@ -13,8 +13,6 @@ export function BillSummaryCard({
   itemCount,
   totalGrossWeight,
   showTax,
-  useIgst,
-  onUseIgstChange,
   disabled,
   discount,
   onDiscountChange,
@@ -28,8 +26,6 @@ export function BillSummaryCard({
   itemCount: number
   totalGrossWeight: number
   showTax: boolean
-  useIgst: boolean
-  onUseIgstChange: (value: boolean) => void
   disabled?: boolean
   discount: number
   onDiscountChange: (value: number) => void
@@ -99,38 +95,18 @@ export function BillSummaryCard({
           </div>
           {showTax && (
             <>
-              <label className="billing-checkbox bill-summary-igst-toggle">
-                <input
-                  type="checkbox"
-                  checked={useIgst}
-                  disabled={disabled}
-                  onChange={(event) => onUseIgstChange(event.target.checked)}
-                />
-                Interstate (IGST)
-              </label>
-              {useIgst ? (
-                <div className="adagu-calculated-row">
-                  <span className="label">
-                    <Percent size={14} /> IGST 3%
-                  </span>
-                  <span className="value">{formatCurrency(summary.igst)}</span>
-                </div>
-              ) : (
-                <>
-                  <div className="adagu-calculated-row">
-                    <span className="label">
-                      <Percent size={14} /> CGST 1.5%
-                    </span>
-                    <span className="value">{formatCurrency(summary.cgst)}</span>
-                  </div>
-                  <div className="adagu-calculated-row">
-                    <span className="label">
-                      <Percent size={14} /> SGST 1.5%
-                    </span>
-                    <span className="value">{formatCurrency(summary.sgst)}</span>
-                  </div>
-                </>
-              )}
+              <div className="adagu-calculated-row">
+                <span className="label">
+                  <Percent size={14} /> CGST 1.5%
+                </span>
+                <span className="value">{formatCurrency(summary.cgst)}</span>
+              </div>
+              <div className="adagu-calculated-row">
+                <span className="label">
+                  <Percent size={14} /> SGST 1.5%
+                </span>
+                <span className="value">{formatCurrency(summary.sgst)}</span>
+              </div>
               <div className="adagu-calculated-row sale-bill-summary-tax-total">
                 <span className="label">Total Tax (3%)</span>
                 <span className="value">{formatCurrency(summary.tax)}</span>

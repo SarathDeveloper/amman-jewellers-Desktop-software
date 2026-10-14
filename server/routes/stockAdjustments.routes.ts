@@ -4,6 +4,7 @@ import { stockAdjustmentInputSchema } from '@shared/schemas'
 import type { StockAdjustment, StockAdjustmentInput, StockAdjustmentLine } from '@shared/types'
 import { getDatabase } from '../db'
 import { assertMetalDayOpen } from '../db/metalDayClosing'
+import { createAndFinalizeStockAddInward } from '../inwards/stockAdd'
 import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
 import { appendHuids, listHuids, removeHuids, requireHuidsForNewPieces } from '../products/huids'
 import { recordAdjustment } from '../stock/movements'
@@ -16,7 +17,12 @@ type AdjustmentRow = {
   reason: string
   note: string
   operator_id: number | null
+  inward_id: number | null
   created_at: string
+}
+
+function isProductAddLine(line: StockAdjustmentInput['lines'][number]): boolean {
+  return line.productId != null && line.qtyDelta > 0
 }
 
 type AdjustmentLineRow = {
@@ -100,6 +106,7 @@ function mapAdjustment(db: ReturnType<typeof getDatabase>, row: AdjustmentRow): 
     reason: row.reason,
     note: row.note,
     operatorId: row.operator_id,
+    inwardId: row.inward_id ?? null,
     createdAt: row.created_at,
     lines: loadLines(db, row.id),
   }
@@ -176,20 +183,33 @@ router.post(
           line.reason ?? '',
         )
       }
-      applyAdjustmentHuids(db, input.lines)
-      recordAdjustment(db, {
-        adjustmentId,
-        adjustmentDate: input.adjustmentDate,
-        lines: input.lines.map((line) => ({
-          productId: line.productId ?? null,
-          metal: line.metal.trim(),
-          category: line.category.trim(),
-          qtyDelta: line.qtyDelta,
-          weightDelta: line.weightDelta,
-          reason: line.reason,
-        })),
-        operatorId: req.user?.id ?? null,
-      })
+      const addLines = input.lines.filter(isProductAddLine)
+      const otherLines = input.lines.filter((line) => !isProductAddLine(line))
+      if (addLines.length > 0) {
+        const inwardId = createAndFinalizeStockAddInward(db, {
+          inwardDate: input.adjustmentDate,
+          notes: input.note ?? '',
+          operatorId: req.user?.id ?? null,
+          lines: addLines,
+        })
+        db.prepare('UPDATE stock_adjustments SET inward_id = ? WHERE id = ?').run(inwardId, adjustmentId)
+      }
+      if (otherLines.length > 0) {
+        applyAdjustmentHuids(db, otherLines)
+        recordAdjustment(db, {
+          adjustmentId,
+          adjustmentDate: input.adjustmentDate,
+          lines: otherLines.map((line) => ({
+            productId: line.productId ?? null,
+            metal: line.metal.trim(),
+            category: line.category.trim(),
+            qtyDelta: line.qtyDelta,
+            weightDelta: line.weightDelta,
+            reason: line.reason,
+          })),
+          operatorId: req.user?.id ?? null,
+        })
+      }
       return mapAdjustment(db, getAdjustmentRow(db, adjustmentId))
     })
     res.status(201).json(tx())

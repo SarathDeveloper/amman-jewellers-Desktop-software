@@ -24,6 +24,7 @@ const baseInward: Inward = {
   roundOff: 0,
   total: 618,
   notes: 'Sample',
+  source: 'purchase',
   createdAt: '2026-09-28T10:00:00.000Z',
   finalizedAt: '2026-09-28T10:00:00.000Z',
   items: [

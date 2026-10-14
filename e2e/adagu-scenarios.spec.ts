@@ -291,6 +291,16 @@ test.describe('Adagu billing — live Tauri scenarios', () => {
     await redeemDrawer.getByRole('button', { name: 'Redeem', exact: true }).click()
     const redeem = window.getByRole('dialog', { name: new RegExp(`Close Adagu loan · ${receiptNo}`) })
     await expect(redeem.getByLabel('Amount collected')).toHaveValue('50000')
+    await expect(redeem.getByRole('button', { name: 'Full redeem' })).toBeVisible()
+
+    await redeem.getByLabel('Amount collected').fill('5000')
+    await expect(redeem.getByRole('button', { name: 'Full redeem' })).toHaveCount(0)
+    await expect(redeem.getByRole('button', { name: 'Record collection' })).toBeVisible()
+
+    await redeem.getByRole('button', { name: 'Fill payoff' }).click()
+    await expect(redeem.getByLabel('Amount collected')).toHaveValue('50000')
+    await expect(redeem.getByRole('button', { name: 'Full redeem' })).toBeVisible()
+
     await redeem.getByRole('button', { name: 'Full redeem' }).click()
     await expect(window.getByText('Adagu loan closed')).toBeVisible()
     await closePrintPreview(window)

@@ -273,7 +273,9 @@ export function InwardEditorModal({
         setSuppliers(supplierRows)
         setProducts(productRows)
         if (!inward) {
-          setSupplierId((current) => current || (supplierRows[0]?.id ?? ''))
+          setSupplierId(
+            (current) => current || (supplierRows.find((row) => !row.isSystem)?.id ?? ''),
+          )
         }
       } catch (err) {
         if (active) setError(err instanceof Error ? err.message : 'Failed to load purchase form')
@@ -294,6 +296,10 @@ export function InwardEditorModal({
   }, [inward])
 
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products])
+  const supplierOptions = useMemo(
+    () => suppliers.filter((supplier) => !supplier.isSystem || supplier.id === supplierId),
+    [suppliers, supplierId],
+  )
 
   const liveTotals = useMemo(() => {
     let weight = 0
@@ -510,7 +516,7 @@ export function InwardEditorModal({
                         }
                       >
                         <option value="">Select supplier</option>
-                        {suppliers.map((supplier) => (
+                        {supplierOptions.map((supplier) => (
                           <option key={supplier.id} value={supplier.id}>
                             {supplier.name}
                           </option>

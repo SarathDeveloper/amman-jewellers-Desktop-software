@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { UserPlus } from 'lucide-react'
+import { Printer, UserPlus } from 'lucide-react'
 import type { GoldSavingAccount } from '@shared/types'
 import { DataTable, TablePager } from '../../../components/DataTable'
 import { EmptyState } from '../../../components/EmptyState'
@@ -9,6 +9,7 @@ import { PageHeader } from '../../../components/PageHeader'
 import { SearchBar } from '../../../components/SearchBar'
 import { formatCurrency, formatDisplayDate, formatWeight, paginate, TABLE_PAGE_SIZE } from '../../../lib/format'
 import { api } from '../../../lib/api'
+import { PrintPreviewModal } from '../../print/PrintPreviewModal'
 import { GsStatusBadge } from '../GsStatusBadge'
 
 export function AccountsListPage() {
@@ -17,6 +18,7 @@ export function AccountsListPage() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [printAccountId, setPrintAccountId] = useState<number | null>(null)
 
   useEffect(() => {
     let active = true
@@ -75,6 +77,7 @@ export function AccountsListPage() {
                 <th className="num">Paid</th>
                 <th className="num">Gold</th>
                 <th>Status</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -95,12 +98,32 @@ export function AccountsListPage() {
                   <td>
                     <GsStatusBadge status={account.status} />
                   </td>
+                  <td>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        onClick={() => setPrintAccountId(account.id)}
+                      >
+                        <Printer size={16} />
+                        Print passbook
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </DataTable>
       )}
+      {printAccountId ? (
+        <PrintPreviewModal
+          title="Scheme passbook"
+          path={`/print/gs-passbook/${printAccountId}`}
+          pdfFilename="gs-passbook.pdf"
+          onClose={() => setPrintAccountId(null)}
+        />
+      ) : null}
     </div>
   )
 }

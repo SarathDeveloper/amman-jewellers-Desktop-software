@@ -1148,6 +1148,7 @@ export interface StockAdjustment {
   reason: string
   note: string
   operatorId: number | null
+  inwardId: number | null
   createdAt: string
   lines: StockAdjustmentLine[]
 }
@@ -1221,6 +1222,7 @@ export interface Supplier {
   address: string
   notes: string
   gstin: string
+  isSystem: boolean
   createdAt: string
 }
 
@@ -1233,6 +1235,7 @@ export interface SupplierInput {
 }
 
 export type InwardStatus = 'draft' | 'final'
+export type InwardSource = 'purchase' | 'stock_add'
 export type PurchasePaymentMode = Extract<PaymentMode, 'cash' | 'upi' | 'card'>
 
 export interface InwardItem {
@@ -1285,6 +1288,7 @@ export interface Inward {
   roundOff: number
   total: number
   notes: string
+  source: InwardSource
   createdAt: string
   finalizedAt: string | null
   items: InwardItem[]

@@ -103,33 +103,40 @@ export function SuppliersPage() {
             <tbody>
               {paged.map((supplier) => (
                 <tr key={supplier.id}>
-                  <td>{supplier.name}</td>
+                  <td>
+                    {supplier.name}
+                    {supplier.isSystem ? <span className="badge stock-add">System</span> : null}
+                  </td>
                   <td>{supplier.phone || '—'}</td>
                   <td>{supplier.gstin || '—'}</td>
                   <td>{supplier.address || '—'}</td>
                   <td>{supplier.notes || '—'}</td>
                   <td>
-                    <div className="row-actions">
-                      <button
-                        type="button"
-                        className="btn ghost icon-btn"
-                        aria-label={`Edit ${supplier.name}`}
-                        onClick={() => {
-                          setEditing(supplier)
-                          setOpen(true)
-                        }}
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className="btn ghost icon-btn"
-                        aria-label={`Delete ${supplier.name}`}
-                        onClick={() => setDeleteId(supplier.id)}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
+                    {supplier.isSystem ? (
+                      <span className="muted">Protected</span>
+                    ) : (
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          className="btn ghost icon-btn"
+                          aria-label={`Edit ${supplier.name}`}
+                          onClick={() => {
+                            setEditing(supplier)
+                            setOpen(true)
+                          }}
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost icon-btn"
+                          aria-label={`Delete ${supplier.name}`}
+                          onClick={() => setDeleteId(supplier.id)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

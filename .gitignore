@@ -1,4 +1,5 @@
 node_modules
+.xwin-cache
 dist
 dist-server
 sidecar-dist

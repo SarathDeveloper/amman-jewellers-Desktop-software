@@ -6,7 +6,7 @@ import { shopSettingsToDisplay, type ShopDisplayInfo } from '../../invoices/mapS
 import { applyPaperDataset } from '../../invoices/paperSize'
 import { signalPrintReady, waitForPrintLayout } from '../../invoices/printPageUtils'
 import { GsRefundPrint } from './GsRefundPrint'
-import './GsReceiptPrint.css'
+import './GsPassbookPrint.css'
 
 export function GsRefundPrintPage() {
   const { id } = useParams()

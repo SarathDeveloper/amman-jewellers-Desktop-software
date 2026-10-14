@@ -85,4 +85,24 @@ test('adjust stock quantity', async ({ window }) => {
   await dialog.getByRole('button', { name: 'Save' }).click()
   await expect(dialog).toBeHidden()
   await expect(row.locator('.stock-qty')).toHaveText('5')
+
+  await detail.getByRole('button', { name: 'Close' }).click()
+  await expect(detail).toBeHidden()
+
+  await openInventoryTab(window, 'Purchase')
+  await expect(window.getByRole('heading', { name: 'Purchase', exact: true })).toBeVisible()
+  const purchaseRow = window.getByRole('row').filter({ hasText: 'Stock addition' })
+  await expect(purchaseRow).toBeVisible()
+  await expect(purchaseRow.getByText('Stock add')).toBeVisible()
+
+  await openInventoryTab(window, 'Gold & Silver')
+  await expect(window.getByRole('heading', { name: 'Gold & Silver Stock' })).toBeVisible()
+  const ringRow = window.locator('tbody tr').filter({
+    has: window.getByRole('cell', { name: 'Ring', exact: true }),
+  })
+  await expect(ringRow).toContainText('22.50')
+  await expect(ringRow).toContainText('7.50')
+
+  await window.getByRole('tab', { name: 'Inward Stock' }).click()
+  await expect(window.getByRole('row').filter({ hasText: 'Stock addition' })).toBeVisible()
 })

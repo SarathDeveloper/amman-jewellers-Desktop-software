@@ -22,14 +22,14 @@ Jewellery shop inventory, billing, gold/silver weight tracking, and customer due
 
 ### Cross-compile the Windows installer from macOS
 
-Cross-compiling the Windows installer from macOS needs a few extra tools. On the macOS build machine:
+One-time on the Mac (Rust Windows target, Homebrew NSIS/LLVM/LLD, and `cargo-xwin`):
 
 ```bash
-rustup target add x86_64-pc-windows-msvc
-cargo install cargo-xwin
-brew install nsis
+npm run tauri:setup:win-cross
 npm run tauri:build:win
 ```
+
+`tauri:build:win` then uses `--runner cargo-xwin` automatically. The first build downloads the Windows SDK into `~/.cache/cargo-xwin`. MSI installers cannot be built from macOS; this path produces the NSIS `.exe` only.
 
 If `cargo-xwin` or NSIS fails, build on a Windows machine or a Windows CI runner with the same `npm run tauri:build:win` command.
 

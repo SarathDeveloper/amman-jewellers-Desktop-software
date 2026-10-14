@@ -93,6 +93,41 @@ async function waitForDocumentImages(doc: Document): Promise<void> {
   )
 }
 
+/** Pixels of top margin so `offsetTop` lands on the next PDF page. */
+export function pageBreakPaddingPx(offsetTop: number, pageHeightPx: number): number {
+  if (pageHeightPx <= 0 || offsetTop <= 0) return 0
+  const posInPage = offsetTop % pageHeightPx
+  if (posInPage < 1) return 0
+  return pageHeightPx - posInPage
+}
+
+/**
+ * html2canvas ignores CSS page-break, so pad marked blocks to the next A4/A5
+ * boundary before capture. Returns a restore function.
+ */
+function applyHtml2CanvasPageBreaks(
+  root: HTMLElement,
+  page: { width: number; height: number | 'auto' },
+): () => void {
+  if (page.height === 'auto') return () => {}
+  const captureWidth = Math.max(root.scrollWidth, root.offsetWidth, 1)
+  const pageHeightPx = (page.height / page.width) * captureWidth
+  const previous: Array<{ el: HTMLElement; marginTop: string }> = []
+  const breaks = Array.from(root.querySelectorAll<HTMLElement>('[data-print-break-before="page"]'))
+  for (const el of breaks) {
+    previous.push({ el, marginTop: el.style.marginTop })
+    el.style.marginTop = '0px'
+    const top = el.getBoundingClientRect().top - root.getBoundingClientRect().top
+    const pad = pageBreakPaddingPx(top, pageHeightPx)
+    el.style.marginTop = pad > 0 ? `${pad}px` : ''
+  }
+  return () => {
+    for (const item of previous) {
+      item.el.style.marginTop = item.marginTop
+    }
+  }
+}
+
 function saveCanvasAsPdf(
   canvas: HTMLCanvasElement,
   page: { width: number; height: number | 'auto'; format?: 'a4' | 'a5' },
@@ -157,29 +192,35 @@ export async function downloadPrintDocument(doc: Document, filename: string): Pr
   }
   await waitForDocumentImages(doc)
 
-  const fitted = root.dataset.printFitted === '1'
-  const captureWidth = fitted
-    ? Math.max(root.offsetWidth, 1)
-    : Math.max(root.scrollWidth, root.offsetWidth, 1)
-  const captureHeight = fitted
-    ? Math.max(root.offsetHeight, 1)
-    : Math.max(root.scrollHeight, root.offsetHeight, 1)
-  const canvas = await html2canvas(root, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: '#ffffff',
-    logging: false,
-    x: 0,
-    y: 0,
-    scrollX: 0,
-    scrollY: 0,
-    width: captureWidth,
-    height: captureHeight,
-    windowWidth: captureWidth,
-    windowHeight: captureHeight,
-  })
-  const pdf = saveCanvasAsPdf(canvas, paperPageMm(doc.documentElement.dataset.paper))
-  return savePdfFile(pdf, filename)
+  const page = paperPageMm(doc.documentElement.dataset.paper)
+  const restoreBreaks = applyHtml2CanvasPageBreaks(root, page)
+  try {
+    const fitted = root.dataset.printFitted === '1'
+    const captureWidth = fitted
+      ? Math.max(root.offsetWidth, 1)
+      : Math.max(root.scrollWidth, root.offsetWidth, 1)
+    const captureHeight = fitted
+      ? Math.max(root.offsetHeight, 1)
+      : Math.max(root.scrollHeight, root.offsetHeight, 1)
+    const canvas = await html2canvas(root, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      x: 0,
+      y: 0,
+      scrollX: 0,
+      scrollY: 0,
+      width: captureWidth,
+      height: captureHeight,
+      windowWidth: captureWidth,
+      windowHeight: captureHeight,
+    })
+    const pdf = saveCanvasAsPdf(canvas, page)
+    return savePdfFile(pdf, filename)
+  } finally {
+    restoreBreaks()
+  }
 }
 
 export async function downloadPrintPdf(path: string, filename: string): Promise<DesktopExportResult> {

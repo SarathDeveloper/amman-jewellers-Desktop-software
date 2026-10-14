@@ -166,7 +166,7 @@ export function SchemeConfigPage() {
     <div className="app-page app-page-fill">
       <PageHeader
         title="Scheme configuration"
-        subtitle="Bonus, making charges and redemption rules are configured here — never hardcoded"
+        subtitle="Making charges and redemption rules are configured here — never hardcoded"
         actions={
           isAdmin ? (
             <button
@@ -380,37 +380,6 @@ function SchemeFormModal({
         <label>
           <span className="field-label">Gold rate unit</span>
           <input className="input" value="₹ per gram" disabled />
-        </label>
-        <label>
-          <span className="field-label">Bonus type</span>
-          <select
-            className="input"
-            value={form.bonusType}
-            onChange={(e) => setForm({ ...form, bonusType: e.target.value as GoldSavingSchemeInput['bonusType'] })}
-          >
-            <option value="none">None</option>
-            <option value="fixed_amount">Fixed amount</option>
-            <option value="percentage">Percentage</option>
-            <option value="additional_gold">Additional gold weight</option>
-          </select>
-        </label>
-        <label>
-          <span className="field-label">Bonus value</span>
-          <input
-            className="input"
-            type="number"
-            min={0}
-            value={form.bonusValue}
-            onChange={(e) => setForm({ ...form, bonusValue: Number(e.target.value) })}
-          />
-        </label>
-        <label className="full">
-          <span className="field-label">Bonus eligibility rules</span>
-          <textarea
-            className="textarea"
-            value={form.bonusEligibility}
-            onChange={(e) => setForm({ ...form, bonusEligibility: e.target.value })}
-          />
         </label>
         <label>
           <span className="field-label">Redemption type</span>

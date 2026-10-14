@@ -147,7 +147,12 @@ function saleWhere(
 }
 
 function inwardWhere(scope: Scope): { where: string; params: unknown[] } {
-  const clauses = [`w.status = 'final'`, 'w.inward_date >= ?', 'w.inward_date <= ?']
+  const clauses = [
+    `w.status = 'final'`,
+    `COALESCE(w.source, 'purchase') = 'purchase'`,
+    'w.inward_date >= ?',
+    'w.inward_date <= ?',
+  ]
   const params: unknown[] = [scope.from, scope.to]
   if (scope.supplierId) {
     clauses.push('w.supplier_id = ?')

@@ -91,6 +91,7 @@ test('typing a tagged HUID on the empty bill row adds that piece', async ({ wind
   await window.getByRole('tab', { name: /Quotation/ }).click()
   await expect(window.getByRole('heading', { name: 'New Quotation' })).toBeVisible()
 
+  await window.getByRole('button', { name: 'Add Item' }).click()
   const emptyRow = window.locator('.sale-bill-items-table tbody tr').last()
   await expect(emptyRow.locator('.sale-bill-huid-input')).toBeEnabled()
   await emptyRow.locator('.sale-bill-huid-input').fill(huid)
@@ -100,4 +101,57 @@ test('typing a tagged HUID on the empty bill row adds that piece', async ({ wind
   })
   await expect(itemRow).toBeVisible()
   await expect(itemRow.locator('.sale-bill-huid-input')).toHaveValue(huid)
+})
+
+test('manual item add opens a second row and autofills the metal rate', async ({ window }) => {
+  const today = localTodayIso()
+  await window.evaluate(async (date) => {
+    const response = await fetch('/api/metal-rates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        effectiveDate: date,
+        gold24k: 7640,
+        gold22k: 7000,
+        gold20k: 6370,
+        gold18k: 5730,
+        silverFine: 98,
+        silver925: 91,
+      }),
+    })
+    if (!response.ok) throw new Error(await response.text())
+  }, today)
+
+  await sidebarLink(window, 'Billing').click()
+  await window.getByRole('tab', { name: /Tax Invoice/ }).click()
+  await expect(window.getByRole('heading', { name: 'New Tax Invoice' })).toBeVisible()
+
+  const rows = window.locator('.sale-bill-items-table tbody tr')
+  await expect(rows).toHaveCount(0)
+
+  await window.getByRole('button', { name: 'Add Item' }).click()
+  await expect(rows).toHaveCount(1)
+  const first = rows.nth(0)
+  await expect(first.getByLabel('Gold rate')).toHaveValue('7000')
+
+  await first.locator('.sale-bill-huid-input').fill('HI763837')
+  await first.locator('.adagu-col-net-weight input').fill('8')
+  await first.locator('.adagu-col-weight input').fill('7.5')
+  const beforeAdd = await rows.count()
+  await window.getByRole('button', { name: 'Add Item' }).click()
+  await expect(rows).toHaveCount(beforeAdd + 1)
+  await expect(first.locator('.sale-bill-huid-input')).toHaveValue('HI763837')
+  await expect(first.locator('.adagu-col-amount')).toHaveText('₹56,000')
+
+  await first.locator('.sale-bill-product-name').fill('Ring', { force: true })
+  await expect(first.getByLabel('Gold rate')).toHaveValue('7000')
+  await expect(window.locator('.sale-bill-summary-stat', { hasText: 'Total Items' }).locator('strong')).toHaveText(
+    '1',
+  )
+
+  const nextLine = rows.nth(1)
+  await expect(nextLine.getByLabel('Gold rate')).toHaveValue('7000')
+  await nextLine.locator('.sale-bill-product-name').fill('Chain', { force: true })
+  await expect(rows.nth(0).locator('.sale-bill-product-name')).toHaveValue('Ring')
+  await expect(nextLine.locator('.sale-bill-product-name')).toHaveValue('Chain')
 })

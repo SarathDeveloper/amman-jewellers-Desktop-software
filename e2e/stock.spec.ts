@@ -183,11 +183,11 @@ test('closing summary hides quiet categories in transacted mode', async ({ windo
   })
   await expect(goldSection).toBeVisible()
   await expect(goldSection.getByRole('cell', { name: movedName, exact: true })).toBeVisible()
-  await expect(goldSection.getByRole('cell', { name: quietName, exact: true })).toHaveCount(0)
-
-  await window.getByRole('button', { name: 'All' }).click()
-  await expect(goldSection.getByRole('cell', { name: movedName, exact: true })).toBeVisible()
   await expect(goldSection.getByRole('cell', { name: quietName, exact: true })).toBeVisible()
+
+  await window.getByRole('button', { name: 'Transacted' }).click()
+  await expect(goldSection.getByRole('cell', { name: movedName, exact: true })).toBeVisible()
+  await expect(goldSection.getByRole('cell', { name: quietName, exact: true })).toHaveCount(0)
 })
 
 test('stock print opens a modal instead of navigating', async ({ window }) => {

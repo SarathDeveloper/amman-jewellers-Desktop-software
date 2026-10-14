@@ -4,9 +4,13 @@ import {
   applyCurrentMetalRate,
   applyProductToLine,
   availableHuidsForLine,
+  catalogApplyIndex,
   computeEditorLineTotal,
   editorLineFromInvoiceItem,
+  ensureTrailingEmptyLine,
   exclusiveVamc,
+  isEmptyEditorLine,
+  isOccupiedEditorLine,
   lineHuidError,
   lineNeedsHuid,
   lineOffersHuid,
@@ -159,6 +163,20 @@ describe('toInvoiceItems', () => {
     expect(items[0].productId).toBeNull()
     expect(items[0].description).toBe('Gold chain')
   })
+
+  it('keeps HUID on a manual line without a catalog product', () => {
+    const items = toInvoiceItems([
+      saleLine({
+        productId: 0,
+        description: 'Gold ring',
+        huid: 'HI763837',
+        metalRate: 7000,
+        rate: 7000,
+        netWeight: 2,
+      }),
+    ])
+    expect(items[0].huid).toBe('HI763837')
+  })
 })
 
 describe('exclusiveVamc and line total', () => {
@@ -277,6 +295,90 @@ describe('applyCurrentMetalRate', () => {
       metalRateAuto: false,
     })
     expect(applyCurrentMetalRate(line, rates)).toBe(line)
+  })
+
+  it('fills today\'s gold rate onto a placeholder auto line', () => {
+    const line = applyCurrentMetalRate(newEditorLine(), rates)
+    expect(line.purity).toBe('22K')
+    expect(line.metalRateAuto).toBe(true)
+    expect(line.metalRate).toBe(15125)
+    expect(line.rate).toBe(15125)
+  })
+
+  it('fills today\'s gold rate onto a typed manual line', () => {
+    const line = saleLine({
+      productId: 0,
+      description: 'Ring',
+      metal: undefined,
+      purity: '22K',
+      metalRate: '',
+      rate: '',
+      metalRateAuto: true,
+    })
+    const next = applyCurrentMetalRate(line, rates)
+    expect(next.metalRate).toBe(15125)
+    expect(next.rate).toBe(15125)
+  })
+})
+
+describe('newEditorLine', () => {
+  it('starts as a 22K auto-rate placeholder', () => {
+    const line = newEditorLine()
+    expect(line.purity).toBe('22K')
+    expect(line.metalRateAuto).toBe(true)
+    expect(isEmptyEditorLine(line)).toBe(true)
+    expect(isOccupiedEditorLine(line)).toBe(false)
+  })
+
+  it('applies settings rates when they are passed in', () => {
+    const rates = {
+      id: 1,
+      effectiveDate: '2026-09-30',
+      gold24k: 16500,
+      gold22k: 15125,
+      gold20k: 13750,
+      gold18k: 12375,
+      silverFine: 250,
+      silver925: 231.48,
+      createdAt: '2026-09-30',
+    }
+    const line = newEditorLine(rates)
+    expect(line.metalRate).toBe(15125)
+    expect(line.rate).toBe(15125)
+    expect(isOccupiedEditorLine(line)).toBe(false)
+  })
+})
+
+describe('occupied editor lines', () => {
+  it('treats HUID or weights as occupying the starter row', () => {
+    expect(isOccupiedEditorLine({ ...newEditorLine(), huid: 'HI763837' })).toBe(true)
+    expect(isOccupiedEditorLine({ ...newEditorLine(), netWeight: 8, grossWeight: 7.5 })).toBe(true)
+    expect(isOccupiedEditorLine({ ...newEditorLine(), wastagePct: 3 })).toBe(true)
+    expect(isEmptyEditorLine({ ...newEditorLine(), huid: 'HI763837' })).toBe(true)
+  })
+
+  it('appends a trailing row after a HUID/weights-only line', () => {
+    const occupied = { ...newEditorLine(), huid: 'HI763837', netWeight: 8, grossWeight: 7.5, stoneWeight: 0.5 }
+    const next = ensureTrailingEmptyLine([occupied])
+    expect(next).toHaveLength(2)
+    expect(isOccupiedEditorLine(next[1])).toBe(false)
+  })
+
+  it('treats a blank placeholder row as not occupied', () => {
+    expect(isOccupiedEditorLine(newEditorLine())).toBe(false)
+  })
+
+  it('does not reuse an occupied unnamed row as the catalog apply slot', () => {
+    const occupied = { ...newEditorLine(), huid: 'HI763837', netWeight: 8, grossWeight: 7.5 }
+    const placeholder = newEditorLine()
+    expect(catalogApplyIndex([occupied])).toBe(-1)
+    expect(catalogApplyIndex([occupied, placeholder])).toBe(1)
+  })
+
+  it('applies a scanned HUID onto the unnamed row that already has it', () => {
+    const scanned = { ...newEditorLine(), huid: 'HI763837' }
+    const placeholder = newEditorLine()
+    expect(catalogApplyIndex([scanned, placeholder], 'HI763837')).toBe(0)
   })
 })
 
@@ -440,12 +542,9 @@ describe('huidCellState', () => {
     expect(huidCellState(saleLine(), [tagged])).toEqual({ state: 'product' })
   })
 
-  it('disables the cell for a manual line without a catalog item', () => {
+  it('allows HUID entry on a manual line without a catalog item', () => {
     const manual = saleLine({ productId: 0, description: 'Loose stone' })
-    expect(huidCellState(manual, [tagged])).toEqual({
-      state: 'disabled',
-      reason: 'HUID needs a catalog item',
-    })
+    expect(huidCellState(manual, [tagged])).toEqual({ state: 'manual' })
   })
 
   it('disables the cell when the line has more than one piece', () => {
