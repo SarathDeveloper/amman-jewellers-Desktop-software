@@ -114,6 +114,7 @@ export function buildTaxInvoiceData(
     customerGstin: customer.gstin ?? "",
     customerPhone: customer.phone ?? invoice.customerPhone ?? "",
     customerAddressLines: splitAddress(customer.address),
+    customerGuardian: (customer.guardianName ?? "").trim(),
     lines,
     itemCount,
     subtotal: invoice.subtotal,

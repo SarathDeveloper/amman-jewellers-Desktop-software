@@ -31,6 +31,8 @@ export interface TaxInvoiceData {
   customerGstin: string;
   customerPhone: string;
   customerAddressLines: string[];
+  /** Father / husband name; empty when the customer has none saved. */
+  customerGuardian: string;
   lines: TaxInvoiceLine[];
   itemCount: number;
   subtotal: number;

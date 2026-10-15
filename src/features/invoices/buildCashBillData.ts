@@ -59,6 +59,7 @@ export function buildCashBillData(
     customerName: extras?.customer?.name || invoice.customerName,
     customerPhone: extras?.customer?.phone || invoice.customerPhone || '',
     customerAddressLines: splitAddress(extras?.customer?.address),
+    customerGuardian: (extras?.customer?.guardianName ?? '').trim(),
     itemCount,
     total: invoice.total,
     discount: invoice.discount,

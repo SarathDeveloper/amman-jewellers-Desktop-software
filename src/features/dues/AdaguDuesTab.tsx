@@ -161,6 +161,10 @@ export function AdaguDuesTab({
     mode: PledgePaymentMode
   }) {
     if (!interestTarget) return
+    if (interestTarget.interestDue <= 0.005) {
+      onError('No interest is due on this loan')
+      return
+    }
     try {
       setBusy(true)
       onError(null)
@@ -446,7 +450,10 @@ export function AdaguDuesTab({
           }
           busy={busy}
           onClose={() => setViewTarget(null)}
-          onCollectInterest={() => setInterestTarget(viewTarget)}
+          onCollectInterest={() => {
+            if (viewTarget.interestDue <= 0.005) return
+            setInterestTarget(viewTarget)
+          }}
           onTopup={() => setTopupTarget(viewTarget)}
           onRedeem={() => openRedeem(viewTarget)}
           onRenew={() => setRenewTarget(viewTarget)}
@@ -479,6 +486,7 @@ export function AdaguDuesTab({
 
       {interestTarget ? (
         <InterestCollectionModal
+          key={interestTarget.pledgeId}
           summary={interestTarget}
           busy={busy}
           onClose={() => setInterestTarget(null)}

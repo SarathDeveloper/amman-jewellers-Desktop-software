@@ -60,6 +60,11 @@ export const CustomersPage = lazy(() =>
     default: module.CustomersPage,
   })),
 )
+export const CustomerDetailPage = lazy(() =>
+  import('../features/customers/CustomerDetailPage').then((module) => ({
+    default: module.CustomerDetailPage,
+  })),
+)
 export const DuesPage = lazy(() =>
   import('../features/dues/DuesPage').then((module) => ({ default: module.DuesPage })),
 )

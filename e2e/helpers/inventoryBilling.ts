@@ -122,13 +122,13 @@ export async function setPaymentMode(page: Page, mode: 'Cash' | 'UPI' | 'Card') 
 
 export async function finalizeBill(page: Page) {
   await page.getByRole('button', { name: 'Finalize', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'Bill finalized' })
+  const dialog = page.getByRole('dialog', { name: 'Bill confirmed' })
   await expect(dialog).toBeVisible()
   return dialog
 }
 
 export async function closeFinalizedBill(page: Page) {
-  const dialog = page.getByRole('dialog', { name: 'Bill finalized' })
+  const dialog = page.getByRole('dialog', { name: 'Bill confirmed' })
   if (await dialog.isVisible()) {
     await dialog.getByRole('button', { name: 'View Invoice' }).click()
     await expect(dialog).toBeHidden()
@@ -267,7 +267,7 @@ export async function dismissDialogs(page: Page) {
 }
 
 export async function sanctionAdaguLoan(page: Page) {
-  await page.getByRole('button', { name: 'Generate', exact: true }).click()
+  await page.getByRole('button', { name: 'Sanction loan', exact: true }).click()
   const confirm = page.getByRole('dialog', { name: 'Sanction loan' })
   await expect(confirm).toBeVisible()
   await confirm.getByRole('button', { name: 'Sanction loan' }).click()

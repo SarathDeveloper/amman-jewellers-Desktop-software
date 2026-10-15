@@ -71,9 +71,11 @@ function historyTime(iso: string | null | undefined) {
 type HistoryRow = {
   id: string
   date: string
+  createdAt: string
   time: string
   title: string
   note: string
+  tone: 'paid' | 'extra'
 }
 
 export function AdaguDueDetailDrawer({
@@ -165,47 +167,58 @@ export function AdaguDueDetailDrawer({
           : 'active'
 
   const history = useMemo<HistoryRow[]>(() => {
-    if (pledgePayments.length > 0) {
-      return pledgePayments
-        .map((payment) => ({
-          id: `pledge-pay-${payment.id}`,
-          date: payment.paymentDate,
-          time: historyTime(payment.createdAt),
-          title: `${paymentKindLabel(payment.kind)} · ${formatCurrency(payment.amount)}`,
-          note: payment.note || paymentSplitNote(payment),
-        }))
-        .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
-    }
-    const rows: HistoryRow[] = payments.map((payment) => ({
-      id: `pay-${payment.id}`,
-      date: payment.entryDate,
-      time: historyTime(payment.createdAt),
-      title: `Paid ${formatCurrency(payment.amount)}`,
-      note:
-        payment.note ||
-        (summary.status === 'redeemed' && payment.amount >= summary.principal
-          ? 'Loan settled (Full payment)'
-          : 'Payment received'),
-    }))
+    const rows: HistoryRow[] =
+      pledgePayments.length > 0
+        ? pledgePayments.map((payment) => ({
+            id: `pledge-pay-${payment.id}`,
+            date: payment.paymentDate,
+            createdAt: payment.createdAt || payment.paymentDate,
+            time: historyTime(payment.createdAt),
+            title: `${paymentKindLabel(payment.kind)} · ${formatCurrency(payment.amount)}`,
+            note: payment.note || paymentSplitNote(payment),
+            tone: 'paid',
+          }))
+        : payments.map((payment) => ({
+            id: `pay-${payment.id}`,
+            date: payment.entryDate,
+            createdAt: payment.createdAt || payment.entryDate,
+            time: historyTime(payment.createdAt),
+            title: `Paid ${formatCurrency(payment.amount)}`,
+            note:
+              payment.note ||
+              (summary.status === 'redeemed' && payment.amount >= summary.principal
+                ? 'Loan settled (Full payment)'
+                : 'Payment received'),
+            tone: 'paid',
+          }))
     for (const topup of topups) {
       rows.push({
         id: `topup-${topup.id}`,
         date: topup.topupDate,
+        createdAt: topup.createdAt || topup.topupDate,
         time: historyTime(topup.createdAt),
         title: `Extra ${formatCurrency(topup.amount)}`,
         note: topup.note || 'Extra loan',
+        tone: 'extra',
       })
     }
     if (rows.length === 0 && summary.amountCollected > 0) {
       rows.push({
         id: 'collected',
         date: pledge?.redeemedDate || summary.pledgeDate,
+        createdAt: pledge?.createdAt || summary.pledgeDate,
         time: historyTime(pledge?.createdAt),
         title: `Paid ${formatCurrency(summary.amountCollected)}`,
         note: summary.status === 'redeemed' ? 'Loan settled (Full payment)' : 'Amount collected',
+        tone: 'paid',
       })
     }
-    return rows.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+    return rows.sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) ||
+        b.createdAt.localeCompare(a.createdAt) ||
+        b.id.localeCompare(a.id),
+    )
   }, [
     pledgePayments,
     payments,
@@ -260,8 +273,10 @@ export function AdaguDueDetailDrawer({
                           type="button"
                           role="menuitem"
                           className="adagu-detail-more-item"
-                          disabled={busy}
+                          disabled={busy || summary.interestDue <= 0.005}
+                          title={summary.interestDue > 0.005 ? undefined : 'No interest is due'}
                           onClick={() => {
+                            if (summary.interestDue <= 0.005) return
                             setMoreOpen(false)
                             onCollectInterest()
                           }}
@@ -626,7 +641,7 @@ export function AdaguDueDetailDrawer({
           </div>
 
           <div className="adagu-detail-split">
-            <section className="adagu-detail-card">
+            <section className="adagu-detail-card adagu-detail-history-card">
               <div className="adagu-detail-card-head">
                 <CheckCircle2 size={16} strokeWidth={1.75} aria-hidden />
                 <h3>Payment History</h3>
@@ -636,7 +651,10 @@ export function AdaguDueDetailDrawer({
               ) : (
                 <ul className="adagu-detail-history">
                   {history.map((row) => (
-                    <li key={row.id}>
+                    <li
+                      key={row.id}
+                      className={`adagu-detail-history-item adagu-detail-history-item--${row.tone}`}
+                    >
                       <span className="adagu-detail-history-dot" aria-hidden />
                       <div className="adagu-detail-history-copy">
                         <span className="adagu-detail-history-date">{formatDisplayDate(row.date)}</span>

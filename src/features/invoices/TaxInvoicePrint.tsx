@@ -130,22 +130,42 @@ export function TaxInvoicePrint({
         <section className="tax-invoice-meta">
           <div className="tax-invoice-party">
             <h2>{labels.taxBillToLabel}</h2>
-            <p className="tax-invoice-customer-name">{data.customerName}</p>
-            {data.customerGstin ? (
-              <p className="tax-invoice-customer-address">
-                {labels.taxGstinLabel} {data.customerGstin}
+            {data.customerName ? (
+              <p className="bill-party-line">
+                <span className="bill-party-label">{labels.customerLabel}</span>
+                <span className="bill-party-value tax-invoice-customer-name">
+                  {data.customerName}
+                </span>
               </p>
             ) : null}
-            {vis.showCustomerAddress
-              ? data.customerAddressLines.map((line) => (
-                  <p key={line} className="tax-invoice-customer-address">
-                    {line}
-                  </p>
-                ))
-              : null}
+            {data.customerGstin ? (
+              <p className="bill-party-line">
+                <span className="bill-party-label">{labels.taxGstinLabel}</span>
+                <span className="bill-party-value">{data.customerGstin}</span>
+              </p>
+            ) : null}
+            {vis.showCustomerAddress && data.customerAddressLines.length > 0 ? (
+              <p className="bill-party-line">
+                <span className="bill-party-label">{labels.addressLabel}</span>
+                <span className="bill-party-value">
+                  {data.customerAddressLines.map((line, index) => (
+                    <span key={`${index}-${line}`} className="bill-party-address-line">
+                      {line}
+                    </span>
+                  ))}
+                </span>
+              </p>
+            ) : null}
+            {data.customerGuardian ? (
+              <p className="bill-party-line">
+                <span className="bill-party-label">{labels.guardianLabel}</span>
+                <span className="bill-party-value">{data.customerGuardian}</span>
+              </p>
+            ) : null}
             {data.customerPhone ? (
-              <p className="tax-invoice-customer-address">
-                {labels.taxMobileLabel} {data.customerPhone}
+              <p className="bill-party-line">
+                <span className="bill-party-label">{labels.taxMobileLabel}</span>
+                <span className="bill-party-value">{data.customerPhone}</span>
               </p>
             ) : null}
           </div>

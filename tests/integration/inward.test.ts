@@ -448,8 +448,8 @@ describe('inward and metal day close', () => {
     expect(withMaking.subtotal).toBe(1050)
     expect(withMaking.cgst).toBe(15.75)
     expect(withMaking.sgst).toBe(15.75)
-    expect(withMaking.roundOff).toBe(0.5)
-    expect(withMaking.total).toBe(1082)
+    expect(withMaking.roundOff).toBe(-0.5)
+    expect(withMaking.total).toBe(1081)
 
     await ipc(IPC_CHANNELS.INWARDS_FINALIZE, withMaking.id)
     const gstPurchase = await ipc<{

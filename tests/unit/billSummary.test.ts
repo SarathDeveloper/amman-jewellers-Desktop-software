@@ -68,6 +68,8 @@ describe('bill summary', () => {
   it('suggests nearest-rupee round off and payment status', () => {
     expect(suggestRoundOff(1234.6)).toBe(0.4)
     expect(suggestRoundOff(1234.4)).toBe(-0.4)
+    expect(suggestRoundOff(1234.5)).toBe(-0.5)
+    expect(suggestRoundOff(22000.5)).toBe(-0.5)
     expect(paymentStatusFor(1000, 1000, 1000)).toBe('paid')
     expect(paymentStatusFor(1000, 400, 1000)).toBe('partial')
     expect(paymentStatusFor(1000, 0, 1000)).toBe('unpaid')

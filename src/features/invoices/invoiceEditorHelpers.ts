@@ -349,19 +349,23 @@ export function computeSaleBreakdown(lines: EditorLine[]) {
   let otherCharges = 0
   let itemCount = 0
   let totalGrossWeight = 0
+  let hasVa = false
+  let hasMc = false
   for (const line of lines) {
     if (line.lineKind === 'exchange' || !isActiveEditorLine(line)) continue
     itemCount += 1
     const qty = numericFieldToNumber(line.qty, 1)
     const net = numericFieldToNumber(line.netWeight)
     const rate = numericFieldToNumber(line.metalRate ?? line.rate)
-    const { makingCharges: making, wastagePct } = exclusiveVamc(line)
+    const { mode, makingCharges: making, wastagePct } = exclusiveVamc(line)
     const metalValue = net * qty * rate
     jewelleryValue += metalValue
     wastageAmount += metalValue * (wastagePct / 100)
     makingCharges += making * qty
     otherCharges += numericFieldToNumber(line.otherCharges) * qty
     totalGrossWeight += (line.grossWeight ?? 0) * qty
+    if (mode === 'amount') hasMc = true
+    else hasVa = true
   }
   return {
     jewelleryValue: roundMoney(jewelleryValue),
@@ -370,6 +374,8 @@ export function computeSaleBreakdown(lines: EditorLine[]) {
     otherCharges: roundMoney(otherCharges),
     itemCount,
     totalGrossWeight: Math.round(totalGrossWeight * 1000) / 1000,
+    hasVa,
+    hasMc,
   }
 }
 

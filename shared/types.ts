@@ -553,6 +553,8 @@ export interface BillCustomerInfo {
   phone: string
   address: string
   gstin: string
+  /** Father / husband name as saved on the customer (customers.guardian_name). */
+  guardianName?: string
 }
 
 export interface InvoiceListQuery {
@@ -588,6 +590,7 @@ export interface PledgeListQuery {
   q?: string
   status?: string
   sort?: 'asc' | 'desc'
+  customerId?: number
 }
 
 export interface HistoricalInvoiceInput {

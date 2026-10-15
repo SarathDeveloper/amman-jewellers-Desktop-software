@@ -17,15 +17,17 @@ export function InterestCollectionModal({
   onClose: () => void
   onSubmit: (input: { amount: number; collectedDate: string; mode: PledgePaymentMode }) => void
 }) {
-  const suggested = Math.min(summary.monthlyInterest, summary.remaining) || summary.remaining
-  const [amount, setAmount] = useState(suggested)
-  const [collectedDate, setCollectedDate] = useState(localTodayIso())
-  const [mode, setMode] = useState<PledgePaymentMode>('cash')
-
   const interestDue = useMemo(
     () => Math.max(summary.interestDue, 0),
     [summary.interestDue],
   )
+  const interestPayable = interestDue > 0.005
+  const suggested = interestPayable
+    ? Math.min(summary.monthlyInterest, summary.remaining) || summary.remaining
+    : 0
+  const [amount, setAmount] = useState(suggested)
+  const [collectedDate, setCollectedDate] = useState(localTodayIso())
+  const [mode, setMode] = useState<PledgePaymentMode>('cash')
 
   return (
     <Modal
@@ -40,8 +42,11 @@ export function InterestCollectionModal({
           <button
             type="button"
             className="btn"
-            disabled={busy || amount <= 0}
-            onClick={() => onSubmit({ amount, collectedDate, mode })}
+            disabled={busy || !interestPayable || amount <= 0}
+            onClick={() => {
+              if (!interestPayable || amount <= 0) return
+              onSubmit({ amount, collectedDate, mode })
+            }}
           >
             {busy ? 'Recording…' : 'Record collection'}
           </button>
@@ -53,7 +58,11 @@ export function InterestCollectionModal({
         {formatCurrency(summary.monthlyInterest)} · remaining{' '}
         <strong>{formatCurrency(summary.remaining)}</strong>.
       </p>
-      {summary.isInterestOverdue ? (
+      {!interestPayable ? (
+        <p className="muted">
+          No interest is due until {formatDisplayDate(summary.nextInterestDue)}.
+        </p>
+      ) : summary.isInterestOverdue ? (
         <p className="dues-overdue-copy">Interest period is overdue. Collect before closing the loan.</p>
       ) : null}
       <dl className="dues-detail-totals">
@@ -88,7 +97,8 @@ export function InterestCollectionModal({
             step="0.01"
             max={summary.remaining}
             value={amount || ''}
-            autoFocus
+            autoFocus={interestPayable}
+            disabled={!interestPayable}
             onChange={(event) => setAmount(Number(event.target.value) || 0)}
           />
         </label>
@@ -111,13 +121,15 @@ export function InterestCollectionModal({
         <button
           type="button"
           className="btn ghost"
-          onClick={() => setAmount(interestDue > 0 ? interestDue : Math.min(summary.monthlyInterest, summary.remaining))}
+          disabled={!interestPayable}
+          onClick={() => setAmount(Math.min(interestDue, summary.remaining))}
         >
           Fill interest due
         </button>
         <button
           type="button"
           className="btn ghost"
+          disabled={!interestPayable}
           onClick={() => setAmount(Math.min(summary.monthlyInterest, summary.remaining))}
         >
           Fill monthly interest

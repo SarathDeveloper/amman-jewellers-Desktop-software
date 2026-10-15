@@ -90,6 +90,7 @@ type InvoiceRow = {
   customer_phone_snap: string
   customer_address_snap: string
   customer_gstin_snap: string
+  customer_guardian_snap: string
   rates_snapshot: string
   cancelled_at: string | null
   cancel_reason: string
@@ -551,8 +552,11 @@ function customerSnapshotFromRow(row: InvoiceRow): BillCustomerInfo | null {
   const phone = row.customer_phone_snap ?? ''
   const address = row.customer_address_snap ?? ''
   const gstin = row.customer_gstin_snap ?? ''
+  const guardianName = row.customer_guardian_snap ?? ''
+  // Guardian alone is not a snapshot. Old-ledger bills keep empty name/phone/address
+  // snaps and must keep printing the live customer.
   if (!name && !phone && !address && !gstin) return null
-  return { name, phone, address, gstin }
+  return { name, phone, address, gstin, guardianName }
 }
 
 function ratesSnapshotFromRow(row: InvoiceRow): MetalRates | null {
@@ -1442,9 +1446,9 @@ router.post(
 
       const rates = getLatestMetalRates(db)
       const customer = db
-        .prepare('SELECT name, phone, address, gstin FROM customers WHERE id = ?')
+        .prepare('SELECT name, phone, address, gstin, guardian_name FROM customers WHERE id = ?')
         .get(row.customer_id) as
-        | { name: string; phone: string; address: string; gstin: string }
+        | { name: string; phone: string; address: string; gstin: string; guardian_name: string }
         | undefined
       const assignedNo = isDraftInvoiceNo(row.invoice_no)
         ? nextInvoiceNo(db, row.bill_format, row.invoice_date)
@@ -1457,6 +1461,7 @@ router.post(
              customer_phone_snap = ?,
              customer_address_snap = ?,
              customer_gstin_snap = ?,
+             customer_guardian_snap = ?,
              rates_snapshot = ?
          WHERE id = ?`,
       ).run(
@@ -1465,6 +1470,7 @@ router.post(
         customer?.phone ?? row.customer_phone ?? '',
         customer?.address ?? '',
         customer?.gstin ?? '',
+        customer?.guardian_name ?? '',
         rates ? JSON.stringify(rates) : '',
         id,
       )

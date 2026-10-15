@@ -71,6 +71,8 @@ export function getMigrations(): { version: number; sql: string; disableForeignK
     { version: 61, sql: loadMigrationSql('061_due_payment_mode.sql') },
     { version: 62, sql: loadMigrationSql('062_stock_add_inward.sql') },
     { version: 63, sql: loadMigrationSql('063_shop_address_line_break.sql') },
+    { version: 64, sql: loadMigrationSql('064_invoice_guardian_snap.sql') },
+    { version: 65, sql: loadMigrationSql('065_clear_orphan_guardian_snap.sql') },
   ]
 }
 

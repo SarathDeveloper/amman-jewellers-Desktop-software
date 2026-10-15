@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { IndianRupee, Pencil, Plus, Trash2 } from 'lucide-react'
-import type { Customer, DuesLedger, GoldSavingAccount, Invoice, OldGoldPurchase } from '@shared/types'
+import type { Customer, DuesLedger, GoldSavingAccount } from '@shared/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { DataTable, TablePager } from '../../components/DataTable'
-import { Drawer } from '../../components/Drawer'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingState } from '../../components/LoadingState'
 import { Modal } from '../../components/Modal'
@@ -12,18 +12,16 @@ import { PageHeader } from '../../components/PageHeader'
 import { SearchBar } from '../../components/SearchBar'
 import { StatCard } from '../../components/StatCard'
 import { useToast } from '../../components/toastContext'
-import { formatCurrency, formatDisplayDate, formatWeight, paginate, TABLE_PAGE_SIZE } from '../../lib/format'
+import { formatCurrency, formatDisplayDate, paginate, TABLE_PAGE_SIZE } from '../../lib/format'
 import { api } from '../../lib/api'
 import { CollectPaymentModal } from '../goldSavings/collections/CollectPaymentModal'
 import { PrintPreviewModal } from '../print/PrintPreviewModal'
-import { buildCustomerProfile } from './customerProfile'
 import { monthRange } from '../invoices/billingInsights'
 
 export function CustomersPage() {
   const { showToast } = useToast()
+  const navigate = useNavigate()
   const [customers, setCustomers] = useState<Customer[]>([])
-  const [profileInvoices, setProfileInvoices] = useState<Invoice[]>([])
-  const [profileOldGold, setProfileOldGold] = useState<OldGoldPurchase[]>([])
   const [ledger, setLedger] = useState<DuesLedger>({ columns: [], totalOutstanding: 0 })
   const [search, setSearch] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -34,7 +32,6 @@ export function CustomersPage() {
   const [editing, setEditing] = useState<Customer | null>(null)
   const [open, setOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
-  const [profile, setProfile] = useState<Customer | null>(null)
   const [page, setPage] = useState(1)
   const [gsAccounts, setGsAccounts] = useState<GoldSavingAccount[]>([])
   const [collectAccountId, setCollectAccountId] = useState<number | null>(null)
@@ -167,43 +164,6 @@ export function CustomersPage() {
     }
   }
 
-  useEffect(() => {
-    if (!profile) {
-      setProfileInvoices([])
-      setProfileOldGold([])
-      return
-    }
-    let active = true
-    void api
-      .listInvoices({ customerId: profile.id, page: 1, pageSize: 50, status: 'final' })
-      .then((page) => {
-        if (active) setProfileInvoices(page.items ?? [])
-      })
-      .catch(() => {
-        if (active) setProfileInvoices([])
-      })
-    void api
-      .listOldGoldPurchases({ customerId: profile.id })
-      .then((purchases) => {
-        if (active) setProfileOldGold(purchases)
-      })
-      .catch(() => {
-        if (active) setProfileOldGold([])
-      })
-    return () => {
-      active = false
-    }
-  }, [profile])
-
-  const profileSummary = profile
-    ? buildCustomerProfile(
-        profile.id,
-        profileInvoices,
-        ledger.columns.find((column) => column.customerId === profile.id),
-        profileOldGold,
-      )
-    : null
-
   return (
     <div className="app-page app-page-fill">
       <PageHeader
@@ -264,7 +224,7 @@ export function CustomersPage() {
                         type="button"
                         className="btn ghost customer-name-btn"
                         title={customer.name}
-                        onClick={() => setProfile(customer)}
+                        onClick={() => navigate(`/customers/${customer.id}`)}
                       >
                         {customer.name}
                       </button>
@@ -320,7 +280,6 @@ export function CustomersPage() {
           showToast(editing ? 'Customer updated' : 'Customer added', 'success')
           void load()
         }}
-        onError={(message) => setError(message)}
       />
 
       {deleteId !== null && (
@@ -380,107 +339,6 @@ export function CustomersPage() {
         />
       ) : null}
 
-      {profile && profileSummary && (
-        <Drawer title={profile.name} onClose={() => setProfile(null)}>
-          <div className="drawer-section">
-            <h3>Customer Profile</h3>
-            <p className="settings-row"><strong>Name</strong> {profile.name}</p>
-            <p className="settings-row"><strong>Phone</strong> {profile.phone || '—'}</p>
-            <p className="settings-row"><strong>Address</strong> {profile.address || '—'}</p>
-            <p className="settings-row"><strong>Aadhaar</strong> {profile.aadhaar || '—'}</p>
-            <p className="settings-row"><strong>PAN</strong> {profile.pan || '—'}</p>
-          </div>
-          <div className="drawer-section">
-            <h3>Financial Summary</h3>
-            <p className="settings-row"><strong>Total Purchases</strong> {formatCurrency(profileSummary.totalPurchases)}</p>
-            <p className="settings-row"><strong>Total Paid</strong> {formatCurrency(profileSummary.totalPaid)}</p>
-            <p className="settings-row"><strong>Outstanding</strong> {formatCurrency(profileSummary.outstanding)}</p>
-          </div>
-          <div className="drawer-section">
-            <h3>Old gold sold</h3>
-            {profileSummary.oldGold.length === 0 ? (
-              <p className="muted">No old gold purchases yet.</p>
-            ) : (
-              <>
-                <p className="settings-row">
-                  <strong>Net weight</strong> {formatWeight(profileSummary.oldGoldNetWeight, 3)}
-                </p>
-                <p className="settings-row">
-                  <strong>Amount</strong> {formatCurrency(profileSummary.oldGoldAmount)}
-                </p>
-                <p className="settings-row">
-                  <strong>Open balance</strong> {formatCurrency(profileSummary.oldGoldOpenBalance)}
-                </p>
-                <ul className="dues-detail-history">
-                  {profileSummary.oldGold.map((purchase) => (
-                    <li key={purchase.id}>
-                      <span>{purchase.purchaseNo}</span>
-                      <span>{formatDisplayDate(purchase.date)}</span>
-                      <span className="num">{formatWeight(purchase.netWeight, 3)}</span>
-                      <span className="num">{formatCurrency(purchase.amount)}</span>
-                      <span className={`num ${purchase.balance > 0 ? 'due-amount' : 'paid-amount'}`}>
-                        Balance {formatCurrency(purchase.balance)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
-          <div className="drawer-section">
-            <h3>Purchase History</h3>
-            {profileSummary.purchases.length === 0 ? (
-              <p className="muted">No purchases yet.</p>
-            ) : (
-              <ul className="dues-detail-history">
-                {profileSummary.purchases.map((invoice) => (
-                  <li key={invoice.invoiceId}>
-                    <span>{invoice.invoiceNo}</span>
-                    <span>{formatDisplayDate(invoice.date)}</span>
-                    <span className="num">{formatCurrency(invoice.total)}</span>
-                    <span className="num paid-amount">Paid {formatCurrency(invoice.amountPaid)}</span>
-                    <span className={`num ${invoice.balanceDue > 0 ? 'due-amount' : 'paid-amount'}`}>
-                      Due {formatCurrency(invoice.balanceDue)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="drawer-section">
-            <h3>Payment History</h3>
-            {profileSummary.payments.length === 0 ? (
-              <p className="muted">No payments recorded.</p>
-            ) : (
-              <ul className="dues-detail-history">
-                {profileSummary.payments.map((payment) => (
-                  <li key={payment.id}>
-                    <span>{formatDisplayDate(payment.date)}</span>
-                    <span className="num">− {formatCurrency(payment.amount)}</span>
-                    {payment.invoiceNo ? <span>{payment.invoiceNo}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="drawer-section">
-            <h3>Due History</h3>
-            {profileSummary.dues.length === 0 ? (
-              <p className="muted">No due history.</p>
-            ) : (
-              <ul className="dues-detail-history">
-                {profileSummary.dues.map((due) => (
-                  <li key={due.id}>
-                    <span>{formatDisplayDate(due.date)}</span>
-                    <span className="num">{formatCurrency(due.amount)}</span>
-                    {due.invoiceNo ? <span>{due.invoiceNo}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </Drawer>
-      )}
     </div>
   )
 }

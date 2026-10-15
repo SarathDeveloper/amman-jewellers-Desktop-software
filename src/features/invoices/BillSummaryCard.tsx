@@ -1,14 +1,22 @@
+import { useState } from 'react'
 import { Calculator, Percent, Scale, ShoppingBag } from 'lucide-react'
 import type { BillSummary } from '@shared/billing/billSummary'
 import { suggestRoundOff } from '@shared/billing/billSummary'
 import { formatCurrency, formatInr, formatWeight } from '../../lib/format'
 import { parseNumericField } from '../../lib/numericField'
 
+/** A leading minus or a trailing decimal is still being typed, not a saved round off. */
+function isUnfinishedRoundOff(raw: string): boolean {
+  return raw === '-' || raw === '.' || raw === '-.' || raw.endsWith('.')
+}
+
 export function BillSummaryCard({
   summary,
   jewelleryValue,
   wastageAmount,
   makingCharges,
+  hasVa,
+  hasMc,
   otherCharges,
   itemCount,
   totalGrossWeight,
@@ -22,6 +30,8 @@ export function BillSummaryCard({
   jewelleryValue: number
   wastageAmount: number
   makingCharges: number
+  hasVa: boolean
+  hasMc: boolean
   otherCharges: number
   itemCount: number
   totalGrossWeight: number
@@ -34,6 +44,33 @@ export function BillSummaryCard({
   const suggested = suggestRoundOff(summary.amountBeforeRoundOff)
   const showDiscount = !disabled || discount > 0
   const showRoundOff = !disabled || summary.roundOff !== 0
+  const [roundOffDraft, setRoundOffDraft] = useState<string | null>(null)
+  const [roundOffHover, setRoundOffHover] = useState(false)
+  const roundOffShown =
+    roundOffDraft !== null ? roundOffDraft : summary.roundOff === 0 ? '' : String(summary.roundOff)
+
+  function openRoundOff() {
+    if (disabled) return
+    if (roundOffDraft !== null) return
+    setRoundOffDraft(summary.roundOff === 0 ? '' : String(summary.roundOff))
+  }
+
+  function changeRoundOff(raw: string) {
+    if (raw !== '' && !/^-?\d*\.?\d*$/.test(raw)) return
+    setRoundOffDraft(raw)
+    if (raw === '') {
+      onRoundOffChange(0)
+      return
+    }
+    if (isUnfinishedRoundOff(raw)) return
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return
+    onRoundOffChange(parsed)
+  }
+
+  function closeRoundOff() {
+    setRoundOffDraft(null)
+  }
 
   return (
     <div className="adagu-design-card sale-bill-summary-card">
@@ -75,14 +112,18 @@ export function BillSummaryCard({
             <span className="label">Total Jewellery Value</span>
             <span className="value">{formatCurrency(jewelleryValue)}</span>
           </div>
-          <div className="adagu-calculated-row">
-            <span className="label">Total Wastage Amount</span>
-            <span className="value">{formatCurrency(wastageAmount)}</span>
-          </div>
-          <div className="adagu-calculated-row">
-            <span className="label">Total Labour Charges</span>
-            <span className="value">{formatCurrency(makingCharges)}</span>
-          </div>
+          {hasVa && (
+            <div className="adagu-calculated-row">
+              <span className="label">VA/MC</span>
+              <span className="value">{formatCurrency(wastageAmount)}</span>
+            </div>
+          )}
+          {hasMc && (
+            <div className="adagu-calculated-row">
+              <span className="label">Making charges</span>
+              <span className="value">{formatCurrency(makingCharges)}</span>
+            </div>
+          )}
           {otherCharges > 0 && (
             <div className="adagu-calculated-row">
               <span className="label">Other charges</span>
@@ -151,17 +192,27 @@ export function BillSummaryCard({
               <span className="label">Round off</span>
               <span className="value bill-summary-roundoff-input">
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder={roundOffDraft !== null || roundOffHover ? '' : '0'}
                   disabled={disabled}
-                  value={summary.roundOff}
-                  onChange={(event) => {
-                    const parsed = parseNumericField(event.target.value)
-                    onRoundOffChange(parsed === '' ? 0 : parsed)
-                  }}
+                  aria-label="Round off"
+                  value={roundOffShown}
+                  onMouseEnter={() => setRoundOffHover(true)}
+                  onMouseLeave={() => setRoundOffHover(false)}
+                  onFocus={openRoundOff}
+                  onBlur={closeRoundOff}
+                  onChange={(event) => changeRoundOff(event.target.value)}
                 />
                 {!disabled && suggested !== 0 && suggested !== summary.roundOff ? (
-                  <button type="button" className="btn ghost bill-summary-suggest" onClick={() => onRoundOffChange(suggested)}>
+                  <button
+                    type="button"
+                    className="btn ghost bill-summary-suggest"
+                    onClick={() => {
+                      setRoundOffDraft(null)
+                      onRoundOffChange(suggested)
+                    }}
+                  >
                     Use {suggested > 0 ? '+' : '−'}₹{formatInr(Math.abs(suggested), 2)}
                   </button>
                 ) : null}

@@ -33,6 +33,7 @@ export function AdaguQuickActions({
   const hasBalance = summary.remaining > 0
   const redeemed = summary.status === 'redeemed'
   const panel = Boolean(stacked)
+  const interestPayable = summary.interestDue > 0.005
 
   return (
     <div className={panel ? 'adagu-detail-actions' : 'row-actions'}>
@@ -63,7 +64,8 @@ export function AdaguQuickActions({
           <button
             type="button"
             className={panel ? 'btn secondary' : 'btn ghost'}
-            disabled={disabled}
+            disabled={disabled || !interestPayable}
+            title={interestPayable ? undefined : 'No interest is due'}
             onClick={onCollectInterest}
           >
             {panel ? <Percent size={16} strokeWidth={1.75} aria-hidden /> : null}

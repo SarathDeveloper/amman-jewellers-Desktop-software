@@ -78,6 +78,25 @@ export const productInputSchema = z
 
 const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/
 
+export const PAN_FORMAT_MESSAGE = 'PAN must be in format AAAAA9999A'
+
+/** Keep only a PAN prefix: 5 letters, 4 digits, 1 letter. */
+export function formatPanInput(value: string): string {
+  const raw = value.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  let out = ''
+  for (const char of raw) {
+    if (out.length >= 10) break
+    const letters = out.length < 5 || out.length === 9
+    if (letters ? /[A-Z]/.test(char) : /[0-9]/.test(char)) out += char
+  }
+  return out
+}
+
+export function isCompletePan(value: string): boolean {
+  const pan = value.trim().toUpperCase()
+  return pan === '' || panPattern.test(pan)
+}
+
 export const customerInputSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(200),
   phone: z
@@ -99,8 +118,8 @@ export const customerInputSchema = z.object({
     .optional()
     .default('')
     .transform((value) => value.trim().toUpperCase())
-    .refine((value) => value === '' || panPattern.test(value), {
-      message: 'PAN must be in format AAAAA9999A',
+    .refine((value) => isCompletePan(value), {
+      message: PAN_FORMAT_MESSAGE,
     }),
   idProofType: z.string().trim().max(50).optional().default(''),
 })
@@ -305,6 +324,9 @@ export const billTemplateSchema = z.object({
   taxBillNoLabel: billLabel,
   taxDateLabel: billLabel,
   taxBillToLabel: billLabel,
+  customerLabel: billLabel,
+  addressLabel: billLabel,
+  guardianLabel: billLabel,
   taxColParticulars: billLabel,
   taxColTotWgt: billLabel,
   taxColGrsWgt: billLabel,
@@ -825,7 +847,7 @@ const pledgeBaseSchema = z.object({
   guardianName: z.string().max(200).optional(),
   customerAddress: z.string().max(500).optional(),
   assessedValue: z.number().nonnegative(),
-  loanAmount: z.number().positive(),
+  loanAmount: z.number().nonnegative(),
   charges: z.number().nonnegative().optional(),
   interestPct: z.number().nonnegative(),
   repaymentDueDate: z

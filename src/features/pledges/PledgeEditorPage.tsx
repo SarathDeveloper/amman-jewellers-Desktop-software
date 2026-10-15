@@ -4,20 +4,16 @@ import {
   ArrowLeft,
   Calculator,
   Calendar,
-  Check,
   Eye,
   FileDown,
-  Gavel,
   Gem,
   IdCard,
   IndianRupee,
   MapPin,
-  Megaphone,
   MinusCircle,
   Percent,
   Phone,
   Plus,
-  RotateCcw,
   Save,
   Scale,
   ShoppingBag,
@@ -38,8 +34,17 @@ import {
   ratePerGram,
 } from "@shared/billing/pledgeValuation";
 import { localTodayIso } from "@shared/localDate";
+import { formatPanInput, isCompletePan, PAN_FORMAT_MESSAGE } from "@shared/schemas";
+import { CustomerRecordPanel } from "../customers/CustomerRecordPanel";
+import {
+  assertCustomerInput,
+  takeCustomerFormError,
+  type CustomerField,
+  type CustomerFieldErrors,
+} from "../customers/customerFieldErrors";
 import type {
   Customer,
+  CustomerInput,
   MetalRates,
   Pledge,
   PledgeAuctionInput,
@@ -137,6 +142,7 @@ export function PledgeEditorPage() {
     useState<NumericField>(DEFAULT_INTEREST_PCT);
   const [items, setItems] = useState<EditorItem[]>([newItem()]);
   const [error, setError] = useState<string | null>(null);
+  const [customerFieldErrors, setCustomerFieldErrors] = useState<CustomerFieldErrors>({});
   const [saving, setSaving] = useState(false);
   const [redeemOpen, setRedeemOpen] = useState(false);
   const [renewLoanOpen, setRenewLoanOpen] = useState(false);
@@ -427,6 +433,7 @@ export function PledgeEditorPage() {
     setCustomerAddress(customer.address ?? "");
     setAadhaar(customer.aadhaar ?? "");
     setPan(customer.pan ?? "");
+    setCustomerFieldErrors({});
   }
 
   function clearBorrower() {
@@ -437,6 +444,7 @@ export function PledgeEditorPage() {
     setCustomerAddress("");
     setAadhaar("");
     setPan("");
+    setCustomerFieldErrors({});
   }
 
   function setPaidAmount(value: number) {
@@ -489,24 +497,32 @@ export function PledgeEditorPage() {
     });
   }
 
-  async function ensureCustomerId(): Promise<number> {
-    const name = customerName.trim();
-    if (!name) throw new Error("Enter customer name");
+  function clearCustomerField(field: CustomerField) {
+    setCustomerFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
 
+  async function ensureCustomerId(): Promise<number> {
     const existing = selectedCustomer;
+    const input: CustomerInput = {
+      name: customerName.trim(),
+      phone: customerPhone.replace(/\D/g, "").slice(0, 10),
+      address: customerAddress.trim(),
+      guardianName: guardianName.trim(),
+      notes: existing?.notes ?? "",
+      gstin: existing?.gstin ?? "",
+      aadhaar: aadhaar.replace(/\D/g, "").slice(0, 12),
+      pan: pan.trim().toUpperCase(),
+      idProofType: existing?.idProofType ?? "",
+    };
+    assertCustomerInput(input);
+
     if (existing) {
-      const updated = await api.updateCustomer(existing.id, {
-        name,
-        phone: customerPhone.replace(/\D/g, "").slice(0, 10),
-        address: customerAddress.trim(),
-        guardianName: guardianName.trim(),
-        notes: "",
-        gstin: existing.gstin ?? "",
-        aadhaar: aadhaar.replace(/\D/g, "").slice(0, 12),
-        pan: pan.trim().toUpperCase(),
-        // Preserve whatever ID proof type the customer already has on file.
-        idProofType: existing.idProofType ?? "",
-      });
+      const updated = await api.updateCustomer(existing.id, input);
       setCustomers((current) =>
         current.map((row) => (row.id === updated.id ? updated : row)),
       );
@@ -514,17 +530,7 @@ export function PledgeEditorPage() {
       return updated.id;
     }
 
-    const created = await api.createCustomer({
-      name,
-      phone: customerPhone.replace(/\D/g, "").slice(0, 10),
-      address: customerAddress.trim(),
-      guardianName: guardianName.trim(),
-      notes: "",
-      gstin: "",
-      aadhaar: aadhaar.replace(/\D/g, "").slice(0, 12),
-      pan: pan.trim().toUpperCase(),
-      idProofType: "",
-    });
+    const created = await api.createCustomer(input);
     setCustomers((current) => [created, ...current]);
     setCustomerId(created.id);
     return created.id;
@@ -565,22 +571,28 @@ export function PledgeEditorPage() {
     };
   }
 
-  function validatePayload(payload: ReturnType<typeof buildPayload>) {
+  function validatePayload(
+    payload: ReturnType<typeof buildPayload>,
+    options?: { allowEmptyLoan?: boolean },
+  ) {
     if (!payload.customerId) throw new Error("Enter customer name");
     if (payload.items.some((item) => !item.description.trim())) {
       throw new Error("Enter a description for each jewel");
     }
-    if (payload.loanAmount <= 0) throw new Error("Enter loan amount");
+    if (!options?.allowEmptyLoan && payload.loanAmount <= 0) {
+      throw new Error("Enter loan amount");
+    }
     return payload;
   }
 
   /** Saves the draft and throws on failure, so callers can report it where it happened. */
-  async function persistDraftCore(): Promise<Pledge> {
+  async function persistDraftCore(options?: { allowEmptyLoan?: boolean }): Promise<Pledge> {
     setSaving(true);
     setError(null);
+    setCustomerFieldErrors({});
     try {
       const resolvedCustomerId = await ensureCustomerId();
-      const payload = validatePayload(buildPayload(resolvedCustomerId));
+      const payload = validatePayload(buildPayload(resolvedCustomerId), options);
       if (isNew && !pledge?.id) {
         const created = await api.createPledge(payload);
         setPledge(created);
@@ -596,10 +608,16 @@ export function PledgeEditorPage() {
     }
   }
 
-  async function persistDraft(): Promise<Pledge | null> {
+  async function persistDraft(options?: { allowEmptyLoan?: boolean }): Promise<Pledge | null> {
     try {
-      return await persistDraftCore();
+      return await persistDraftCore(options);
     } catch (err) {
+      const fields = takeCustomerFormError(err);
+      if (fields) {
+        setCustomerFieldErrors(fields);
+        setError(null);
+        return null;
+      }
       setError(err instanceof Error ? err.message : "Failed to save pledge");
       return null;
     }
@@ -608,7 +626,7 @@ export function PledgeEditorPage() {
   /** Photos hang off the loan row, so an unsaved draft is created on demand. */
   async function ensurePledgeIdForPhotos(): Promise<number> {
     if (pledge?.id) return pledge.id;
-    return (await persistDraftCore()).id;
+    return (await persistDraft({ allowEmptyLoan: true }))?.id ?? 0;
   }
 
   async function saveDraft() {
@@ -620,10 +638,13 @@ export function PledgeEditorPage() {
     setSanctionOpen(false);
     const pending = afterSanction;
     setAfterSanction(null);
+    if (!isCompletePan(pan)) {
+      setCustomerFieldErrors((current) => ({ ...current, pan: PAN_FORMAT_MESSAGE }));
+      setError(null);
+      return;
+    }
     if (requireKyc && !aadhaar.trim() && !pan.trim()) {
-      setError(
-        "KYC is required: enter the borrower Aadhaar or PAN before sanctioning",
-      );
+      setError(null);
       return;
     }
     const saved = await persistDraft();
@@ -922,17 +943,9 @@ export function PledgeEditorPage() {
             type="button"
             className="btn ghost"
             disabled={busy}
-            onClick={() => window.location.reload()}
-          >
-            <RotateCcw size={16} /> Reset
-          </button>
-          <button
-            type="button"
-            className="btn ghost"
-            disabled={busy}
             onClick={() => void openPreview()}
           >
-            <Eye size={16} strokeWidth={1.75} aria-hidden /> Preview
+            <Eye size={16} strokeWidth={1.75} aria-hidden /> View bill
           </button>
           <button
             type="button"
@@ -963,7 +976,7 @@ export function PledgeEditorPage() {
                 }}
               >
                 <FileDown size={16} strokeWidth={1.75} aria-hidden />
-                {saving ? "Generating…" : "Generate"}
+                {saving ? "Sanctioning…" : "Sanction loan"}
               </button>
               {!isNew ? (
                 <button
@@ -975,59 +988,6 @@ export function PledgeEditorPage() {
                   <Trash2 size={16} strokeWidth={1.75} aria-hidden /> Delete
                 </button>
               ) : null}
-            </>
-          ) : null}
-          {isActiveLoan ? (
-            <>
-              <button
-                type="button"
-                className="btn secondary"
-                disabled={busy}
-                onClick={() => setRenewLoanOpen(true)}
-              >
-                <RotateCcw size={16} strokeWidth={1.75} aria-hidden />
-                Renew
-              </button>
-              <button
-                type="button"
-                className="btn secondary"
-                disabled={busy}
-                onClick={() => {
-                  setAuctionMode("notice");
-                  setAuctionOpen(true);
-                }}
-              >
-                <Megaphone size={16} strokeWidth={1.75} aria-hidden />
-                Auction notice
-              </button>
-              <button
-                type="button"
-                className="btn secondary"
-                disabled={busy}
-                onClick={() => {
-                  setAuctionMode("auction");
-                  setAuctionOpen(true);
-                }}
-              >
-                <Gavel size={16} strokeWidth={1.75} aria-hidden />
-                Record auction
-              </button>
-              <button
-                type="button"
-                className="btn btn-accent"
-                disabled={busy}
-                onClick={() => {
-                  setAmountCollected(
-                    duePreview.remaining || numericFieldToNumber(loanAmount),
-                  );
-                  setRedeemDiscount(0);
-                  setRedeemMode("cash");
-                  setRedeemDate(todayIso());
-                  setRedeemOpen(true);
-                }}
-              >
-                <Check size={16} strokeWidth={2} aria-hidden /> Collect / Redeem
-              </button>
             </>
           ) : null}
         </div>
@@ -1062,7 +1022,6 @@ export function PledgeEditorPage() {
                     setCustomers((current) => [customer, ...current]);
                     applyCustomerBorrower(customer);
                   }}
-                  onError={setError}
                 />
               </div>
             </div>
@@ -1077,7 +1036,11 @@ export function PledgeEditorPage() {
                   <input
                     disabled={!canEdit || busy}
                     value={customerName}
-                    onChange={(event) => setCustomerName(event.target.value)}
+                    aria-invalid={Boolean(customerFieldErrors.name)}
+                    onChange={(event) => {
+                      setCustomerName(event.target.value);
+                      clearCustomerField("name");
+                    }}
                     placeholder="sarath"
                   />
                   {customerName && (
@@ -1096,6 +1059,11 @@ export function PledgeEditorPage() {
                     </button>
                   )}
                 </div>
+                {customerFieldErrors.name ? (
+                  <p className="adagu-field-error" role="alert">
+                    {customerFieldErrors.name}
+                  </p>
+                ) : null}
               </div>
               <div className="adagu-field">
                 <label>
@@ -1106,10 +1074,20 @@ export function PledgeEditorPage() {
                   <input
                     disabled={!canEdit || busy}
                     value={customerPhone}
-                    onChange={(event) => setCustomerPhone(event.target.value)}
+                    aria-invalid={Boolean(customerFieldErrors.phone)}
+                    onChange={(event) => {
+                      setCustomerPhone(event.target.value.replace(/\D/g, "").slice(0, 10));
+                      clearCustomerField("phone");
+                    }}
                     placeholder="Mobile number"
+                    maxLength={10}
                   />
                 </div>
+                {customerFieldErrors.phone ? (
+                  <p className="adagu-field-error" role="alert">
+                    {customerFieldErrors.phone}
+                  </p>
+                ) : null}
               </div>
               <div className="adagu-field" style={{ gridColumn: "1 / -1" }}>
                 <label>Father / Mother / Husband Name</label>
@@ -1124,17 +1102,28 @@ export function PledgeEditorPage() {
                 </div>
               </div>
               <div className="adagu-field" style={{ gridColumn: "1 / -1" }}>
-                <label>Address</label>
+                <label>
+                  Address <span className="req">*</span>
+                </label>
                 <div className="adagu-input-with-icon">
                   <MapPin size={16} className="input-icon" />
                   <textarea
                     rows={1}
                     disabled={!canEdit || busy}
                     value={customerAddress}
-                    onChange={(event) => setCustomerAddress(event.target.value)}
+                    aria-invalid={Boolean(customerFieldErrors.address)}
+                    onChange={(event) => {
+                      setCustomerAddress(event.target.value);
+                      clearCustomerField("address");
+                    }}
                     placeholder="Address"
                   />
                 </div>
+                {customerFieldErrors.address ? (
+                  <p className="adagu-field-error" role="alert">
+                    {customerFieldErrors.address}
+                  </p>
+                ) : null}
               </div>
               <div className="adagu-field">
                 <label>Aadhaar</label>
@@ -1145,12 +1134,19 @@ export function PledgeEditorPage() {
                     inputMode="numeric"
                     maxLength={12}
                     value={aadhaar}
-                    onChange={(event) =>
-                      setAadhaar(event.target.value.replace(/\D/g, "").slice(0, 12))
-                    }
+                    aria-invalid={Boolean(customerFieldErrors.aadhaar)}
+                    onChange={(event) => {
+                      setAadhaar(event.target.value.replace(/\D/g, "").slice(0, 12));
+                      clearCustomerField("aadhaar");
+                    }}
                     placeholder="12 digits"
                   />
                 </div>
+                {customerFieldErrors.aadhaar ? (
+                  <p className="adagu-field-error" role="alert">
+                    {customerFieldErrors.aadhaar}
+                  </p>
+                ) : null}
               </div>
               <div className="adagu-field">
                 <label>PAN</label>
@@ -1160,17 +1156,19 @@ export function PledgeEditorPage() {
                     disabled={!canEdit || busy}
                     maxLength={10}
                     value={pan}
-                    onChange={(event) =>
-                      setPan(
-                        event.target.value
-                          .replace(/[^a-zA-Z0-9]/g, "")
-                          .toUpperCase()
-                          .slice(0, 10),
-                      )
-                    }
+                    onChange={(event) => {
+                      setPan(formatPanInput(event.target.value));
+                      clearCustomerField("pan");
+                    }}
                     placeholder="AAAAA9999A"
+                    aria-invalid={pan.trim() !== "" && !isCompletePan(pan)}
                   />
                 </div>
+                {customerFieldErrors.pan || (pan.trim() !== "" && !isCompletePan(pan)) ? (
+                  <p className="adagu-field-error" role="alert">
+                    {customerFieldErrors.pan ?? PAN_FORMAT_MESSAGE}
+                  </p>
+                ) : null}
               </div>
             </div>
 
@@ -1180,6 +1178,9 @@ export function PledgeEditorPage() {
               </div>
             ) : null}
 
+            {selectedCustomer ? (
+              <CustomerRecordPanel customer={selectedCustomer} showDetails={false} />
+            ) : null}
           </div>
 
           <div className="adagu-design-card adagu-design-card--items-panel">
