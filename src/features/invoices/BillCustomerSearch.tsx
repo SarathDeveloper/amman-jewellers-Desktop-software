@@ -20,7 +20,6 @@ type BillCustomerSearchProps = {
   onSelect: (customer: Customer) => void
   onClear: () => void
   onCustomerCreated: (customer: Customer) => void
-  onError?: (message: string) => void
 }
 
 export function BillCustomerSearch({
@@ -35,7 +34,6 @@ export function BillCustomerSearch({
   onSelect,
   onClear,
   onCustomerCreated,
-  onError,
 }: BillCustomerSearchProps) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -182,7 +180,6 @@ export function BillCustomerSearch({
           pick(customer)
           setModalOpen(false)
         }}
-        onError={onError}
       />
     </div>
   )

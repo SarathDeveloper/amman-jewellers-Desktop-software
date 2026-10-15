@@ -55,7 +55,7 @@ test('billing create, finalize, and stock deduction', async ({ window }) => {
 
   await window.getByRole('button', { name: 'Finalize', exact: true }).click()
   await expect(window.locator('.sale-bill-meta-status')).toHaveText('Paid')
-  const finalized = window.getByRole('dialog', { name: 'Bill finalized' })
+  const finalized = window.getByRole('dialog', { name: 'Bill confirmed' })
   await expect(finalized).toBeVisible()
   await window.locator('.modal-backdrop').click({ position: { x: 8, y: 8 } })
   await expect(finalized).toBeHidden()

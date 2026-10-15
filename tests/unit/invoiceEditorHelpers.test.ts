@@ -6,6 +6,7 @@ import {
   availableHuidsForLine,
   catalogApplyIndex,
   computeEditorLineTotal,
+  computeSaleBreakdown,
   editorLineFromInvoiceItem,
   ensureTrailingEmptyLine,
   exclusiveVamc,
@@ -176,6 +177,48 @@ describe('toInvoiceItems', () => {
       }),
     ])
     expect(items[0].huid).toBe('HI763837')
+  })
+})
+
+describe('computeSaleBreakdown VA/MC', () => {
+  it('fills only VA when the line is in percent mode', () => {
+    const breakdown = computeSaleBreakdown([
+      saleLine({ vamcMode: 'pct', wastagePct: 4, makingCharges: 500 }),
+    ])
+    expect(breakdown.wastageAmount).toBe(1122)
+    expect(breakdown.makingCharges).toBe(0)
+    expect(breakdown.hasVa).toBe(true)
+    expect(breakdown.hasMc).toBe(false)
+  })
+
+  it('fills only making charges when the line is a fixed amount', () => {
+    const breakdown = computeSaleBreakdown([
+      saleLine({ vamcMode: 'amount', wastagePct: 4, makingCharges: 1500 }),
+    ])
+    expect(breakdown.wastageAmount).toBe(0)
+    expect(breakdown.makingCharges).toBe(1500)
+    expect(breakdown.hasVa).toBe(false)
+    expect(breakdown.hasMc).toBe(true)
+  })
+
+  it('keeps a selected mode visible when its amount is still zero', () => {
+    const breakdown = computeSaleBreakdown([
+      saleLine({ vamcMode: 'pct', wastagePct: 0, makingCharges: 0 }),
+    ])
+    expect(breakdown.wastageAmount).toBe(0)
+    expect(breakdown.hasVa).toBe(true)
+    expect(breakdown.hasMc).toBe(false)
+  })
+
+  it('fills both rows on a mixed bill, each from its own lines', () => {
+    const breakdown = computeSaleBreakdown([
+      saleLine({ vamcMode: 'pct', wastagePct: 4, makingCharges: 0 }),
+      saleLine({ vamcMode: 'amount', wastagePct: 0, makingCharges: 1500, netWeight: 1, qty: 2 }),
+    ])
+    expect(breakdown.wastageAmount).toBe(1122)
+    expect(breakdown.makingCharges).toBe(3000)
+    expect(breakdown.hasVa).toBe(true)
+    expect(breakdown.hasMc).toBe(true)
   })
 })
 

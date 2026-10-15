@@ -11,7 +11,7 @@ describe('database migrations', () => {
     expect(dbVersions()).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
       27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
-      50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+      50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65,
     ])
     const huidTable = getDatabase()
       .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'product_huids'`)
@@ -21,6 +21,21 @@ describe('database migrations', () => {
       .prepare(`SELECT name FROM pragma_table_info('inward_items') WHERE name = 'huids'`)
       .get() as { name: string } | undefined
     expect(inwardHuidCol?.name).toBe('huids')
+    const guardianSnap = getDatabase()
+      .prepare(`SELECT name FROM pragma_table_info('invoices') WHERE name = 'customer_guardian_snap'`)
+      .get() as { name: string } | undefined
+    expect(guardianSnap?.name).toBe('customer_guardian_snap')
+    const orphanGuardian = getDatabase()
+      .prepare(
+        `SELECT COUNT(*) AS n FROM invoices
+         WHERE customer_guardian_snap != ''
+           AND customer_name_snap = ''
+           AND customer_phone_snap = ''
+           AND customer_address_snap = ''
+           AND customer_gstin_snap = ''`,
+      )
+      .get() as { n: number }
+    expect(orphanGuardian.n).toBe(0)
   })
 
   it('strips trailing Date.now suffixes from customer names', () => {

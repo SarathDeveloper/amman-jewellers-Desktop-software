@@ -17,6 +17,7 @@ import {
   AccountsListPage,
   ChangePasswordPage,
   CollectionsPage,
+  CustomerDetailPage,
   CustomersPage,
   DashboardPage,
   DuesPage,
@@ -119,6 +120,7 @@ export const router = createBrowserRouter([
           { path: 'inwards', element: <Navigate to="/inventory/inwards" replace /> },
           { path: 'inwards/*', element: <Navigate to="/inventory/inwards" replace /> },
           { path: 'customers', element: <CustomersPage /> },
+          { path: 'customers/:id', element: <CustomerDetailPage /> },
           { path: 'dues', element: <DuesPage /> },
           {
             path: 'reports',

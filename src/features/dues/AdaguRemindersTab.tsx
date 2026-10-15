@@ -109,7 +109,8 @@ export function AdaguRemindersTab({
                       <button
                         type="button"
                         className="btn ghost"
-                        disabled={busy || row.interestDue <= 0}
+                        disabled={busy || row.interestDue <= 0.005}
+                        title={row.interestDue > 0.005 ? undefined : 'No interest is due'}
                         onClick={() => onCollectInterest(row)}
                       >
                         <Percent size={14} strokeWidth={1.75} aria-hidden />

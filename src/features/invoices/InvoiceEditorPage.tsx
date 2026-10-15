@@ -70,6 +70,12 @@ import {
   type SaleBillingType,
 } from './billingType'
 import { BillCustomerSearch } from './BillCustomerSearch'
+import { CustomerRecordPanel } from '../customers/CustomerRecordPanel'
+import {
+  assertCustomerInput,
+  takeCustomerFormError,
+  type CustomerFieldErrors,
+} from '../customers/customerFieldErrors'
 import { BillProductSearch } from './BillProductSearch'
 import {
   applyCurrentMetalRate,
@@ -123,6 +129,21 @@ function customerCode(id: number): string {
   return `CUST-${String(id).padStart(4, '0')}`
 }
 
+function reportCustomerFormError(
+  err: unknown,
+  setCustomerFieldErrors: (errors: CustomerFieldErrors) => void,
+  setPageError: (message: string | null) => void,
+  fallback: string,
+) {
+  const fields = takeCustomerFormError(err)
+  if (!fields) {
+    setPageError(err instanceof Error ? err.message : fallback)
+    return
+  }
+  setCustomerFieldErrors(fields)
+  setPageError(null)
+}
+
 function LineProductIcon({ name, category, metal }: { name: string; category?: string; metal?: string }) {
   const key = `${category ?? ''} ${name}`.toLowerCase()
   const size = 16
@@ -155,6 +176,7 @@ export function InvoiceEditorPage() {
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerAddress, setCustomerAddress] = useState('')
+  const [customerFieldErrors, setCustomerFieldErrors] = useState<CustomerFieldErrors>({})
   const [invoiceDate, setInvoiceDate] = useState(localTodayIso())
   const [tax, setTax] = useState<NumericField>(0)
   const [discount, setDiscount] = useState<NumericField>(0)
@@ -266,9 +288,7 @@ export function InvoiceEditorPage() {
     paymentMode === 'mixed'
       ? mixedPayments.reduce((sum, part) => sum + part.amount, 0)
       : amountPaid === ''
-        ? paymentMode === 'cash'
-          ? totals.amountPayable
-          : 0
+        ? 0
         : amountPaid
   const balanceDisplay = Math.max(0, totals.amountPayable - paidDisplay)
   const payStatus = paymentStatusFor(totals.amountPayable, paidDisplay, totals.invoiceTotal)
@@ -468,6 +488,7 @@ export function InvoiceEditorPage() {
     setCustomerName(customer.name ?? '')
     setCustomerPhone(customer.phone ?? '')
     setCustomerAddress(customer.address ?? '')
+    setCustomerFieldErrors({})
     markDirty()
   }
 
@@ -476,6 +497,7 @@ export function InvoiceEditorPage() {
     setCustomerName('')
     setCustomerPhone('')
     setCustomerAddress('')
+    setCustomerFieldErrors({})
     markDirty()
   }
 
@@ -535,38 +557,28 @@ export function InvoiceEditorPage() {
   }
 
   async function ensureCustomerId(): Promise<number> {
-    const name = customerName.trim()
-    if (!name) throw new Error('Enter customer name')
-
     const existing = selectedCustomer
+    const input = {
+      name: customerName.trim(),
+      phone: customerPhone.replace(/\D/g, '').slice(0, 10),
+      address: customerAddress.trim(),
+      guardianName: existing?.guardianName ?? '',
+      notes: existing?.notes ?? '',
+      gstin: existing?.gstin ?? '',
+      aadhaar: existing?.aadhaar ?? '',
+      pan: existing?.pan ?? '',
+      idProofType: existing?.idProofType ?? '',
+    }
+    assertCustomerInput(input)
+
     if (existing) {
-      const updated = await api.updateCustomer(existing.id, {
-        name,
-        phone: customerPhone.replace(/\D/g, '').slice(0, 10),
-        address: customerAddress.trim(),
-        guardianName: existing.guardianName ?? '',
-        notes: existing.notes ?? '',
-        gstin: existing.gstin ?? '',
-        aadhaar: existing.aadhaar ?? '',
-        pan: existing.pan ?? '',
-        idProofType: existing.idProofType ?? '',
-      })
+      const updated = await api.updateCustomer(existing.id, input)
       setCustomers((current) => current.map((row) => (row.id === updated.id ? updated : row)))
       setCustomerId(updated.id)
       return updated.id
     }
 
-    const created = await api.createCustomer({
-      name,
-      phone: customerPhone.replace(/\D/g, '').slice(0, 10),
-      address: customerAddress.trim(),
-      guardianName: '',
-      notes: '',
-      gstin: '',
-      aadhaar: '',
-      pan: '',
-      idProofType: '',
-    })
+    const created = await api.createCustomer(input)
     setCustomers((current) => [created, ...current])
     setCustomerId(created.id)
     return created.id
@@ -643,6 +655,7 @@ export function InvoiceEditorPage() {
     setOldGoldLinks(saved.oldGoldLinks ?? [])
     setLegacyOldGold(saved.oldGold ?? [])
     setSchemeAccountId(saved.goldSavingLinks?.[0]?.accountId ?? null)
+    setAmountPaid((current) => (current === '' && saved.amountPaid > 0 ? saved.amountPaid : current))
   }
 
   async function persistDraft(): Promise<Invoice> {
@@ -666,10 +679,11 @@ export function InvoiceEditorPage() {
       setSavingAction('draft')
       setSaving(true)
       setError(null)
+      setCustomerFieldErrors({})
       await persistDraft()
       showToast('Draft saved', 'success')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save invoice')
+      reportCustomerFormError(err, setCustomerFieldErrors, setError, 'Failed to save invoice')
     } finally {
       setSaving(false)
       setSavingAction(null)
@@ -681,6 +695,7 @@ export function InvoiceEditorPage() {
       setSavingAction('finalize')
       setSaving(true)
       setError(null)
+      setCustomerFieldErrors({})
       const huidErrors = linesWithHuidError(lines, products)
       if (huidErrors.length > 0) {
         const first = huidErrors[0]
@@ -707,10 +722,10 @@ export function InvoiceEditorPage() {
       setDirty(false)
       forgetHeldBill(billFormat, targetId)
       setSuccessInvoice(finalized)
-      showToast('Bill finalized', 'success')
+      showToast('Bill confirmed', 'success')
       return finalized
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to finalize invoice')
+      reportCustomerFormError(err, setCustomerFieldErrors, setError, 'Failed to finalize invoice')
       return null
     } finally {
       setSaving(false)
@@ -740,12 +755,13 @@ export function InvoiceEditorPage() {
     try {
       setSavingPdf(true)
       setError(null)
+      setCustomerFieldErrors({})
       const saved = await ensureInvoiceSavedForBill()
       setInvoice(saved)
       const result = await downloadPrintPdf(billPrintPath(saved.id, billFormat), `${saved.invoiceNo}.pdf`)
       if (!result.canceled) showToast('PDF saved', 'success')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to download PDF')
+      reportCustomerFormError(err, setCustomerFieldErrors, setError, 'Failed to download PDF')
     } finally {
       setSavingPdf(false)
     }
@@ -755,11 +771,12 @@ export function InvoiceEditorPage() {
     try {
       setPreviewing(true)
       setError(null)
+      setCustomerFieldErrors({})
       const saved = await ensureInvoiceSavedForBill()
       setInvoice(saved)
       setPreviewOpen(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to preview bill')
+      reportCustomerFormError(err, setCustomerFieldErrors, setError, 'Failed to preview bill')
     } finally {
       setPreviewing(false)
     }
@@ -865,11 +882,13 @@ export function InvoiceEditorPage() {
               <RotateCcw size={16} /> Reset
             </button>
           ) : null}
+          {invoice && isDraft ? (
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => void openInAppPreview()}>
+              <Eye size={16} strokeWidth={1.75} aria-hidden /> {previewing ? 'Opening…' : 'Preview'}
+            </button>
+          ) : null}
           {invoice && (
             <>
-              <button type="button" className="btn ghost" disabled={busy} onClick={() => void openInAppPreview()}>
-                <Eye size={16} strokeWidth={1.75} aria-hidden /> {previewing ? 'Opening…' : 'Preview'}
-              </button>
               <button type="button" className="btn ghost" disabled={busy} onClick={() => void handlePrint()}>
                 <Printer size={16} strokeWidth={1.75} aria-hidden /> Print
               </button>
@@ -963,7 +982,6 @@ export function InvoiceEditorPage() {
                     setCustomers((current) => [customer, ...current])
                     applyCustomerBorrower(customer)
                   }}
-                  onError={(msg) => setError(msg)}
                 />
               </div>
             </div>
@@ -999,6 +1017,18 @@ export function InvoiceEditorPage() {
                 ) : null}
               </div>
             ) : null}
+            {Object.values(customerFieldErrors).filter(Boolean).length > 0 ? (
+              <div>
+                {[...new Set(Object.values(customerFieldErrors))].map((message) =>
+                  message ? (
+                    <p key={message} className="adagu-field-error" role="alert">
+                      {message}
+                    </p>
+                  ) : null,
+                )}
+              </div>
+            ) : null}
+            {selectedCustomer ? <CustomerRecordPanel customer={selectedCustomer} /> : null}
           </div>
 
           <div className="adagu-design-card adagu-design-card--items-panel adagu-design-card--has-search">
@@ -1353,6 +1383,8 @@ export function InvoiceEditorPage() {
             jewelleryValue={saleBreakdown.jewelleryValue}
             wastageAmount={saleBreakdown.wastageAmount}
             makingCharges={saleBreakdown.makingCharges}
+            hasVa={saleBreakdown.hasVa}
+            hasMc={saleBreakdown.hasMc}
             otherCharges={saleBreakdown.otherCharges}
             itemCount={saleBreakdown.itemCount}
             totalGrossWeight={saleBreakdown.totalGrossWeight}

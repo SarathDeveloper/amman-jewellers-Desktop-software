@@ -30,7 +30,13 @@ export function computeOldGoldValue(input: OldGoldValueInput): OldGoldValueResul
 }
 
 export function suggestRoundOff(amountBeforeRoundOff: number): number {
-  return roundMoney(Math.round(amountBeforeRoundOff) - amountBeforeRoundOff)
+  const amount = roundMoney(amountBeforeRoundOff)
+  const fraction = roundMoney(amount - Math.trunc(amount))
+  // Half a rupee reduces the total. 22000.50 becomes −0.50, not +0.50.
+  if (Math.abs(fraction) === 0.5) {
+    return roundMoney(Math.floor(amount) - amount)
+  }
+  return roundMoney(Math.round(amount) - amount)
 }
 
 export interface PurchaseTotalsResult {

@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { Customer, CustomerInput } from '@shared/types'
-import { customerInputSchema } from '@shared/schemas'
+import { formatPanInput, isCompletePan, PAN_FORMAT_MESSAGE } from '@shared/schemas'
 import { Modal } from '../../components/Modal'
 import { api } from '../../lib/api'
+import {
+  customerFieldErrors,
+  takeCustomerFormError,
+  type CustomerField,
+  type CustomerFieldErrors,
+} from './customerFieldErrors'
 
 export const emptyCustomerInput: CustomerInput = {
   name: '',
@@ -40,7 +46,6 @@ type CustomerFormModalProps = {
   initialValues?: CustomerInput
   onClose: () => void
   onSaved: (customer: Customer) => void
-  onError?: (message: string) => void
 }
 
 export function CustomerFormModal({
@@ -49,13 +54,16 @@ export function CustomerFormModal({
   initialValues,
   onClose,
   onSaved,
-  onError,
 }: CustomerFormModalProps) {
   const [form, setForm] = useState<CustomerInput>(emptyCustomerInput)
+  const [fieldErrors, setFieldErrors] = useState<CustomerFieldErrors>({})
+  const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
+    setFieldErrors({})
+    setFormError(null)
     if (editing) {
       setForm({
         name: editing.name,
@@ -72,6 +80,16 @@ export function CustomerFormModal({
     }
   }, [open, editing, initialValues])
 
+  function updateField<K extends keyof CustomerInput>(key: K, value: CustomerInput[K]) {
+    setForm((current) => ({ ...current, [key]: value }))
+    setFieldErrors((current) => {
+      if (!current[key as CustomerField]) return current
+      const next = { ...current }
+      delete next[key as CustomerField]
+      return next
+    })
+  }
+
   async function save() {
     const payload: CustomerInput = {
       name: form.name.trim(),
@@ -81,27 +99,33 @@ export function CustomerFormModal({
       notes: (form.notes ?? '').trim(),
       gstin: (form.gstin ?? '').trim(),
       aadhaar: digitsOnly(form.aadhaar ?? '', 12),
-      pan: (form.pan ?? '').trim().toUpperCase(),
+      pan: formatPanInput(form.pan ?? ''),
       idProofType: editing?.idProofType ?? '',
     }
 
-    const parsed = customerInputSchema.safeParse(payload)
-    if (!parsed.success) {
-      const message = parsed.error.issues[0]?.message ?? 'Invalid customer details'
-      onError?.(message)
+    const errors = customerFieldErrors(payload)
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors)
+      setFormError(null)
       return
     }
 
     try {
       setSaving(true)
+      setFormError(null)
       const customer = editing
-        ? await api.updateCustomer(editing.id, parsed.data)
-        : await api.createCustomer(parsed.data)
+        ? await api.updateCustomer(editing.id, payload)
+        : await api.createCustomer(payload)
       onSaved(customer)
       onClose()
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save customer'
-      onError?.(message)
+      const fields = takeCustomerFormError(err)
+      if (fields) {
+        setFieldErrors(fields)
+        setFormError(null)
+      } else {
+        setFormError(err instanceof Error ? err.message : 'Failed to save customer')
+      }
     } finally {
       setSaving(false)
     }
@@ -119,12 +143,18 @@ export function CustomerFormModal({
           <button type="button" className="btn secondary" onClick={onClose} disabled={saving}>
             Cancel
           </button>
-          <button type="button" className="btn" onClick={() => void save()} disabled={saving}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void save()}
+            disabled={saving || !isCompletePan(form.pan ?? '')}
+          >
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       }
     >
+      {formError ? <div className="error-banner" role="alert">{formError}</div> : null}
       <div className="form-grid">
         <label>
           <span className="field-label">
@@ -133,10 +163,14 @@ export function CustomerFormModal({
           <input
             className="input"
             value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            onChange={(e) => updateField('name', e.target.value)}
             autoComplete="name"
             aria-label="Name"
+            aria-invalid={Boolean(fieldErrors.name)}
           />
+          {fieldErrors.name ? (
+            <span className="adagu-field-error" role="alert">{fieldErrors.name}</span>
+          ) : null}
         </label>
         <label>
           <span className="field-label">
@@ -147,17 +181,21 @@ export function CustomerFormModal({
             inputMode="numeric"
             maxLength={10}
             value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: digitsOnly(e.target.value, 10) })}
+            onChange={(e) => updateField('phone', digitsOnly(e.target.value, 10))}
             autoComplete="tel"
             aria-label="Mobile"
+            aria-invalid={Boolean(fieldErrors.phone)}
           />
+          {fieldErrors.phone ? (
+            <span className="adagu-field-error" role="alert">{fieldErrors.phone}</span>
+          ) : null}
         </label>
         <label>
           <span className="field-label">F / M / H Name</span>
           <input
             className="input"
             value={form.guardianName ?? ''}
-            onChange={(e) => setForm({ ...form, guardianName: e.target.value })}
+            onChange={(e) => updateField('guardianName', e.target.value)}
             placeholder="Father / Mother / Husband"
             aria-label="F / M / H Name"
           />
@@ -169,10 +207,14 @@ export function CustomerFormModal({
             inputMode="numeric"
             maxLength={12}
             value={form.aadhaar ?? ''}
-            onChange={(e) => setForm({ ...form, aadhaar: digitsOnly(e.target.value, 12) })}
+            onChange={(e) => updateField('aadhaar', digitsOnly(e.target.value, 12))}
             placeholder="Optional"
             aria-label="Aadhaar"
+            aria-invalid={Boolean(fieldErrors.aadhaar)}
           />
+          {fieldErrors.aadhaar ? (
+            <span className="adagu-field-error" role="alert">{fieldErrors.aadhaar}</span>
+          ) : null}
         </label>
         <label>
           <span className="field-label">PAN</span>
@@ -180,15 +222,16 @@ export function CustomerFormModal({
             className="input"
             maxLength={10}
             value={form.pan ?? ''}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                pan: e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 10),
-              })
-            }
-            placeholder="Optional"
+            onChange={(e) => updateField('pan', formatPanInput(e.target.value))}
+            placeholder="AAAAA9999A"
             aria-label="PAN"
+            aria-invalid={(form.pan ?? '').trim() !== '' && !isCompletePan(form.pan ?? '')}
           />
+          {(form.pan ?? '').trim() !== '' && !isCompletePan(form.pan ?? '') ? (
+            <span className="adagu-field-error" role="alert">
+              {PAN_FORMAT_MESSAGE}
+            </span>
+          ) : null}
         </label>
         <label className="full">
           <span className="field-label">
@@ -197,17 +240,21 @@ export function CustomerFormModal({
           <textarea
             className="textarea"
             value={form.address}
-            onChange={(e) => setForm({ ...form, address: e.target.value })}
+            onChange={(e) => updateField('address', e.target.value)}
             rows={2}
             aria-label="Address"
+            aria-invalid={Boolean(fieldErrors.address)}
           />
+          {fieldErrors.address ? (
+            <span className="adagu-field-error" role="alert">{fieldErrors.address}</span>
+          ) : null}
         </label>
         <label className="full">
           <span className="field-label">Notes</span>
           <textarea
             className="textarea"
             value={form.notes ?? ''}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            onChange={(e) => updateField('notes', e.target.value)}
             rows={2}
             placeholder="Optional"
             aria-label="Notes"

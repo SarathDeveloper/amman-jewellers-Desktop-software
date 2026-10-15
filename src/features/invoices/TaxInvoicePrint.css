@@ -153,15 +153,26 @@
   font-weight: 700;
 }
 
-.tax-invoice-customer-name {
-  margin: 0 0 0.5mm;
-  font-weight: 700;
-  font-size: 8.5pt;
-}
-
-.tax-invoice-customer-address {
+.tax-invoice-party .bill-party-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 1.5mm;
   margin: 0;
   font-size: 7.5pt;
+}
+
+.tax-invoice-party .bill-party-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tax-invoice-customer-name {
+  margin: 0;
+  font-weight: 700;
+}
+
+.tax-invoice-party .bill-party-address-line {
+  display: block;
 }
 
 .tax-invoice-title-center {
@@ -482,11 +493,7 @@
   font-size: 9pt;
 }
 
-.tax-invoice-root.paper-a4 .tax-invoice-customer-name {
-  font-size: 9.5pt;
-}
-
-.tax-invoice-root.paper-a4 .tax-invoice-customer-address,
+.tax-invoice-root.paper-a4 .tax-invoice-party .bill-party-line,
 .tax-invoice-root.paper-a4 .tax-invoice-meta-right {
   font-size: 8.5pt;
 }

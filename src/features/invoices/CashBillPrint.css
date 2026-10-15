@@ -159,15 +159,26 @@
   min-width: 0;
 }
 
-.cash-bill-customer-name {
-  margin: 0 0 0.6mm;
-  font-weight: 700;
-  font-size: 9pt;
-}
-
-.cash-bill-customer-line {
+.cash-bill-party .bill-party-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 1.5mm;
   margin: 0;
   font-size: 7.5pt;
+}
+
+.cash-bill-party .bill-party-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cash-bill-customer-name {
+  margin: 0;
+  font-weight: 700;
+}
+
+.cash-bill-party .bill-party-address-line {
+  display: block;
 }
 
 .cash-bill-meta-right {

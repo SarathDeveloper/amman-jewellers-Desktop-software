@@ -26,6 +26,8 @@ export interface CashBillData {
   customerName: string
   customerPhone: string
   customerAddressLines: string[]
+  /** Father / husband name; empty when the customer has none saved. */
+  customerGuardian: string
   lines: CashBillLine[]
   itemCount: number
   total: number

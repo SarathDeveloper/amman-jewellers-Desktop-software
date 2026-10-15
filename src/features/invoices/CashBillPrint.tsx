@@ -100,20 +100,35 @@ export function CashBillPrint({
         <section className="cash-bill-meta">
           <div className="cash-bill-party">
             {data.customerName ? (
-              <p className="cash-bill-customer-name">
-                {labels.cashCustomerPrefix} {data.customerName}
+              <p className="bill-party-line">
+                <span className="bill-party-label">{labels.customerLabel}</span>
+                <span className="bill-party-value cash-bill-customer-name">
+                  {data.customerName}
+                </span>
               </p>
             ) : null}
-            {vis.showCustomerAddress
-              ? data.customerAddressLines.map((line) => (
-                  <p key={line} className="cash-bill-customer-line">
-                    {line}
-                  </p>
-                ))
-              : null}
+            {vis.showCustomerAddress && data.customerAddressLines.length > 0 ? (
+              <p className="bill-party-line">
+                <span className="bill-party-label">{labels.addressLabel}</span>
+                <span className="bill-party-value">
+                  {data.customerAddressLines.map((line, index) => (
+                    <span key={`${index}-${line}`} className="bill-party-address-line">
+                      {line}
+                    </span>
+                  ))}
+                </span>
+              </p>
+            ) : null}
+            {data.customerGuardian ? (
+              <p className="bill-party-line">
+                <span className="bill-party-label">{labels.guardianLabel}</span>
+                <span className="bill-party-value">{data.customerGuardian}</span>
+              </p>
+            ) : null}
             {vis.showCustomerPhone && data.customerPhone ? (
-              <p className="cash-bill-customer-line">
-                {labels.taxMobileLabel} {data.customerPhone}
+              <p className="bill-party-line">
+                <span className="bill-party-label">{labels.taxMobileLabel}</span>
+                <span className="bill-party-value">{data.customerPhone}</span>
               </p>
             ) : null}
           </div>

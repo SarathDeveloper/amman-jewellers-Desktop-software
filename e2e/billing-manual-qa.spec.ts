@@ -83,7 +83,7 @@ test.describe('Manual QA: New bill generation', () => {
 
     // --- Finalize ---
     await window.getByRole('button', { name: 'Finalize', exact: true }).click()
-    const finalized = window.getByRole('dialog', { name: 'Bill finalized' })
+    const finalized = window.getByRole('dialog', { name: 'Bill confirmed' })
     await expect(finalized).toBeVisible()
     await expect(window.locator('.sale-bill-meta-status')).not.toHaveText('Draft')
     await window.locator('.modal-backdrop').click({ position: { x: 8, y: 8 } })
@@ -113,6 +113,6 @@ test.describe('Manual QA: New bill generation', () => {
     await expect(window.getByPlaceholder('Search customer by name, phone or ID…')).toHaveValue('')
     await expect(window.getByText('Reset Test')).toHaveCount(0)
     await expect(window.locator('.sale-bill-items-table tbody tr')).toHaveCount(0)
-    await expect(window.locator('.sale-bill-product-name').first()).toHaveValue('')
+    await expect(window.locator('.sale-bill-product-name')).toHaveCount(0)
   })
 })

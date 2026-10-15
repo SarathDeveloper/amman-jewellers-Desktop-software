@@ -12,6 +12,9 @@ export interface BillTemplateSettings {
   taxBillNoLabel: string;
   taxDateLabel: string;
   taxBillToLabel: string;
+  customerLabel: string;
+  addressLabel: string;
+  guardianLabel: string;
   taxColParticulars: string;
   taxColTotWgt: string;
   taxColGrsWgt: string;
@@ -53,6 +56,9 @@ export const DEFAULT_BILL_TEMPLATE: BillTemplateSettings = {
   taxBillNoLabel: "Bill No :",
   taxDateLabel: "Date :",
   taxBillToLabel: "BILL TO",
+  customerLabel: "Customer :",
+  addressLabel: "Address :",
+  guardianLabel: "Father/Husband :",
   taxColParticulars: "Particulars",
   taxColTotWgt: "Tot Wgt",
   taxColGrsWgt: "Grs Wgt",

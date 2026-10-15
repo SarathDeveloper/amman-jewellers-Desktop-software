@@ -165,7 +165,7 @@ test.describe('Adagu billing — live Tauri scenarios', () => {
       inr(124_333.33),
     )
 
-    await window.getByRole('button', { name: 'Generate', exact: true }).click()
+    await window.getByRole('button', { name: 'Sanction loan', exact: true }).click()
     const sanction = window.getByRole('dialog', { name: 'Sanction loan' })
     await expect(sanction).toBeVisible()
     await expect(sanction.getByText(`for ${inr(99_000)} net paid`, { exact: false })).toBeVisible()
@@ -232,11 +232,14 @@ test.describe('Adagu billing — live Tauri scenarios', () => {
     await expect(afterInterest.locator('td').nth(8)).toHaveText(inr(122_000))
 
     const redeemDrawer = await openAdaguDueDrawer(window, receiptNo, customerName)
-    // P1 ledger: the drawer lists the money row written by recordPledgePayment.
-    const historyRow = redeemDrawer.locator('.adagu-detail-history li').first()
+    // P1 ledger: the drawer lists both the customer collection (paid) and extra loan (extra).
+    const historyRow = redeemDrawer.locator('.adagu-detail-history-item--paid').first()
     await expect(historyRow).toContainText('Payment received')
     await expect(historyRow).toContainText(inr(2_400))
     await expect(historyRow).toContainText('Cash')
+    const extraHistoryRow = redeemDrawer.locator('.adagu-detail-history-item--extra').first()
+    await expect(extraHistoryRow).toContainText(`Extra ${inr(20_000)}`)
+    await expect(extraHistoryRow).toContainText('Extra loan')
 
     await redeemDrawer.getByRole('button', { name: 'Redeem', exact: true }).click()
     const redeem = window.getByRole('dialog', { name: new RegExp(`Close Adagu loan · ${receiptNo}`) })
@@ -288,6 +291,7 @@ test.describe('Adagu billing — live Tauri scenarios', () => {
     await expect(afterInterest.locator('td').nth(8)).toHaveText(inr(50_000))
 
     const redeemDrawer = await openAdaguDueDrawer(window, receiptNo, customerName)
+    await expect(redeemDrawer.getByRole('button', { name: 'Interest', exact: true })).toBeDisabled()
     await redeemDrawer.getByRole('button', { name: 'Redeem', exact: true }).click()
     const redeem = window.getByRole('dialog', { name: new RegExp(`Close Adagu loan · ${receiptNo}`) })
     await expect(redeem.getByLabel('Amount collected')).toHaveValue('50000')
@@ -388,10 +392,13 @@ test.describe('Adagu billing — live Tauri scenarios', () => {
     await sanctionAdaguLoan(window)
 
     await expect(window.locator('.sale-bill-meta-status')).toHaveText('Active')
-    await expect(window.getByRole('button', { name: 'Generate', exact: true })).toHaveCount(0)
+    await expect(window.getByRole('button', { name: 'Sanction loan', exact: true })).toHaveCount(0)
     await expect(window.getByRole('button', { name: 'Save draft' })).toHaveCount(0)
     await expect(window.getByRole('button', { name: 'Delete' })).toHaveCount(0)
-    await expect(window.getByRole('button', { name: 'Renew', exact: true })).toBeVisible()
+    await expect(window.getByRole('button', { name: 'View bill', exact: true })).toBeVisible()
+    await expect(window.getByRole('button', { name: 'Renew', exact: true })).toHaveCount(0)
+    await expect(window.getByRole('button', { name: 'Reset', exact: true })).toHaveCount(0)
+    await expect(window.getByRole('button', { name: 'Preview', exact: true })).toHaveCount(0)
     await expect(adaguField(window, 'Loan Amount').locator('input')).toBeDisabled()
     await expect(
       window
@@ -598,7 +605,7 @@ test.describe('Adagu billing — live Tauri scenarios', () => {
     })
     await expect(window.getByText('KYC is required by settings')).toBeVisible()
 
-    await window.getByRole('button', { name: 'Generate', exact: true }).click()
+    await window.getByRole('button', { name: 'Sanction loan', exact: true }).click()
     const sanction = window.getByRole('dialog', { name: 'Sanction loan' })
     await sanction.getByRole('button', { name: 'Sanction loan' }).click()
     await expect(window.locator('.error-banner')).toContainText('KYC is required')

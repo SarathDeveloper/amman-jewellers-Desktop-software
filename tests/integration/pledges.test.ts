@@ -1225,4 +1225,19 @@ describe('pledges API', () => {
     const stats = await getTestAgent().get('/api/invoices/stats').query({ from, to })
     expect(stats.body.collections).toBe(dailyTotal)
   })
+
+  it('lists loans for one customer', async () => {
+    const first = await createPledgeCustomer('Loan History A', '9000000091')
+    const second = await createPledgeCustomer('Loan History B', '9000000092')
+    const created = await createDraftPledge(first, [goldItem('Chain')])
+    expect(created.status).toBe(201)
+    await createDraftPledge(second, [goldItem('Ring')])
+
+    const page = await getTestAgent().get('/api/pledges').query({ customerId: first, pageSize: 50 })
+    expect(page.status).toBe(200)
+    const items = page.body.items as Array<{ id: number; customerId: number }>
+    expect(items.length).toBeGreaterThan(0)
+    expect(items.every((row) => row.customerId === first)).toBe(true)
+    expect(items.some((row) => row.id === created.body.id)).toBe(true)
+  })
 })

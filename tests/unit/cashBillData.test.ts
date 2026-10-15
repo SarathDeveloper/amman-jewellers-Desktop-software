@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Invoice, InvoiceItem } from '../../shared/types'
 import { buildCashBillData } from '../../src/features/invoices/buildCashBillData'
+import { buildTaxInvoiceData } from '../../src/features/invoices/buildTaxInvoiceData'
 
 function item(overrides: Partial<InvoiceItem> = {}): InvoiceItem {
   return {
@@ -104,8 +105,22 @@ describe('buildCashBillData', () => {
       },
     })
     expect(data.customerName).toBe('Snap Name')
+    expect(data.customerGuardian).toBe('')
     expect(data.goldRate).toBe(15125)
     expect(data.silverRate).toBe(250)
+  })
+
+  it('prints the father or husband name from the customer snapshot', () => {
+    const data = buildCashBillData(invoice(), {
+      customer: {
+        name: 'Snap Name',
+        phone: '111',
+        address: 'Old addr',
+        gstin: '',
+        guardianName: ' Chandran ',
+      },
+    })
+    expect(data.customerGuardian).toBe('Chandran')
   })
 
   it('stamps a draft print and leaves a final bill clean', () => {
@@ -121,5 +136,31 @@ describe('buildCashBillData', () => {
     expect(
       buildCashBillData(invoice({ status: 'draft', invoiceNo: 'CB-2026-0042' })).watermark,
     ).toBe('DRAFT')
+  })
+})
+
+describe('buildTaxInvoiceData', () => {
+  it('carries the father or husband name onto the tax invoice', () => {
+    const data = buildTaxInvoiceData(invoice(), {
+      name: 'Mathesh',
+      phone: '5678909876',
+      address: 'Vellimalai',
+      gstin: '',
+      guardianName: 'chandran',
+    })
+    expect(data.customerName).toBe('Mathesh')
+    expect(data.customerAddressLines).toEqual(['Vellimalai'])
+    expect(data.customerGuardian).toBe('chandran')
+    expect(data.customerPhone).toBe('5678909876')
+  })
+
+  it('leaves the father or husband line empty when none is saved', () => {
+    const data = buildTaxInvoiceData(invoice(), {
+      name: 'Mathesh',
+      phone: '',
+      address: '',
+      gstin: '',
+    })
+    expect(data.customerGuardian).toBe('')
   })
 })

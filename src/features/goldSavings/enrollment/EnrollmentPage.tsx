@@ -10,6 +10,7 @@ import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { formatCurrency, formatDisplayDate, formatWeight } from '../../../lib/format'
 import { api } from '../../../lib/api'
 import { BillCustomerSearch } from '../../invoices/BillCustomerSearch'
+import { CustomerRecordPanel } from '../../customers/CustomerRecordPanel'
 import { PrintPreviewModal } from '../../print/PrintPreviewModal'
 import { GsGoldWeightPreview } from '../GsGoldWeightPreview'
 import { GsRateNotice } from '../GsRateNotice'
@@ -137,13 +138,7 @@ export function EnrollmentPage() {
                 setCustomerId(next.id)
               }}
             />
-            {customer ? (
-              <>
-                <p className="settings-row"><strong>Customer ID</strong> {customer.id}</p>
-                <p className="settings-row"><strong>Mobile</strong> {customer.phone}</p>
-                <p className="settings-row"><strong>Address</strong> {customer.address || '—'}</p>
-              </>
-            ) : null}
+            {customer ? <CustomerRecordPanel customer={customer} /> : null}
             <div className="form-grid">
               <label>
                 <span className="field-label">Nominee name</span>

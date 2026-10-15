@@ -210,6 +210,16 @@ describe('invoices IPC', () => {
   it('records an old bill without deducting stock and posts the balance to dues', async () => {
     const { customer, product } = await seedCustomerAndProduct()
     const before = await ipc(IPC_CHANNELS.PRODUCTS_GET, product.id)
+    await ipc(IPC_CHANNELS.CUSTOMERS_UPDATE, {
+      id: customer.id,
+      input: {
+        name: 'Buyer',
+        phone: '9876543210',
+        address: 'Salem',
+        guardianName: 'Perumal',
+        notes: '',
+      },
+    })
 
     const bill = await ipc(IPC_CHANNELS.INVOICES_RECORD_HISTORICAL, {
       invoiceNo: 'CB-1842',
@@ -225,6 +235,7 @@ describe('invoices IPC', () => {
 
     expect(bill.status).toBe('final')
     expect(bill.isHistorical).toBe(true)
+    expect(bill.customerSnapshot).toBeNull()
     expect(bill.invoiceNo).toBe('CB-1842')
     expect(bill.balanceDue).toBe(6000)
     expect(bill.summaryGoldG).toBe(8.5)
@@ -750,8 +761,19 @@ describe('invoices IPC', () => {
         },
       ],
     })
+    await ipc(IPC_CHANNELS.CUSTOMERS_UPDATE, {
+      id: customer.id,
+      input: {
+        name: 'Buyer',
+        phone: '9876543210',
+        address: 'Salem',
+        guardianName: 'Perumal',
+        notes: '',
+      },
+    })
     const finalized = await ipc(IPC_CHANNELS.INVOICES_FINALIZE, draft.id)
     expect(finalized.customerSnapshot?.name).toBe('Buyer')
+    expect(finalized.customerSnapshot?.guardianName).toBe('Perumal')
     expect(finalized.ratesSnapshot?.gold22k).toBe(1000)
 
     await ipc(IPC_CHANNELS.METAL_RATES_UPSERT, {
@@ -760,8 +782,20 @@ describe('invoices IPC', () => {
       gold24k: 2200,
       silverFine: 200,
     })
+    await ipc(IPC_CHANNELS.CUSTOMERS_UPDATE, {
+      id: customer.id,
+      input: {
+        name: 'Buyer renamed',
+        phone: '9876543210',
+        address: 'Salem',
+        guardianName: 'Someone else',
+        notes: '',
+      },
+    })
     const fetched = await ipc(IPC_CHANNELS.INVOICES_GET, finalized.id)
     expect(fetched.ratesSnapshot?.gold22k).toBe(1000)
+    expect(fetched.customerSnapshot?.name).toBe('Buyer')
+    expect(fetched.customerSnapshot?.guardianName).toBe('Perumal')
   })
 
   it('cancels a final bill: restores stock, HUID and dues, and blocks a second cancel', async () => {

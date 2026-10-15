@@ -15,6 +15,7 @@ import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
 import { formatCurrency, formatDisplayDate } from '../../lib/format'
 import { BillCustomerSearch } from '../invoices/BillCustomerSearch'
+import { CustomerRecordPanel } from '../customers/CustomerRecordPanel'
 import {
   newOldGoldRow,
   toOldGoldInputs,
@@ -28,10 +29,12 @@ function Field({
   label,
   htmlFor,
   children,
+  error,
 }: {
   label: string
   htmlFor?: string
   children: ReactNode
+  error?: string | null
 }) {
   return (
     <div className="product-form-field">
@@ -48,6 +51,11 @@ function Field({
           {children}
         </label>
       )}
+      {error ? (
+        <p className="adagu-field-error" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -120,6 +128,7 @@ export function OldGoldPurchaseEditorModal({
   const [purchaseId, setPurchaseId] = useState<number | null>(purchase?.id ?? null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [nameError, setNameError] = useState<string | null>(null)
   const [confirmFinalize, setConfirmFinalize] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
 
@@ -173,6 +182,7 @@ export function OldGoldPurchaseEditorModal({
     setCustomerId(customer.id)
     setCustomerName(customer.name ?? '')
     setCustomerPhone(customer.phone ?? '')
+    setNameError(null)
     setError(null)
   }
 
@@ -180,15 +190,18 @@ export function OldGoldPurchaseEditorModal({
     setCustomerId(0)
     setCustomerName('')
     setCustomerPhone('')
+    setNameError(null)
   }
 
   async function persist(finalize: boolean) {
     if (readOnly) return
     const name = customerName.trim()
     if (!name) {
-      setError('Enter a customer name')
+      setNameError('Enter a customer name')
+      setError(null)
       return
     }
+    setNameError(null)
     const items = toOldGoldInputs(rows)
     if (items.length === 0) {
       setError('Add at least one old gold item with weight')
@@ -295,7 +308,6 @@ export function OldGoldPurchaseEditorModal({
                       setCustomers((current) => [customer, ...current])
                       applyCustomer(customer)
                     }}
-                    onError={setError}
                   />
                 </Field>
                 <Field label="Date">
@@ -308,14 +320,18 @@ export function OldGoldPurchaseEditorModal({
                     />
                   </Control>
                 </Field>
-                <Field label="Customer name" htmlFor="ogp-name">
+                <Field label="Customer name" htmlFor="ogp-name" error={nameError}>
                   <Control icon={<User size={14} strokeWidth={1.75} />}>
                     <input
                       id="ogp-name"
                       className="input"
                       value={customerName}
                       disabled={readOnly || Boolean(selectedCustomer)}
-                      onChange={(event) => setCustomerName(event.target.value)}
+                      aria-invalid={Boolean(nameError)}
+                      onChange={(event) => {
+                        setCustomerName(event.target.value)
+                        if (nameError) setNameError(null)
+                      }}
                       placeholder="Name"
                     />
                   </Control>
@@ -333,6 +349,7 @@ export function OldGoldPurchaseEditorModal({
                   </Control>
                 </Field>
               </div>
+              {selectedCustomer ? <CustomerRecordPanel customer={selectedCustomer} /> : null}
               <Field label="Notes" htmlFor="ogp-notes">
                 <Control icon={<StickyNote size={14} strokeWidth={1.75} />}>
                   <input

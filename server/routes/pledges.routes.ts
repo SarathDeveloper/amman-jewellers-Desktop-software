@@ -459,6 +459,11 @@ router.get(
     const to = queryString(req.query, 'to')
     const q = queryString(req.query, 'q')
     const status = queryString(req.query, 'status')
+    const customerId = Number.parseInt(queryString(req.query, 'customerId'), 10)
+    if (Number.isInteger(customerId) && customerId > 0) {
+      clauses.push('p.customer_id = ?')
+      params.push(customerId)
+    }
     if (from) {
       clauses.push('p.pledge_date >= ?')
       params.push(from)
@@ -562,6 +567,9 @@ router.post(
     const tx = db.transaction(() => {
       assertDraft(db, id)
       const row = getPledgeRow(db, id)
+      if (row.loan_amount <= 0) {
+        throw new HttpError(400, 'Enter loan amount')
+      }
       assertKycForSanction(db, id)
       assertWithinLtv(
         db,

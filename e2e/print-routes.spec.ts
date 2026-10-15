@@ -12,12 +12,22 @@ test('cash bill and tax invoice print routes render shop header', async ({ windo
     timeout: 15_000,
   })
   await expect(window.locator('.error-banner')).toHaveCount(0)
+  await expect(window.locator('.cash-bill-party')).toContainText('Customer :')
+  await expect(window.locator('.cash-bill-party')).toContainText('E2E Customer')
+  await expect(window.locator('.cash-bill-party')).toContainText('Address :')
+  await expect(window.locator('.cash-bill-party')).toContainText('Mobile :')
+  await expect(window.locator('.cash-bill-party')).not.toContainText('Father/Husband')
+  await expect(window.locator('.cash-bill-party')).not.toContainText('Thiru')
 
   await window.goto(`${origin}/print/tax-invoice/${invoiceId}`)
   await expect(window.getByRole('heading', { name: shopName })).toBeVisible({
     timeout: 15_000,
   })
   await expect(window.locator('.error-banner')).toHaveCount(0)
+  await expect(window.getByRole('heading', { name: 'BILL TO' })).toBeVisible()
+  await expect(window.locator('.tax-invoice-party')).toContainText('Customer :')
+  await expect(window.locator('.tax-invoice-party')).toContainText('E2E Customer')
+  await expect(window.locator('.tax-invoice-party')).not.toContainText('Father/Husband')
 })
 
 test('a print route loads the print document, not the application', async ({ window }) => {
