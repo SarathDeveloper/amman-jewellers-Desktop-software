@@ -29,3 +29,9 @@ export function localTimeStamp(date = new Date()): string {
   const { hour, minute, second } = localParts(date)
   return `${hour}${minute}${second}`
 }
+
+/** Local date and time for backup filenames: YYYY-MM-DD-HHMMSS. */
+export function localBackupStamp(date = new Date()): string {
+  const { year, month, day } = localParts(date)
+  return `${year}-${month}-${day}-${localTimeStamp(date)}`
+}

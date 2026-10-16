@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { ImagePlus, Trash2 } from 'lucide-react'
 import type { PledgePhoto, PledgePhotoKind } from '@shared/types'
+import { Modal } from '../../components/Modal'
 import { api } from '../../lib/api'
 import { localImageSrc } from '../invoices/mapShopDisplay'
 import './PledgePhotos.css'
@@ -31,6 +32,7 @@ export function PledgePhotosStrip({
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [working, setWorking] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [preview, setPreview] = useState<PledgePhoto | null>(null)
 
   const shown = photos.filter((photo) => photo.kind === kind)
   const disabled = busy || working
@@ -66,6 +68,7 @@ export function PledgePhotosStrip({
       setWorking(true)
       setMessage(null)
       await api.deletePledgePhoto(pledgeId, photo.id)
+      setPreview((current) => (current?.id === photo.id ? null : current))
       onChanged?.(await api.listPledgePhotos(pledgeId))
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Failed to delete photo')
@@ -111,7 +114,14 @@ export function PledgePhotosStrip({
         <ul className="pledge-photo-strip">
           {shown.map((photo) => (
             <li key={photo.id} className="pledge-photo-thumb">
-              <img src={localImageSrc(photo.path, '')} alt={label} />
+              <button
+                type="button"
+                className="pledge-photo-open"
+                aria-label="View photo"
+                onClick={() => setPreview(photo)}
+              >
+                <img src={localImageSrc(photo.path, '')} alt="" />
+              </button>
               {editable ? (
                 <button
                   type="button"
@@ -127,6 +137,15 @@ export function PledgePhotosStrip({
           ))}
         </ul>
       )}
+      {preview ? (
+        <Modal title={label} className="pledge-photo-modal" onClose={() => setPreview(null)}>
+          <img
+            className="pledge-photo-preview"
+            src={localImageSrc(preview.path, '')}
+            alt={label}
+          />
+        </Modal>
+      ) : null}
     </div>
   )
 }

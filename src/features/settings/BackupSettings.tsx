@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Download, FileSpreadsheet, FolderOpen, ShieldAlert, ShieldCheck, Upload } from 'lucide-react'
 import type { BackupFile, BackupInspection, BackupKind, BackupStatus } from '@shared/types'
 import { BACKUP_STATUS_EVENT, daysSinceBackup, healthTitle, healthTone, offsiteCopyCurrent } from '@shared/backupHealth'
@@ -49,21 +49,40 @@ export function BackupSettings() {
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [inspection, setInspection] = useState<BackupInspection | null>(null)
   const canBrowse = Boolean(window.desktopAPI?.chooseBackupFolder)
+  const busyRef = useRef(false)
+  const loadedSchedule = useRef({
+    frequency: 'daily' as BackupStatus['frequency'],
+    time: '21:00',
+    offsiteDir: '',
+  })
 
-  function applyStatus(status: BackupStatus) {
+  function setBusyState(value: boolean) {
+    busyRef.current = value
+    setBusy(value)
+  }
+
+  function applyStatus(status: BackupStatus, forceSchedule = false) {
+    const loaded = loadedSchedule.current
     setLastBackup(status.lastBackupAt)
-    setFrequency(status.frequency)
-    setTime(status.time)
+    setFrequency((current) => (forceSchedule || current === loaded.frequency ? status.frequency : current))
+    setTime((current) => (forceSchedule || current === loaded.time ? status.time : current))
     setNextBackup(status.nextBackupAt)
-    setOffsiteDir(status.offsiteDir ?? '')
+    setOffsiteDir((current) =>
+      forceSchedule || current === loaded.offsiteDir ? (status.offsiteDir ?? '') : current,
+    )
     setLastOffsiteAt(status.lastOffsiteAt ?? null)
     setLastOffsiteError(status.lastOffsiteError ?? null)
+    loadedSchedule.current = {
+      frequency: status.frequency,
+      time: status.time,
+      offsiteDir: status.offsiteDir ?? '',
+    }
     window.dispatchEvent(new CustomEvent<BackupStatus>(BACKUP_STATUS_EVENT, { detail: status }))
   }
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (forceSchedule = true) => {
     const [status, files] = await Promise.all([api.getBackupStatus(), api.listBackups()])
-    applyStatus(status)
+    applyStatus(status, forceSchedule)
     setBackups(files)
   }, [])
 
@@ -80,12 +99,22 @@ export function BackupSettings() {
     })()
   }, [refresh])
 
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (busyRef.current) return
+      void refresh(false).catch(() => {
+        // Leave the last error on screen. The next save or backup will replace it.
+      })
+    }, 15_000)
+    return () => window.clearInterval(id)
+  }, [refresh])
+
   const days = daysSinceBackup(lastBackup)
   const offsiteCurrent = offsiteCopyCurrent(offsiteDir, lastOffsiteAt, lastOffsiteError)
   const tone = healthTone(days, offsiteCurrent)
 
   async function backupNow() {
-    setBusy(true)
+    setBusyState(true)
     try {
       await api.createBackup()
       await refresh()
@@ -96,12 +125,12 @@ export function BackupSettings() {
       setError(message)
       showToast(message, 'error')
     } finally {
-      setBusy(false)
+      setBusyState(false)
     }
   }
 
   async function checkBackup(name: string) {
-    setBusy(true)
+    setBusyState(true)
     try {
       setInspection(await api.inspectBackup(name))
       setError(null)
@@ -110,12 +139,12 @@ export function BackupSettings() {
       setError(message)
       showToast(message, 'error')
     } finally {
-      setBusy(false)
+      setBusyState(false)
     }
   }
 
   async function exportCopy() {
-    setBusy(true)
+    setBusyState(true)
     try {
       await api.exportDatabase()
       await refresh()
@@ -129,12 +158,12 @@ export function BackupSettings() {
       setError(message)
       showToast(message, 'error')
     } finally {
-      setBusy(false)
+      setBusyState(false)
     }
   }
 
   async function exportExcel() {
-    setBusy(true)
+    setBusyState(true)
     try {
       await api.exportExcel()
       showToast('Excel backup downloaded', 'success')
@@ -147,15 +176,15 @@ export function BackupSettings() {
       setError(message)
       showToast(message, 'error')
     } finally {
-      setBusy(false)
+      setBusyState(false)
     }
   }
 
   async function saveSchedule() {
-    setBusy(true)
+    setBusyState(true)
     try {
       const status = await api.updateBackupSettings({ frequency, time, offsiteDir })
-      applyStatus(status)
+      applyStatus(status, true)
       showToast('Backup schedule saved', 'success')
       setError(null)
     } catch (err) {
@@ -163,7 +192,7 @@ export function BackupSettings() {
       setError(message)
       showToast(message, 'error')
     } finally {
-      setBusy(false)
+      setBusyState(false)
     }
   }
 
@@ -174,9 +203,9 @@ export function BackupSettings() {
   }
 
   async function copyOffsiteNow() {
-    setBusy(true)
+    setBusyState(true)
     try {
-      applyStatus(await api.updateBackupSettings({ frequency, time, offsiteDir }))
+      applyStatus(await api.updateBackupSettings({ frequency, time, offsiteDir }), true)
       const status = await api.copyBackupOffsite()
       applyStatus(status)
       await refresh()
@@ -192,7 +221,7 @@ export function BackupSettings() {
         // keep the copy error visible
       }
     } finally {
-      setBusy(false)
+      setBusyState(false)
     }
   }
 
@@ -200,7 +229,7 @@ export function BackupSettings() {
     if (!pending) return
     const action = pending
     setPending(null)
-    setBusy(true)
+    setBusyState(true)
     try {
       if (action.type === 'delete') {
         await api.deleteBackup(action.name)
@@ -223,7 +252,7 @@ export function BackupSettings() {
       setError(message)
       showToast(message, 'error')
     } finally {
-      setBusy(false)
+      setBusyState(false)
     }
   }
 
@@ -305,8 +334,9 @@ export function BackupSettings() {
             <h2 className="settings-section-title">Automatic backup</h2>
             <p className="muted settings-card-subtitle">
               The app takes a backup at this time when it is open. If it was closed through the
-              scheduled slot, it catches up on the next launch. Each backup includes a .db file for
-              restore and an Excel workbook of every table.
+              scheduled slot, it catches up on the next launch. Each backup is saved in the backups
+              folder with the current date and time, as a database file and an Excel workbook.
+              An earlier backup from the same day is kept.
             </p>
           </div>
         </div>
@@ -410,10 +440,10 @@ export function BackupSettings() {
           <div>
             <h2 className="settings-section-title">Saved backups</h2>
             <p className="muted settings-card-subtitle">
-              Automatic backups run on the schedule above, after each metal day close, and the
-              newest 14 daily copies are kept along with weekly and monthly copies. The newest 30
-              manual backups are kept. Restore uses the .db file. Excel is a readable copy of every
-              table.
+              Automatic, manual, and day-close backups are kept together in the backups folder.
+              Each one is named with the current date and time, and its Excel workbook sits beside
+              the database file. The newest 14 daily copies are kept, along with weekly and monthly
+              copies, and the newest 30 manual backups.
             </p>
           </div>
         </div>

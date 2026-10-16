@@ -536,6 +536,9 @@ function mixedPaymentsTotal(parts: MixedPaymentPart[] | undefined): number {
 }
 
 function assertPayableRules(amountBeforeRoundOff: number, roundOff: number, paid: number, amountPayable: number) {
+  if (roundOff > 0) {
+    throw new Error('Round off cannot increase the bill')
+  }
   if (amountPayable < -0.009) {
     throw new Error('Amount payable cannot be negative')
   }

@@ -210,6 +210,16 @@ describe('computeSaleBreakdown VA/MC', () => {
     expect(breakdown.hasMc).toBe(false)
   })
 
+  it('adds stone weight times stone rate, and stays zero when there is no stone', () => {
+    const withStone = computeSaleBreakdown([
+      saleLine({ stoneWeight: 0.5, stoneRate: 500 }),
+    ])
+    expect(withStone.stoneValue).toBe(250)
+
+    const withoutStone = computeSaleBreakdown([saleLine()])
+    expect(withoutStone.stoneValue).toBe(0)
+  })
+
   it('fills both rows on a mixed bill, each from its own lines', () => {
     const breakdown = computeSaleBreakdown([
       saleLine({ vamcMode: 'pct', wastagePct: 4, makingCharges: 0 }),

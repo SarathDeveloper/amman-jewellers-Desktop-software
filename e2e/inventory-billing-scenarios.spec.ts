@@ -126,16 +126,14 @@ test.describe('Inventory to billing — live Tauri scenarios', () => {
       stockQty: '1',
     })
 
-    await openInventoryTab(window, 'Suppliers')
-    await window.getByRole('button', { name: 'Add supplier' }).click()
+    await openInventoryTab(window, 'Purchase')
+    await window.getByRole('button', { name: 'New purchase' }).click()
+    const purchase = window.getByRole('dialog', { name: 'New purchase' })
+    await purchase.getByRole('button', { name: 'New' }).click()
     const supplierDialog = window.getByRole('dialog', { name: 'Add supplier' })
     await supplierDialog.getByLabel('Name').fill(supplierName)
     await supplierDialog.getByRole('button', { name: 'Save' }).click()
     await expect(supplierDialog).toBeHidden()
-
-    await openInventoryTab(window, 'Purchase')
-    await window.getByRole('button', { name: 'New purchase' }).click()
-    const purchase = window.getByRole('dialog', { name: 'New purchase' })
     await purchase.getByLabel('Supplier').selectOption({ label: supplierName })
     await purchase.getByLabel('Product').selectOption({ label: productName })
     await purchase.getByLabel('Qty').fill('2')

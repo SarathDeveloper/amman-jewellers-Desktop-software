@@ -5,6 +5,7 @@ import {
   computePurchaseTotals,
   paymentStatusFor,
   resolveAmountPayable,
+  suggestPurchaseRoundOff,
   suggestRoundOff,
 } from '../../shared/billing/billSummary'
 
@@ -107,11 +108,16 @@ describe('bill summary', () => {
     expect(summary.amountPayable).toBe(14000)
   })
 
-  it('suggests nearest-rupee round off and payment status', () => {
-    expect(suggestRoundOff(1234.6)).toBe(0.4)
+  it('suggests a round off that always reduces the sale bill', () => {
+    expect(suggestRoundOff(1234.6)).toBe(-0.6)
     expect(suggestRoundOff(1234.4)).toBe(-0.4)
     expect(suggestRoundOff(1234.5)).toBe(-0.5)
     expect(suggestRoundOff(22000.5)).toBe(-0.5)
+    expect(suggestRoundOff(54790.85)).toBe(-0.85)
+    expect(suggestRoundOff(100)).toBe(0)
+    expect(suggestPurchaseRoundOff(1234.6)).toBe(0.4)
+    expect(suggestPurchaseRoundOff(1234.4)).toBe(-0.4)
+    expect(suggestPurchaseRoundOff(1234.5)).toBe(-0.5)
     expect(paymentStatusFor(1000, 1000, 1000)).toBe('paid')
     expect(paymentStatusFor(1000, 400, 1000)).toBe('partial')
     expect(paymentStatusFor(1000, 0, 1000)).toBe('unpaid')
@@ -145,5 +151,9 @@ describe('bill summary', () => {
     const forced = computePurchaseTotals([600], 0)
     expect(forced.roundOff).toBe(0)
     expect(forced.total).toBe(618)
+
+    const roundedUp = computePurchaseTotals([10.2])
+    expect(roundedUp.roundOff).toBe(0.49)
+    expect(roundedUp.total).toBe(11)
   })
 })

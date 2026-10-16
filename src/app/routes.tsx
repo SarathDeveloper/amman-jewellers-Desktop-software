@@ -40,7 +40,6 @@ import {
   SchemeLedgerPage,
   SettingsPage,
   StockPage,
-  SuppliersPage,
   UsersPage,
 } from './lazyPages'
 
@@ -111,12 +110,12 @@ export const router = createBrowserRouter([
               { path: 'inwards', element: <InwardsPage /> },
               { path: 'old-gold', element: <OldGoldPurchasesPage /> },
               { path: 'old-gold-lot', element: <OldGoldLotPage /> },
-              { path: 'suppliers', element: <SuppliersPage /> },
+              { path: 'suppliers', element: <Navigate to="/inventory/inwards" replace /> },
             ],
           },
           { path: 'products', element: <Navigate to="/inventory/products" replace /> },
           { path: 'stock', element: <Navigate to="/inventory/stock" replace /> },
-          { path: 'suppliers', element: <Navigate to="/inventory/suppliers" replace /> },
+          { path: 'suppliers', element: <Navigate to="/inventory/inwards" replace /> },
           { path: 'inwards', element: <Navigate to="/inventory/inwards" replace /> },
           { path: 'inwards/*', element: <Navigate to="/inventory/inwards" replace /> },
           { path: 'customers', element: <CustomersPage /> },

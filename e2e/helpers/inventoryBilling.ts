@@ -90,12 +90,28 @@ export async function addProductToBill(page: Page, productName: string) {
 
 /** Tagged products let the cashier type or pick a HUID on the line before the bill is finalized. */
 export async function pickFirstHuid(row: Locator) {
+  const select = row.locator('select.sale-bill-huid-select')
+  if ((await select.count()) > 0) {
+    if (await select.isDisabled()) return
+    const value = await select.locator('option').evaluateAll((options) => {
+      const match = options.find((option) => option.value.trim())
+      return match?.value ?? ''
+    })
+    if (value) await select.selectOption(value)
+    return
+  }
   const input = row.locator('.sale-bill-huid-input')
   if ((await input.count()) === 0) return
-  const first = row.locator('datalist option').first()
-  if ((await first.count()) === 0) return
-  const value = (await first.getAttribute('value')) ?? ''
-  if (value) await input.fill(value)
+  if (await input.isDisabled()) return
+  await input.focus()
+  const option = row.page().locator('.sale-bill-huid-menu [role="option"]').first()
+  try {
+    await option.waitFor({ state: 'visible', timeout: 1000 })
+  } catch {
+    return
+  }
+  const text = ((await option.textContent()) ?? '').trim()
+  if (text) await input.fill(text)
 }
 
 export async function setLineMetalRate(row: Locator, rate: string) {

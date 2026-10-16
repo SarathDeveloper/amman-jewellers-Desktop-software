@@ -12,7 +12,7 @@ import {
   normalizeBackupSchedule,
   type BackupSchedule,
 } from '@shared/backupSchedule'
-import { localDateIso, localNowStamp, localTimeStamp } from '@shared/localDate'
+import { localBackupStamp, localDateIso, localNowStamp, localTimeStamp } from '@shared/localDate'
 import { getShopSetting, setShopSetting } from '../lib/settingsStore'
 import { getBackupsDir, getDataDir, getUploadsDir } from '../lib/paths'
 import { sqliteNativeOptions } from '../lib/sqliteNative'
@@ -312,9 +312,22 @@ export async function backupDatabaseTo(
   destinationPath: string,
   options: { scheduled?: boolean } = {},
 ): Promise<BackupStatus> {
+  removeSidecarFiles(destinationPath)
   const db = getDatabase()
   await db.backup(destinationPath)
+  finishSnapshotFile(destinationPath)
   return markBackupCompleted(options)
+}
+
+/** A snapshot copied from the live WAL database otherwise keeps -wal/-shm files beside it. */
+function finishSnapshotFile(filePath: string): void {
+  const snapshot = new Database(filePath, sqliteNativeOptions())
+  try {
+    snapshot.pragma('journal_mode = DELETE')
+  } finally {
+    snapshot.close()
+  }
+  removeSidecarFiles(filePath)
 }
 
 async function writeExcelBeside(dbPath: string): Promise<void> {
@@ -325,17 +338,29 @@ async function writeExcelBeside(dbPath: string): Promise<void> {
   }
 }
 
-async function copyExcelBeside(sourceDbPath: string, destDir: string, now: Date): Promise<void> {
+async function copyExcelBeside(sourceDbPath: string, destDir: string): Promise<void> {
   try {
-    // Excel is written only for daily and manual snapshots. A day-close or
-    // pre-restore snapshot must not grow an extra workbook here.
     const sourceXlsx = excelPathFor(sourceDbPath)
     if (!existsSync(sourceXlsx)) return
-    const destXlsx = join(destDir, `jeweltrackerpro-${localDateIso(now)}.xlsx`)
-    copyFileSync(sourceXlsx, destXlsx)
+    copyFileSync(sourceXlsx, join(destDir, basename(sourceXlsx)))
   } catch (error) {
     logDiagnostic('backup', 'Off-machine Excel copy failed', error)
   }
+}
+
+function scheduledBackupPath(dir: string, now: Date): string {
+  return uniqueBackupPath(dir, `jeweltrackerpro-${localBackupStamp(now)}.db`)
+}
+
+function uniqueBackupPath(dir: string, fileName: string): string {
+  const stem = fileName.replace(/\.db$/i, '')
+  let name = `${stem}.db`
+  let duplicate = 2
+  while (existsSync(join(dir, name))) {
+    name = `${stem}-${duplicate}.db`
+    duplicate += 1
+  }
+  return join(dir, name)
 }
 
 export async function ensureScheduledBackup(now = new Date()): Promise<void> {
@@ -349,7 +374,7 @@ async function runScheduledBackup(now: Date): Promise<void> {
     return
   }
   const dir = getBackupsDir()
-  const destinationPath = join(dir, `jeweltrackerpro-${localDateIso(now)}.db`)
+  const destinationPath = scheduledBackupPath(dir, now)
   await backupDatabaseTo(destinationPath, { scheduled: true })
   await writeExcelBeside(destinationPath)
   pruneBackupFiles(dir)
@@ -369,7 +394,7 @@ function sourceFingerprint(file: BackupFile): string {
 
 async function ensureLocalSnapshot(now = new Date()): Promise<BackupFile> {
   const dir = getBackupsDir()
-  const destinationPath = join(dir, `jeweltrackerpro-${localDateIso(now)}.db`)
+  const destinationPath = scheduledBackupPath(dir, now)
   await backupDatabaseTo(destinationPath)
   await writeExcelBeside(destinationPath)
   pruneBackupFiles(dir)
@@ -405,7 +430,7 @@ function mirrorUploads(destDir: string): void {
   }
 }
 
-async function copyAndProve(sourcePath: string, destDir: string, now: Date): Promise<string> {
+async function copyAndProve(sourcePath: string, destDir: string): Promise<string> {
   if (!existsSync(destDir)) {
     throw new Error('Off-machine folder was not found')
   }
@@ -413,10 +438,10 @@ async function copyAndProve(sourcePath: string, destDir: string, now: Date): Pro
     throw new Error('Off-machine folder is not a directory')
   }
 
-  const date = localDateIso(now)
-  const destPath = join(destDir, `jeweltrackerpro-${date}.db`)
+  const destName = basename(sourcePath)
+  const destPath = join(destDir, destName)
   // Leading "~$" keeps half-written files out of OneDrive/Drive sync clients.
-  const partialPath = join(destDir, `~$jeweltrackerpro-${date}.db.tmp`)
+  const partialPath = join(destDir, `~$${destName}.tmp`)
   if (existsSync(partialPath)) {
     unlinkSync(partialPath)
   }
@@ -436,7 +461,7 @@ async function copyAndProve(sourcePath: string, destDir: string, now: Date): Pro
   }
 
   pruneBackupFiles(destDir)
-  await copyExcelBeside(sourcePath, destDir, now)
+  await copyExcelBeside(sourcePath, destDir)
   mirrorUploads(destDir)
   return destPath
 }
@@ -463,14 +488,14 @@ async function runOffsiteCopy(options: { forceFresh?: boolean }, now: Date): Pro
     const fingerprint = sourceFingerprint(newest)
     const lastSource = getShopSetting(getDatabase(), LAST_OFFSITE_SOURCE_KEY, '')
     if (!options.forceFresh && lastSource === fingerprint) {
-      const destXlsx = join(destDir, `jeweltrackerpro-${localDateIso(now)}.xlsx`)
+      const destXlsx = join(destDir, basename(excelPathFor(sourcePath)))
       if (!existsSync(destXlsx)) {
-        await copyExcelBeside(sourcePath, destDir, now)
+        await copyExcelBeside(sourcePath, destDir)
       }
       mirrorUploads(destDir)
       return getBackupStatus()
     }
-    await copyAndProve(sourcePath, destDir, now)
+    await copyAndProve(sourcePath, destDir)
     recordOffsiteSuccess(fingerprint)
     return getBackupStatus()
   } catch (error) {
@@ -501,9 +526,13 @@ export async function runDayCloseBackup(businessDate: string, metal: string): Pr
     await withBackupLock(async () => {
       const now = new Date()
       const slug = metal.trim().toLowerCase().replace(/[^a-z0-9]+/g, '') || 'metal'
-      const name = `jeweltrackerpro-dayclose-${localDateIso(now)}-${slug}-${localTimeStamp(now)}.db`
       const dir = getBackupsDir()
-      await backupDatabaseTo(join(dir, name))
+      const destinationPath = uniqueBackupPath(
+        dir,
+        `jeweltrackerpro-dayclose-${localDateIso(now)}-${slug}-${localTimeStamp(now)}.db`,
+      )
+      await backupDatabaseTo(destinationPath)
+      await writeExcelBeside(destinationPath)
       pruneBackupFiles(dir)
       await runOffsiteCopy({}, now)
     })
@@ -634,8 +663,8 @@ export function listBackups(): BackupFile[] {
 
 export async function createManualBackup(): Promise<BackupFile> {
   return withBackupLock(async () => {
-    const name = `jeweltrackerpro-manual-${localNowStamp()}.db`
-    const destinationPath = join(getBackupsDir(), name)
+    const destinationPath = uniqueBackupPath(getBackupsDir(), `jeweltrackerpro-manual-${localNowStamp()}.db`)
+    const name = basename(destinationPath)
     await backupDatabaseTo(destinationPath)
     await writeExcelBeside(destinationPath)
     pruneBackupFiles(getBackupsDir())

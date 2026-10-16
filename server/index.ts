@@ -27,7 +27,7 @@ const runScheduledBackup = () =>
     logDiagnostic('backup', 'Scheduled database backup failed', error)
   })
 runScheduledBackup()
-setInterval(runScheduledBackup, 60_000)
+setInterval(runScheduledBackup, 15_000)
 
 const app = createApp()
 const server = app.listen(port, host, onListening)

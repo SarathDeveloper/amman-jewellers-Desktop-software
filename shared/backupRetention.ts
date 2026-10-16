@@ -2,11 +2,11 @@ import type { BackupKind } from './types'
 
 export const BACKUP_EXTENSION_RE = /\.db$/i
 
-const DAILY_RE = /^jeweltrackerpro-(\d{4})-(\d{2})-(\d{2})\.db$/
-const MANUAL_RE = /^jeweltrackerpro-manual-(\d{8})-(\d{6})\.db$/
-const DAYCLOSE_RE = /^jeweltrackerpro-dayclose-(\d{4})-(\d{2})-(\d{2})-[a-z]+-(\d{6})\.db$/
-const PRERESTORE_RE = /^jeweltrackerpro-prerestore-(\d{8})-(\d{6})\.db$/
-const PREMIGRATE_RE = /^jeweltrackerpro-premigrate-v(\d+)-(\d{8})-(\d{6})\.db$/
+const DAILY_RE = /^jeweltrackerpro-(\d{4})-(\d{2})-(\d{2})(?:-(\d{6})(?:-\d+)?)?\.db$/
+const MANUAL_RE = /^jeweltrackerpro-manual-(\d{8})-(\d{6})(?:-\d+)?\.db$/
+const DAYCLOSE_RE = /^jeweltrackerpro-dayclose-(\d{4})-(\d{2})-(\d{2})-[a-z]+-(\d{6})(?:-\d+)?\.db$/
+const PRERESTORE_RE = /^jeweltrackerpro-prerestore-(\d{8})-(\d{6})(?:-\d+)?\.db$/
+const PREMIGRATE_RE = /^jeweltrackerpro-premigrate-v(\d+)-(\d{8})-(\d{6})(?:-\d+)?\.db$/
 
 /** Per-kind caps applied in addition to the daily week/month tiers. */
 export const BACKUP_KIND_CAPS: Record<BackupKind, number> = {
@@ -45,7 +45,15 @@ function stampFromName(name: string, kind: BackupKind): number | null {
   if (kind === 'daily') {
     const match = DAILY_RE.exec(name)
     if (!match) return null
-    return new Date(Number(match[1]), pad2(match[2]) - 1, pad2(match[3]), 12, 0, 0).getTime()
+    const time = match[4] ?? '120000'
+    return new Date(
+      Number(match[1]),
+      pad2(match[2]) - 1,
+      pad2(match[3]),
+      pad2(time.slice(0, 2)),
+      pad2(time.slice(2, 4)),
+      pad2(time.slice(4, 6)),
+    ).getTime()
   }
   if (kind === 'dayclose') {
     const match = DAYCLOSE_RE.exec(name)
@@ -92,6 +100,15 @@ function isoWeekKey(time: number): string {
   return `${utc.getUTCFullYear()}-W${week}`
 }
 
+function sameLocalDay(time: number, now: Date): boolean {
+  const date = new Date(time)
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  )
+}
+
 function monthKey(time: number): string {
   const date = new Date(time)
   return `${date.getFullYear()}-${date.getMonth()}`
@@ -100,10 +117,11 @@ function monthKey(time: number): string {
 type NamedTime = { name: string; time: number }
 
 /**
- * Backup file names to keep. Daily files keep the newest `recent`, plus the
- * newest file of each of the last `weeks` ISO weeks and each of the last
- * `months` calendar months, so end-of-month and tax-time restores still reach
- * back further than a fortnight. Every other kind is capped by `BACKUP_KIND_CAPS`.
+ * Backup file names to keep. Every backup from the current local day is kept, so a
+ * later backup never discards an earlier one from the same day. Older daily files
+ * keep the newest `recent`, plus the newest file of each of the last `weeks` ISO
+ * weeks and each of the last `months` calendar months. Every other kind is capped
+ * by `BACKUP_KIND_CAPS`.
  */
 export function selectBackupsToKeep(names: string[], now = new Date()): Set<string> {
   const keep = new Set<string>()
@@ -123,6 +141,12 @@ export function selectBackupsToKeep(names: string[], now = new Date()): Set<stri
   }
   for (const list of byKind.values()) {
     list.sort((a, b) => b.time - a.time)
+  }
+
+  for (const list of byKind.values()) {
+    for (const file of list) {
+      if (sameLocalDay(file.time, now)) keep.add(file.name)
+    }
   }
 
   const daily = byKind.get('daily') ?? []

@@ -28,13 +28,21 @@ export function premigrateSnapshotName(fromVersion: number, stamp = localNowStam
 
 /**
  * Deletes backup files that fall outside the retention tiers, along with their
- * Excel sibling. Files that are not recognised backup names are left alone.
+ * Excel sibling. SQLite sidecar files in this folder are removed as well.
  */
 export function pruneBackupFiles(dir: string): void {
   if (!existsSync(dir)) return
   const names = readdirSync(dir)
   const keep = selectBackupsToKeep(names)
   for (const name of names) {
+    if (name.endsWith('.db-wal') || name.endsWith('.db-shm')) {
+      try {
+        unlinkSync(join(dir, name))
+      } catch {
+        // A leftover sidecar is removed on the next backup.
+      }
+      continue
+    }
     if (!backupKindForName(name)) continue
     if (keep.has(name)) continue
     try {

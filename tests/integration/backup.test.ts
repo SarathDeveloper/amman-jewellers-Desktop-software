@@ -1,6 +1,6 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, basename } from 'node:path'
 import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import type { BackupFile, BackupInspection, BackupStatus, Product } from '@shared/types'
@@ -11,6 +11,7 @@ import {
   ensureDailyBackup,
   ensureScheduledBackup,
   LAST_BACKUP_AT_KEY,
+  LAST_SCHEDULED_BACKUP_AT_KEY,
   proveBackupRestores,
   restoreDatabaseFrom,
   tickScheduledBackup,
@@ -22,6 +23,15 @@ import { getUploadsDir } from '../../server/lib/paths'
 import { setShopSetting } from '../../server/lib/settingsStore'
 import { localDateIso } from '../../shared/localDate'
 import { getTestAgent, IPC_CHANNELS, ipc, useIntegrationEnv, withHuids } from './helpers/testEnv'
+
+const TIMED_DAILY_RE = /^jeweltrackerpro-\d{4}-\d{2}-\d{2}-\d{6}(?:-\d+)?\.db$/
+
+function newestTimedDaily(dir: string): string {
+  const names = readdirSync(dir).filter((name) => TIMED_DAILY_RE.test(name))
+  const name = names.sort((a, b) => statSync(join(dir, b)).mtimeMs - statSync(join(dir, a)).mtimeMs)[0]
+  if (!name) throw new Error(`No dated backup in ${dir}`)
+  return join(dir, name)
+}
 
 const sampleProduct = withHuids({
   name: 'Test chain',
@@ -78,21 +88,59 @@ describe('database backup and restore', () => {
   it('writes a daily backup on demand', async () => {
     await ipc(IPC_CHANNELS.PRODUCTS_CREATE, sampleProduct)
     await ensureDailyBackup()
-    const today = localDateIso()
-    const dailyPath = join(getUserDataDir(), 'backups', `jeweltrackerpro-${today}.db`)
-    const excelPath = join(getUserDataDir(), 'backups', `jeweltrackerpro-${today}.xlsx`)
+    const dailyPath = newestTimedDaily(join(getUserDataDir(), 'backups'))
+    const excelPath = dailyPath.replace(/\.db$/, '.xlsx')
     expect(existsSync(dailyPath)).toBe(true)
     assertSqliteIntegrity(dailyPath)
     expect(existsSync(excelPath)).toBe(true)
     const excel = readFileSync(excelPath)
     expect(excel.subarray(0, 2).toString()).toBe('PK')
-    expect(excel.toString('utf8')).toContain('Test chain')
-    expect(excel.toString('utf8')).toContain('products')
+    const workbook = excel.toString('utf8')
+    expect(workbook).toContain('Test chain')
+    expect(workbook).toContain('products')
+    const sheetNames = [...workbook.matchAll(/sheet name="([^"]+)"/g)].map((match) => match[1])
+    expect(sheetNames.indexOf('products')).toBeGreaterThanOrEqual(0)
+    expect(sheetNames.indexOf('products')).toBeLessThan(sheetNames.indexOf('_tables'))
     const hash = getDatabase().prepare('SELECT password_hash FROM users LIMIT 1').get() as {
       password_hash: string
     }
     expect(hash.password_hash.length).toBeGreaterThan(8)
     expect(excel.toString('utf8')).not.toContain(hash.password_hash)
+    expect(existsSync(`${dailyPath}-wal`)).toBe(false)
+    expect(existsSync(`${dailyPath}-shm`)).toBe(false)
+  })
+
+  it('keeps the earlier backup when another is taken the same day', async () => {
+    await ipc(IPC_CHANNELS.PRODUCTS_CREATE, sampleProduct)
+    const agent = getTestAgent()
+    const backupsDir = join(getUserDataDir(), 'backups')
+
+    const first = await agent.post('/api/backup/create')
+    const second = await agent.post('/api/backup/create')
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(second.body.name).not.toBe(first.body.name)
+    expect(existsSync(join(backupsDir, first.body.name))).toBe(true)
+    expect(existsSync(join(backupsDir, second.body.name))).toBe(true)
+    expect(existsSync(join(backupsDir, first.body.name.replace(/\.db$/, '.xlsx')))).toBe(true)
+    expect(existsSync(join(backupsDir, second.body.name.replace(/\.db$/, '.xlsx')))).toBe(true)
+
+    const morning = new Date()
+    morning.setHours(8, 0, 0, 0)
+    const evening = new Date()
+    evening.setHours(21, 30, 0, 0)
+    setShopSetting(getDatabase(), LAST_SCHEDULED_BACKUP_AT_KEY, new Date(Date.now() - 3 * 86_400_000).toISOString())
+    await ensureScheduledBackup(morning)
+    const morningBackup = newestTimedDaily(backupsDir)
+    setShopSetting(getDatabase(), LAST_SCHEDULED_BACKUP_AT_KEY, morning.toISOString())
+    await ensureScheduledBackup(evening)
+    const eveningBackup = newestTimedDaily(backupsDir)
+
+    expect(eveningBackup).not.toBe(morningBackup)
+    expect(existsSync(morningBackup)).toBe(true)
+    expect(existsSync(eveningBackup)).toBe(true)
+    expect(existsSync(morningBackup.replace(/\.db$/, '.xlsx'))).toBe(true)
+    expect(existsSync(eveningBackup.replace(/\.db$/, '.xlsx'))).toBe(true)
   })
 
   it('creates a manual backup that can be listed, restored, and deleted', async () => {
@@ -165,22 +213,41 @@ describe('database backup and restore', () => {
 
   it('writes a scheduled backup when the last slot was missed and skips when current', async () => {
     const db = getDatabase()
-    const today = localDateIso()
-    const dailyPath = join(getUserDataDir(), 'backups', `jeweltrackerpro-${today}.db`)
+    const backupsDir = join(getUserDataDir(), 'backups')
 
-    setShopSetting(db, LAST_BACKUP_AT_KEY, new Date(Date.now() - 3 * 86_400_000).toISOString())
+    setShopSetting(db, LAST_SCHEDULED_BACKUP_AT_KEY, new Date(Date.now() - 3 * 86_400_000).toISOString())
     await ensureScheduledBackup()
+    const dailyPath = newestTimedDaily(backupsDir)
     expect(existsSync(dailyPath)).toBe(true)
     assertSqliteIntegrity(dailyPath)
 
-    const before = db.prepare('SELECT value FROM shop_settings WHERE key = ?').get(LAST_BACKUP_AT_KEY) as {
+    const before = db.prepare('SELECT value FROM shop_settings WHERE key = ?').get(LAST_SCHEDULED_BACKUP_AT_KEY) as {
       value: string
     }
     await ensureScheduledBackup()
-    const after = db.prepare('SELECT value FROM shop_settings WHERE key = ?').get(LAST_BACKUP_AT_KEY) as {
+    const after = db.prepare('SELECT value FROM shop_settings WHERE key = ?').get(LAST_SCHEDULED_BACKUP_AT_KEY) as {
       value: string
     }
     expect(after.value).toBe(before.value)
+  })
+
+  it('runs the evening backup after a catch-up earlier the same day', async () => {
+    const db = getDatabase()
+    const morning = new Date()
+    morning.setHours(8, 0, 0, 0)
+    const evening = new Date()
+    evening.setHours(21, 30, 0, 0)
+    setShopSetting(db, LAST_SCHEDULED_BACKUP_AT_KEY, morning.toISOString())
+
+    await ensureScheduledBackup(evening)
+
+    const dailyPath = newestTimedDaily(join(getUserDataDir(), 'backups'))
+    const excelPath = dailyPath.replace(/\.db$/, '.xlsx')
+    expect(dailyPath.endsWith(`jeweltrackerpro-${localDateIso(evening)}-213000.db`)).toBe(true)
+    expect(existsSync(dailyPath)).toBe(true)
+    expect(existsSync(excelPath)).toBe(true)
+    expect(existsSync(`${dailyPath}-wal`)).toBe(false)
+    expect(existsSync(`${dailyPath}-shm`)).toBe(false)
   })
 
   it('rejects an off-machine folder inside app data', async () => {
@@ -213,8 +280,6 @@ describe('database backup and restore', () => {
     await ipc(IPC_CHANNELS.PRODUCTS_CREATE, sampleProduct)
     const agent = getTestAgent()
     const offsiteDir = mkdtempSync(join(tmpdir(), 'jtp-offsite-'))
-    const today = localDateIso()
-    const offsitePath = join(offsiteDir, `jeweltrackerpro-${today}.db`)
 
     try {
       const saved = await agent.put('/api/backup/settings').send({
@@ -229,12 +294,14 @@ describe('database backup and restore', () => {
       expect(copied.status).toBe(200)
       expect(copied.body.lastOffsiteAt).toBeTruthy()
       expect(copied.body.lastOffsiteError).toBeNull()
-      expect(existsSync(offsitePath)).toBe(true)
-      assertSqliteIntegrity(offsitePath)
-      const offsiteExcel = join(offsiteDir, `jeweltrackerpro-${today}.xlsx`)
+      const localPath = newestTimedDaily(join(getUserDataDir(), 'backups'))
+      const offsiteFile = join(offsiteDir, basename(localPath))
+      expect(existsSync(offsiteFile)).toBe(true)
+      assertSqliteIntegrity(offsiteFile)
+      const offsiteExcel = offsiteFile.replace(/\.db$/, '.xlsx')
       expect(existsSync(offsiteExcel)).toBe(true)
       expect(readFileSync(offsiteExcel).toString('utf8')).toContain('Test chain')
-      await proveBackupRestores(offsitePath, join(getUserDataDir(), 'backups', `jeweltrackerpro-${today}.db`))
+      await proveBackupRestores(offsiteFile, localPath)
 
       const skipped = await copyNewestBackupOffsite()
       expect(skipped.lastOffsiteAt).toBe(copied.body.lastOffsiteAt)
@@ -242,7 +309,7 @@ describe('database backup and restore', () => {
       await ipc(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({ ...sampleProduct, name: 'Later ring' }))
       expect(await ipc<Product[]>(IPC_CHANNELS.PRODUCTS_LIST)).toHaveLength(2)
 
-      await restoreDatabaseFrom(offsitePath)
+      await restoreDatabaseFrom(offsiteFile)
       const products = await ipc<Product[]>(IPC_CHANNELS.PRODUCTS_LIST)
       expect(products).toHaveLength(1)
       expect(products[0]?.name).toBe('Test chain')
@@ -273,8 +340,8 @@ describe('database backup and restore', () => {
       expect(status.body.lastBackupAt).toBeTruthy()
       expect(status.body.lastOffsiteAt).toBeNull()
       expect(status.body.lastOffsiteError).toBe('Off-machine folder was not found')
-      expect(existsSync(join(getUserDataDir(), 'backups', `jeweltrackerpro-${localDateIso()}.db`))).toBe(true)
-      expect(existsSync(join(missing, `jeweltrackerpro-${localDateIso()}.db`))).toBe(false)
+      expect(existsSync(newestTimedDaily(join(getUserDataDir(), 'backups')))).toBe(true)
+      expect(existsSync(missing)).toBe(false)
     } finally {
       rmSync(parent, { recursive: true, force: true })
     }
@@ -283,7 +350,6 @@ describe('database backup and restore', () => {
   it('copies off-machine after a scheduled local backup', async () => {
     await ipc(IPC_CHANNELS.PRODUCTS_CREATE, sampleProduct)
     const offsiteDir = mkdtempSync(join(tmpdir(), 'jtp-offsite-tick-'))
-    const today = localDateIso()
     const agent = getTestAgent()
 
     try {
@@ -295,11 +361,11 @@ describe('database backup and restore', () => {
       setShopSetting(getDatabase(), LAST_BACKUP_AT_KEY, new Date(Date.now() - 3 * 86_400_000).toISOString())
       await tickScheduledBackup()
 
-      const localPath = join(getUserDataDir(), 'backups', `jeweltrackerpro-${today}.db`)
-      const offsitePath = join(offsiteDir, `jeweltrackerpro-${today}.db`)
+      const localPath = newestTimedDaily(join(getUserDataDir(), 'backups'))
+      const offsitePath = join(offsiteDir, basename(localPath))
       expect(existsSync(localPath)).toBe(true)
       expect(existsSync(offsitePath)).toBe(true)
-      expect(existsSync(join(offsiteDir, `jeweltrackerpro-${today}.xlsx`))).toBe(true)
+      expect(existsSync(offsitePath.replace(/\.db$/, '.xlsx'))).toBe(true)
       assertSqliteIntegrity(offsitePath)
 
       const status = await agent.get('/api/backup/status')
@@ -422,6 +488,7 @@ describe('database backup and restore', () => {
       await agent
         .put('/api/backup/settings')
         .send({ frequency: 'daily', time: '21:00', offsiteDir })
+      const beforeClose = await agent.get('/api/backup/status')
 
       const closed = await agent.post('/api/stock/day-closings/close').send({
         businessDate: localDateIso(),
@@ -438,13 +505,14 @@ describe('database backup and restore', () => {
       )
       expect(dayCloseFiles).toHaveLength(1)
       // Excel copies are only written for daily and manual snapshots.
-      expect(existsSync(join(backupsDir, dayCloseFiles[0]!.replace(/\.db$/, '.xlsx')))).toBe(false)
-      expect(existsSync(join(offsiteDir, `jeweltrackerpro-${localDateIso()}.db`))).toBe(true)
+      expect(existsSync(join(backupsDir, dayCloseFiles[0]!.replace(/\.db$/, '.xlsx')))).toBe(true)
+      expect(readdirSync(offsiteDir).some((name) => name.endsWith('.db') && name.startsWith('jeweltrackerpro-'))).toBe(true)
 
       const status = await agent.get('/api/backup/status')
       expect(status.body.lastBackupAt).toBeTruthy()
-      // The day-close backup must not satisfy the scheduled slot.
-      expect(status.body.nextBackupAt).toBeNull()
+      // Saving the schedule may take the catch-up backup. Closing the day must
+      // not move that scheduled slot.
+      expect(status.body.nextBackupAt).toBe(beforeClose.body.nextBackupAt)
     } finally {
       rmSync(offsiteDir, { recursive: true, force: true })
     }
@@ -467,7 +535,7 @@ describe('database backup and restore', () => {
       expect(existsSync(join(offsiteDir, 'uploads', imageName))).toBe(true)
 
       rmSync(join(uploadsDir, imageName))
-      await restoreDatabaseFrom(join(offsiteDir, `jeweltrackerpro-${localDateIso()}.db`))
+      await restoreDatabaseFrom(join(offsiteDir, basename(newestTimedDaily(join(getUserDataDir(), 'backups')))))
       expect(existsSync(join(uploadsDir, imageName))).toBe(true)
     } finally {
       rmSync(offsiteDir, { recursive: true, force: true })
@@ -478,13 +546,13 @@ describe('database backup and restore', () => {
     await ipc(IPC_CHANNELS.PRODUCTS_CREATE, sampleProduct)
     const agent = getTestAgent()
     const offsiteDir = mkdtempSync(join(tmpdir(), 'jtp-offsite-tamper-'))
-    const localPath = join(getUserDataDir(), 'backups', `jeweltrackerpro-${localDateIso()}.db`)
-    const offsitePath = join(offsiteDir, `jeweltrackerpro-${localDateIso()}.db`)
     try {
       await agent
         .put('/api/backup/settings')
         .send({ frequency: 'daily', time: '21:00', offsiteDir })
       await agent.post('/api/backup/offsite-copy')
+      const localPath = newestTimedDaily(join(getUserDataDir(), 'backups'))
+      const offsitePath = join(offsiteDir, basename(localPath))
       appendFileSync(offsitePath, 'tampered')
       await expect(proveBackupRestores(offsitePath, localPath)).rejects.toThrow()
     } finally {
@@ -511,9 +579,11 @@ describe('database backup and restore', () => {
   it('removes the temporary export file after a download', async () => {
     await ipc(IPC_CHANNELS.PRODUCTS_CREATE, sampleProduct)
     const agent = getTestAgent()
-    const exportPath = join(tmpdir(), `jeweltrackerpro-backup-${new Date().toISOString().slice(0, 10)}.db`)
     const exported = await agent.get('/api/backup/export')
     expect(exported.status).toBe(200)
+    const match = /filename="([^"]+)"/.exec(String(exported.headers['content-disposition'] ?? ''))
+    expect(match?.[1]).toMatch(/^jeweltrackerpro-\d{4}-\d{2}-\d{2}-\d{6}\.db$/)
+    const exportPath = join(tmpdir(), match?.[1] ?? '')
 
     for (let attempt = 0; attempt < 40 && existsSync(exportPath); attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 25))

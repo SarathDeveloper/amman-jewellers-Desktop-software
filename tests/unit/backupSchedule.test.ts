@@ -45,9 +45,23 @@ describe('backup schedule', () => {
     expect(nextBackupAt(daily, last, now)).toBeNull()
   })
 
-  it('skips the evening slot when a backup already ran today', () => {
+  it('runs the evening slot when the only backup today was earlier', () => {
     const now = local(2026, 9, 30, 21, 30)
     const last = iso(local(2026, 9, 30, 10, 0))
+    expect(isBackupDue(daily, last, now)).toBe(true)
+    expect(nextBackupAt(daily, last, now)).toBeNull()
+  })
+
+  it('does not repeat a morning catch-up before the evening slot', () => {
+    const now = local(2026, 9, 30, 10, 0)
+    const last = iso(local(2026, 9, 30, 8, 0))
+    expect(isBackupDue(daily, last, now)).toBe(false)
+    expect(nextBackupAt(daily, last, now)).toEqual(local(2026, 9, 30, 21, 0))
+  })
+
+  it('waits until tomorrow after the evening slot has already run', () => {
+    const now = local(2026, 9, 30, 21, 30)
+    const last = iso(local(2026, 9, 30, 21, 5))
     expect(isBackupDue(daily, last, now)).toBe(false)
     expect(nextBackupAt(daily, last, now)).toEqual(local(2026, 10, 1, 21, 0))
   })

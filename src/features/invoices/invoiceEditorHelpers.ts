@@ -346,6 +346,7 @@ export function computeSaleBreakdown(lines: EditorLine[]) {
   let jewelleryValue = 0
   let wastageAmount = 0
   let makingCharges = 0
+  let stoneValue = 0
   let otherCharges = 0
   let itemCount = 0
   let totalGrossWeight = 0
@@ -362,6 +363,7 @@ export function computeSaleBreakdown(lines: EditorLine[]) {
     jewelleryValue += metalValue
     wastageAmount += metalValue * (wastagePct / 100)
     makingCharges += making * qty
+    stoneValue += (line.stoneWeight ?? 0) * qty * (line.stoneRate ?? 0)
     otherCharges += numericFieldToNumber(line.otherCharges) * qty
     totalGrossWeight += (line.grossWeight ?? 0) * qty
     if (mode === 'amount') hasMc = true
@@ -371,6 +373,7 @@ export function computeSaleBreakdown(lines: EditorLine[]) {
     jewelleryValue: roundMoney(jewelleryValue),
     wastageAmount: roundMoney(wastageAmount),
     makingCharges: roundMoney(makingCharges),
+    stoneValue: roundMoney(stoneValue),
     otherCharges: roundMoney(otherCharges),
     itemCount,
     totalGrossWeight: Math.round(totalGrossWeight * 1000) / 1000,

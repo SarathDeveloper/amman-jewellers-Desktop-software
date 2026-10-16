@@ -28,6 +28,8 @@ function clock(date: Date): string {
 describe('backup kind detection', () => {
   it('recognises every kind this app writes', () => {
     expect(backupKindForName('jeweltrackerpro-2026-10-09.db')).toBe('daily')
+    expect(backupKindForName('jeweltrackerpro-2026-10-09-183000.db')).toBe('daily')
+    expect(backupKindForName('jeweltrackerpro-2026-10-09-183000-2.db')).toBe('daily')
     expect(backupKindForName('jeweltrackerpro-manual-20261009-120000.db')).toBe('manual')
     expect(backupKindForName('jeweltrackerpro-dayclose-2026-10-09-gold-180000.db')).toBe('dayclose')
     expect(backupKindForName('jeweltrackerpro-prerestore-20261009-120000.db')).toBe('prerestore')
@@ -59,29 +61,38 @@ describe('backup retention', () => {
     expect(keptDaily.length).toBeLessThan(names.length)
   })
 
-  it('caps manual, day-close, pre-restore and pre-update copies', () => {
+  it('caps manual, day-close, pre-restore and pre-update copies from earlier days', () => {
     const manual = Array.from(
       { length: 40 },
-      (_, index) => `jeweltrackerpro-manual-${stamp(new Date(2026, 9, 9, 12, 0, 0 - index))}.db`,
+      (_, index) => `jeweltrackerpro-manual-${stamp(new Date(2026, 9, 8, 12, 0, 0 - index))}.db`,
     )
     const dayclose = Array.from(
       { length: 70 },
       (_, index) =>
-        `jeweltrackerpro-dayclose-2026-10-09-gold-${clock(new Date(2026, 9, 9, 12, 0, 0 - index))}.db`,
+        `jeweltrackerpro-dayclose-2026-10-08-gold-${clock(new Date(2026, 9, 8, 12, 0, 0 - index))}.db`,
     )
     const prerestore = Array.from(
       { length: 9 },
-      (_, index) => `jeweltrackerpro-prerestore-${stamp(new Date(2026, 9, 9, 12, 0, 0 - index))}.db`,
+      (_, index) => `jeweltrackerpro-prerestore-${stamp(new Date(2026, 9, 8, 12, 0, 0 - index))}.db`,
     )
     const premigrate = Array.from(
       { length: 9 },
-      (_, index) => `jeweltrackerpro-premigrate-v5${index}-${stamp(new Date(2026, 9, 9, 12, 0, 0 - index))}.db`,
+      (_, index) => `jeweltrackerpro-premigrate-v5${index}-${stamp(new Date(2026, 9, 8, 12, 0, 0 - index))}.db`,
     )
 
     expect(selectBackupsToKeep(manual, now).size).toBe(30)
     expect(selectBackupsToKeep(dayclose, now).size).toBe(60)
     expect(selectBackupsToKeep(prerestore, now).size).toBe(5)
     expect(selectBackupsToKeep(premigrate, now).size).toBe(5)
+  })
+
+  it('keeps every backup taken on the current day', () => {
+    const names = Array.from({ length: 20 }, (_, hour) => {
+      const clock = String(hour).padStart(2, '0')
+      return `jeweltrackerpro-2026-10-09-${clock}1500.db`
+    })
+    const keep = selectBackupsToKeep(names, now)
+    expect(keep.size).toBe(names.length)
   })
 
   it('never selects a name it does not recognise', () => {

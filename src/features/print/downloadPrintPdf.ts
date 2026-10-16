@@ -128,9 +128,48 @@ function applyHtml2CanvasPageBreaks(
   }
 }
 
+function restoreInline(
+  element: HTMLElement,
+  property: string,
+  value: string,
+  priority: string,
+): void {
+  if (value) element.style.setProperty(property, value, priority)
+  else element.style.removeProperty(property)
+}
+
+/**
+ * html2canvas 1.4 ignores CSS zoom. A fitted bill is mirrored as a transform
+ * for the capture only, then zoom is restored so print pagination stays one page.
+ */
+function mirrorFittedZoomForCapture(root: HTMLElement): () => void {
+  const sheet = root.firstElementChild
+  if (!(sheet instanceof HTMLElement)) return () => {}
+  const zoom = Number.parseFloat(sheet.style.getPropertyValue('zoom') || root.dataset.printFitScale || '')
+  if (!Number.isFinite(zoom) || zoom <= 0 || zoom >= 1) return () => {}
+
+  const previousZoom = sheet.style.getPropertyValue('zoom')
+  const previousZoomPriority = sheet.style.getPropertyPriority('zoom')
+  const previousTransform = sheet.style.getPropertyValue('transform')
+  const previousTransformPriority = sheet.style.getPropertyPriority('transform')
+  const previousOrigin = sheet.style.getPropertyValue('transform-origin')
+  const previousOriginPriority = sheet.style.getPropertyPriority('transform-origin')
+
+  sheet.style.setProperty('zoom', '1', 'important')
+  sheet.style.setProperty('transform', `scale(${zoom})`, 'important')
+  sheet.style.setProperty('transform-origin', 'top left', 'important')
+
+  return () => {
+    restoreInline(sheet, 'zoom', previousZoom, previousZoomPriority)
+    restoreInline(sheet, 'transform', previousTransform, previousTransformPriority)
+    restoreInline(sheet, 'transform-origin', previousOrigin, previousOriginPriority)
+  }
+}
+
 function saveCanvasAsPdf(
   canvas: HTMLCanvasElement,
   page: { width: number; height: number | 'auto'; format?: 'a4' | 'a5' },
+  fitToPage: boolean,
 ): jsPDF {
   const image = canvas.toDataURL('image/png')
   const width = page.width
@@ -144,11 +183,26 @@ function saveCanvasAsPdf(
       format: [width, height],
       compress: true,
     })
-    pdf.addImage(image, 'PNG', 0, 0, width, height, undefined, 'FAST')
+    pdf.addImage(image, 'PNG', 0, 0, width, height, undefined, 'NONE')
     return pdf
   }
 
   const pageHeight = page.height
+  if (fitToPage) {
+    const scale = contentHeight > pageHeight ? pageHeight / contentHeight : 1
+    const drawnHeight = Math.max(contentHeight * scale, 1)
+    const usePaper = scale < 1 || Math.abs(contentHeight - pageHeight) < 1
+    const pdf = new jsPDF({
+      orientation: 'p',
+      unit: 'mm',
+      format: usePaper && page.format ? page.format : [width, drawnHeight],
+      compress: true,
+    })
+    pdf.setDisplayMode('fullpage', 'single')
+    pdf.addImage(image, 'PNG', 0, 0, width * scale, drawnHeight, undefined, 'NONE')
+    return pdf
+  }
+
   const pdf = new jsPDF({
     orientation: pageHeight >= width ? 'p' : 'l',
     unit: 'mm',
@@ -157,7 +211,7 @@ function saveCanvasAsPdf(
   })
 
   if (contentHeight <= pageHeight + 1) {
-    pdf.addImage(image, 'PNG', 0, 0, width, contentHeight, undefined, 'FAST')
+    pdf.addImage(image, 'PNG', 0, 0, width, Math.min(contentHeight, pageHeight), undefined, 'NONE')
     return pdf
   }
 
@@ -167,7 +221,7 @@ function saveCanvasAsPdf(
   while (remaining > 0.5) {
     if (!first) pdf.addPage()
     first = false
-    pdf.addImage(image, 'PNG', 0, -offset, width, contentHeight, undefined, 'FAST')
+    pdf.addImage(image, 'PNG', 0, -offset, width, contentHeight, undefined, 'NONE')
     offset += pageHeight
     remaining -= pageHeight
   }
@@ -194,6 +248,7 @@ export async function downloadPrintDocument(doc: Document, filename: string): Pr
 
   const page = paperPageMm(doc.documentElement.dataset.paper)
   const restoreBreaks = applyHtml2CanvasPageBreaks(root, page)
+  const restoreZoom = mirrorFittedZoomForCapture(root)
   try {
     const fitted = root.dataset.printFitted === '1'
     const captureWidth = fitted
@@ -203,7 +258,7 @@ export async function downloadPrintDocument(doc: Document, filename: string): Pr
       ? Math.max(root.offsetHeight, 1)
       : Math.max(root.scrollHeight, root.offsetHeight, 1)
     const canvas = await html2canvas(root, {
-      scale: 2,
+      scale: 3,
       useCORS: true,
       backgroundColor: '#ffffff',
       logging: false,
@@ -216,9 +271,10 @@ export async function downloadPrintDocument(doc: Document, filename: string): Pr
       windowWidth: captureWidth,
       windowHeight: captureHeight,
     })
-    const pdf = saveCanvasAsPdf(canvas, page)
+    const pdf = saveCanvasAsPdf(canvas, page, root.dataset.printFit === 'page')
     return savePdfFile(pdf, filename)
   } finally {
+    restoreZoom()
     restoreBreaks()
   }
 }

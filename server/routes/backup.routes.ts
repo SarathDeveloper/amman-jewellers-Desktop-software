@@ -1,4 +1,5 @@
 import { existsSync, unlinkSync } from 'node:fs'
+import { localBackupStamp } from '@shared/localDate'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Router } from 'express'
@@ -15,6 +16,7 @@ import {
   listBackups,
   restoreBackupByName,
   restoreDatabaseFrom,
+  tickScheduledBackup,
   updateBackupSchedule,
   withBackupLock,
 } from '../db/backup'
@@ -49,9 +51,11 @@ router.get(
 
 router.put(
   '/settings',
-  asyncHandler((req, res) => {
+  asyncHandler(async (req, res) => {
     const input = parseBody(backupSettingsSchema, req.body)
-    res.json(updateBackupSchedule(input))
+    updateBackupSchedule(input)
+    await tickScheduledBackup()
+    res.json(getBackupStatus())
   }),
 )
 
@@ -94,7 +98,7 @@ router.post(
 router.get(
   '/export',
   asyncHandler(async (_req, res) => {
-    const filename = `jeweltrackerpro-backup-${new Date().toISOString().slice(0, 10)}.db`
+    const filename = `jeweltrackerpro-${localBackupStamp()}.db`
     const destination = join(tmpdir(), filename)
     await withBackupLock(async () => {
       await backupDatabaseTo(destination)
@@ -106,7 +110,7 @@ router.get(
 router.get(
   '/export-excel',
   asyncHandler(async (_req, res) => {
-    const filename = `jeweltrackerpro-tables-${new Date().toISOString().slice(0, 10)}.xlsx`
+    const filename = `jeweltrackerpro-${localBackupStamp()}.xlsx`
     const destination = join(tmpdir(), filename)
     await withBackupLock(async () => {
       await writeExcelBackupFromDatabaseYielding(getDatabase(), destination)

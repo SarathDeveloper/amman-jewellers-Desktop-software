@@ -44,10 +44,10 @@ export async function openGoldSavingsTab(
   await expect(tabEl).toHaveAttribute('aria-selected', 'true')
 }
 
-/** Open an Inventory hub tab (Products, Gold & Silver, Purchase, Old Gold Purchase, or Suppliers). */
+/** Open an Inventory hub tab (Products, Gold & Silver, Purchase, Old Gold Purchase, or Old Gold Lot). */
 export async function openInventoryTab(
   page: Page,
-  tab: 'Products' | 'Gold & Silver' | 'Purchase' | 'Old Gold Purchase' | 'Suppliers',
+  tab: 'Products' | 'Gold & Silver' | 'Purchase' | 'Old Gold Purchase' | 'Old Gold Lot',
 ) {
   await sidebarLink(page, 'Inventory').click()
   const tabEl = page.getByRole('tab', { name: tab, exact: true })

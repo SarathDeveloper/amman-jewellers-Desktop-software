@@ -21,6 +21,12 @@
   var platform = navigator.platform || navigator.userAgent || 'unknown';
   var isMac = /Mac/i.test(platform);
 
+  function backupStamp() {
+    var now = new Date();
+    var pad = function (value) { return String(value).padStart(2, '0'); };
+    return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+  }
+
   window.desktopAPI = {
     platform: platform,
     isMac: isMac,
@@ -28,7 +34,7 @@
       return invoke('get_app_version');
     },
     exportDatabase: async function () {
-      var suggested = 'jeweltrackerpro-backup-' + new Date().toISOString().slice(0, 10) + '.db';
+      var suggested = 'jeweltrackerpro-' + backupStamp() + '.db';
       var path = await invoke('choose_backup_path', {
         defaultFilename: suggested,
         filterName: 'SQLite database',
@@ -46,7 +52,7 @@
       return { canceled: false, filePath: path };
     },
     exportExcel: async function () {
-      var suggested = 'jeweltrackerpro-tables-' + new Date().toISOString().slice(0, 10) + '.xlsx';
+      var suggested = 'jeweltrackerpro-' + backupStamp() + '.xlsx';
       var path = await invoke('choose_backup_path', {
         defaultFilename: suggested,
         filterName: 'Excel workbook',

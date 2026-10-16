@@ -69,15 +69,19 @@ export function isBackupDue(
   const last = parseBackupInstant(lastBackupAt)
   if (!last) return true
 
+  const todaySlot = atLocalTime(now, schedule.time)
   if (schedule.frequency === 'weekly') {
     const days = calendarDaysBetween(last, now)
     if (days > 7) return true
-    if (days === 7) return now.getTime() >= atLocalTime(now, schedule.time).getTime()
+    if (days === 7) return now.getTime() >= todaySlot.getTime() && last.getTime() < todaySlot.getTime()
     return false
   }
 
-  const slot = lastElapsedSlot(schedule, now)
-  return startOfLocalDay(last).getTime() < startOfLocalDay(slot).getTime()
+  if (now.getTime() >= todaySlot.getTime()) {
+    return last.getTime() < todaySlot.getTime()
+  }
+  const yesterdaySlot = atLocalTime(addLocalDays(now, -1), schedule.time)
+  return startOfLocalDay(last).getTime() < startOfLocalDay(yesterdaySlot).getTime()
 }
 
 export function nextBackupAt(
@@ -93,11 +97,7 @@ export function nextBackupAt(
     return due.getTime() <= now.getTime() ? null : due
   }
 
-  const last = parseBackupInstant(lastBackupAt)
   const todaySlot = atLocalTime(now, schedule.time)
-  if (last && calendarDaysBetween(last, now) === 0) {
-    return atLocalTime(addLocalDays(now, 1), schedule.time)
-  }
   if (now.getTime() < todaySlot.getTime()) return todaySlot
   return atLocalTime(addLocalDays(now, 1), schedule.time)
 }

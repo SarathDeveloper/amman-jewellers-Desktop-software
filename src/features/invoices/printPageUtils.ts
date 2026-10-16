@@ -50,11 +50,23 @@ function setImportant(element: HTMLElement, property: string, value: string): vo
   element.style.setProperty(property, value, 'important')
 }
 
+const FIT_SHEET_PROPERTIES = [
+  'zoom',
+  'transform',
+  'transform-origin',
+  'width',
+  'height',
+  'max-height',
+  'min-height',
+  'overflow',
+] as const
+
 /**
- * Shrinks an opted-in bill so a long table still lands on one sheet. Widening
- * the sheet by the same factor keeps the table the full page width after the
- * scale, and the raised min-height keeps the signature row at the foot.
- * Reports omit the attribute and keep paginating.
+ * Shrinks an opted-in bill so a long table still lands on one sheet. Zoom, not
+ * transform, changes the layout height WebView2 paginates, so preview and
+ * print stay on one page. Widening the sheet by the same factor keeps the
+ * table the full page width after the zoom, and the raised min-height keeps
+ * the signature row at the foot. Reports omit the attribute and keep paginating.
  */
 export function fitPrintSheetToPage(): void {
   const paper = document.documentElement.dataset.paper
@@ -68,24 +80,60 @@ export function fitPrintSheetToPage(): void {
   const pageHeight = pageHeightPx(paper)
   if (pageHeight <= 0) return
 
+  for (const property of FIT_SHEET_PROPERTIES) {
+    sheet.style.removeProperty(property)
+  }
+  delete root.dataset.printFitted
+  delete root.dataset.printFitScale
+
   let scale = 1
   for (let attempt = 0; attempt < MAX_FIT_ATTEMPTS; attempt += 1) {
+    // Zoom changes scrollHeight, so each pass measures the unscaled sheet.
+    setImportant(sheet, 'zoom', '1')
     const layoutHeight = sheet.scrollHeight
-    if (layoutHeight * scale <= pageHeight + 1) return
+    if (layoutHeight <= pageHeight + 1) {
+      if (scale === 1) {
+        sheet.style.removeProperty('zoom')
+        return
+      }
+      break
+    }
     const rootWidth = root.clientWidth
-    if (rootWidth <= 0) return
+    if (rootWidth <= 0) {
+      sheet.style.removeProperty('zoom')
+      return
+    }
     scale = pageHeight / layoutHeight
     setImportant(sheet, 'width', `${rootWidth / scale}px`)
     setImportant(sheet, 'height', 'auto')
     setImportant(sheet, 'max-height', 'none')
     setImportant(sheet, 'min-height', `${pageHeight / scale}px`)
     setImportant(sheet, 'overflow', 'visible')
-    setImportant(sheet, 'transform', `scale(${scale})`)
-    setImportant(sheet, 'transform-origin', 'top left')
     setImportant(root, 'height', `${pageHeight}px`)
     setImportant(root, 'max-height', `${pageHeight}px`)
     setImportant(root, 'overflow', 'hidden')
     root.dataset.printFitted = '1'
+    root.dataset.printFitScale = String(scale)
+  }
+
+  if (scale < 1) {
+    setImportant(sheet, 'zoom', String(scale))
+    // Zoom rounding can leave the laid-out sheet a few pixels past the page,
+    // and that is enough for the printer to open a blank second sheet.
+    setImportant(root, 'height', 'auto')
+    setImportant(root, 'max-height', 'none')
+    setImportant(root, 'overflow', 'visible')
+    const laidOut = root.offsetHeight
+    if (laidOut > pageHeight) {
+      scale *= pageHeight / laidOut
+      setImportant(sheet, 'zoom', String(scale))
+      root.dataset.printFitScale = String(scale)
+    }
+    setImportant(root, 'height', `${pageHeight}px`)
+    setImportant(root, 'max-height', `${pageHeight}px`)
+    setImportant(root, 'overflow', 'hidden')
+  } else {
+    sheet.style.removeProperty('zoom')
   }
 }
 

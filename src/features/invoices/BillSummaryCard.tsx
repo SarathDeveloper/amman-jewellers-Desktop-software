@@ -17,6 +17,7 @@ export function BillSummaryCard({
   makingCharges,
   hasVa,
   hasMc,
+  stoneValue,
   otherCharges,
   itemCount,
   totalGrossWeight,
@@ -32,6 +33,7 @@ export function BillSummaryCard({
   makingCharges: number
   hasVa: boolean
   hasMc: boolean
+  stoneValue: number
   otherCharges: number
   itemCount: number
   totalGrossWeight: number
@@ -57,15 +59,21 @@ export function BillSummaryCard({
 
   function changeRoundOff(raw: string) {
     if (raw !== '' && !/^-?\d*\.?\d*$/.test(raw)) return
-    setRoundOffDraft(raw)
     if (raw === '') {
+      setRoundOffDraft(raw)
       onRoundOffChange(0)
       return
     }
-    if (isUnfinishedRoundOff(raw)) return
+    if (isUnfinishedRoundOff(raw)) {
+      setRoundOffDraft(raw)
+      return
+    }
     const parsed = Number(raw)
     if (!Number.isFinite(parsed)) return
-    onRoundOffChange(parsed)
+    // A typed positive amount is a reduction. 0.15 becomes −0.15.
+    const reduction = parsed > 0 ? -parsed : parsed
+    setRoundOffDraft(reduction === parsed ? raw : String(reduction))
+    onRoundOffChange(reduction)
   }
 
   function closeRoundOff() {
@@ -116,6 +124,12 @@ export function BillSummaryCard({
             <div className="adagu-calculated-row">
               <span className="label">VA/MC</span>
               <span className="value">{formatCurrency(wastageAmount + makingCharges)}</span>
+            </div>
+          )}
+          {stoneValue > 0 && (
+            <div className="adagu-calculated-row">
+              <span className="label">Stone</span>
+              <span className="value">{formatCurrency(stoneValue)}</span>
             </div>
           )}
           {otherCharges > 0 && (
@@ -207,7 +221,7 @@ export function BillSummaryCard({
                       onRoundOffChange(suggested)
                     }}
                   >
-                    Use {suggested > 0 ? '+' : '−'}₹{formatInr(Math.abs(suggested), 2)}
+                    Use −₹{formatInr(Math.abs(suggested), 2)}
                   </button>
                 ) : null}
               </span>

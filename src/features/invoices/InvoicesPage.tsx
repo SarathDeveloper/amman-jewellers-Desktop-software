@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   Calendar,
   Eye,
+  FileDown,
   MoreHorizontal,
   Pencil,
   Printer,
@@ -35,10 +36,11 @@ import {
 import { InvoicePreviewModal } from './InvoicePreviewModal'
 import { billPrintPath } from './billingPrint'
 import { downloadPrintPdf } from '../print/downloadPrintPdf'
+import { printPreviewPaths } from '../print/printPreviewPaths'
 import { PledgePreviewModal } from '../pledges/PledgePreviewModal'
 
 const PAGE_SIZE_OPTIONS = [5, 10, 25]
-const DEFAULT_PAGE_SIZE = 5
+const DEFAULT_PAGE_SIZE = 10
 
 type SaleStatusChip = 'all' | 'draft' | 'final' | 'cancelled'
 type PledgeStatusChip = 'all' | 'draft' | 'active' | 'redeemed' | 'forfeited' | 'renewed'
@@ -426,6 +428,20 @@ export function InvoicesPage() {
     }
   }
 
+  async function exportPledgePdf(pledge: Pledge) {
+    setMenuKey(null)
+    setError(null)
+    try {
+      const result = await downloadPrintPdf(
+        printPreviewPaths.pledge(pledge.id),
+        `${pledge.receiptNo}.pdf`,
+      )
+      if (!result.canceled) showToast('PDF saved', 'success')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download PDF')
+    }
+  }
+
   function toggleSelected(key: string) {
     setSelectedKeys((keys) => (keys.includes(key) ? keys.filter((value) => value !== key) : [...keys, key]))
   }
@@ -708,17 +724,14 @@ export function InvoicesPage() {
                       </td>
                       <td>
                         <div className="row-actions">
-                          <Link
-                            to={viewPath}
+                          <button
+                            type="button"
                             className="btn ghost billing-icon-btn"
-                            aria-label={`Open ${row.billNo}`}
+                            aria-label={`View ${row.billNo}`}
+                            onClick={() => printPledge(row.pledge)}
                           >
-                            {row.pledge.status === 'active' || row.pledge.status === 'draft' ? (
-                              <Pencil size={16} strokeWidth={1.75} />
-                            ) : (
-                              <Eye size={16} strokeWidth={1.75} />
-                            )}
-                          </Link>
+                            <Eye size={16} strokeWidth={1.75} />
+                          </button>
                           <button
                             type="button"
                             className="btn ghost billing-icon-btn"
@@ -727,6 +740,37 @@ export function InvoicesPage() {
                           >
                             <Printer size={16} strokeWidth={1.75} />
                           </button>
+                          <button
+                            type="button"
+                            className="btn ghost billing-icon-btn"
+                            aria-label={`Download PDF ${row.billNo}`}
+                            onClick={() => void exportPledgePdf(row.pledge)}
+                          >
+                            <FileDown size={16} strokeWidth={1.75} />
+                          </button>
+                          <div
+                            className="billing-menu"
+                            ref={menuKey === row.key ? menuRef : undefined}
+                          >
+                            <button
+                              type="button"
+                              className="btn ghost billing-icon-btn"
+                              aria-label={`More actions for ${row.billNo}`}
+                              aria-expanded={menuKey === row.key}
+                              onClick={() =>
+                                setMenuKey((current) => (current === row.key ? null : row.key))
+                              }
+                            >
+                              <MoreHorizontal size={16} strokeWidth={1.75} />
+                            </button>
+                            {menuKey === row.key ? (
+                              <div className="billing-menu-pop" role="menu">
+                                <Link to={viewPath} role="menuitem" onClick={() => setMenuKey(null)}>
+                                  View
+                                </Link>
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -785,6 +829,15 @@ export function InvoicesPage() {
                           >
                             <Pencil size={16} strokeWidth={1.75} />
                           </Link>
+                        ) : invoice.status === 'final' ? (
+                          <button
+                            type="button"
+                            className="btn ghost billing-icon-btn"
+                            aria-label={`View ${row.billNo}`}
+                            onClick={() => printInvoice(invoice)}
+                          >
+                            <Eye size={16} strokeWidth={1.75} />
+                          </button>
                         ) : (
                           <Link
                             to={detailPath}
@@ -801,6 +854,14 @@ export function InvoicesPage() {
                           onClick={() => printInvoice(invoice)}
                         >
                           <Printer size={16} strokeWidth={1.75} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost billing-icon-btn"
+                          aria-label={`Download PDF ${row.billNo}`}
+                          onClick={() => void exportPdf(invoice)}
+                        >
+                          <FileDown size={16} strokeWidth={1.75} />
                         </button>
                         {invoice.status === 'draft' && !invoice.isEstimate ? (
                           <button
@@ -832,13 +893,6 @@ export function InvoicesPage() {
                                 <Link to={detailPath} role="menuitem" onClick={() => setMenuKey(null)}>
                                   View
                                 </Link>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  onClick={() => void exportPdf(invoice)}
-                                >
-                                  Export PDF
-                                </button>
                               </div>
                             ) : null}
                           </div>

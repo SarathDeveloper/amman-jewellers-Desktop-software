@@ -1173,7 +1173,9 @@ function ProfileFields({ customer }: { customer: Customer }) {
       {rows.map((row) => (
         <div key={row.left[0]} className={`customer-profile-row${row.right ? '' : ' single'}`}>
           <span className="customer-profile-label">{row.left[0]}</span>
-          <span className="customer-profile-value">{profileText(row.left[1])}</span>
+          <span className={`customer-profile-value${row.right ? '' : ' wide'}`}>
+            {profileText(row.left[1])}
+          </span>
           {row.right ? (
             <>
               <span className="customer-profile-label">{row.right[0]}</span>

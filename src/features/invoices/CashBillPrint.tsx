@@ -49,6 +49,9 @@ export function CashBillPrint({
     .filter(Boolean)
     .join(' · ')
   const discountTotal = data.discountBreakdown.reduce((sum, line) => sum + line.amount, 0)
+  const showBis = Boolean(vis.showBisLogo && shopInfo.bisLogoPath)
+  const showQr = Boolean(vis.showQrCode && shopInfo.qrCodePath)
+  const showMarks = showBis || showQr
 
   return (
     <div
@@ -70,7 +73,6 @@ export function CashBillPrint({
         ) : null}
         <header className="cash-bill-header">
           <div className="cash-bill-brand-row">
-            <div className="cash-bill-gstin" />
             <div className="cash-bill-identity">
               {vis.showLogo ? (
                 <img className="cash-bill-logo" src={localImageSrc(shopInfo.logoImagePath, defaultShopLogoUrl)} alt="" />
@@ -84,14 +86,16 @@ export function CashBillPrint({
               ))}
               {phoneLine ? <p className="cash-bill-address">{phoneLine}</p> : null}
             </div>
-            <div className="cash-bill-marks">
-              {vis.showBisLogo && shopInfo.bisLogoPath ? (
-                <img className="cash-bill-bis" src={localImageSrc(shopInfo.bisLogoPath, '')} alt="" />
-              ) : null}
-              {vis.showQrCode && shopInfo.qrCodePath ? (
-                <img className="cash-bill-qr" src={localImageSrc(shopInfo.qrCodePath, '')} alt="" />
-              ) : null}
-            </div>
+            {showMarks ? (
+              <div className="cash-bill-marks">
+                {showBis ? (
+                  <img className="cash-bill-bis" src={localImageSrc(shopInfo.bisLogoPath, '')} alt="" />
+                ) : null}
+                {showQr ? (
+                  <img className="cash-bill-qr" src={localImageSrc(shopInfo.qrCodePath, '')} alt="" />
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </header>
 
@@ -201,33 +205,7 @@ export function CashBillPrint({
           {labels.taxItemCountLabel} {data.itemCount}
         </p>
 
-        <div
-          className={`cash-bill-footer-grid${vis.showDiscountBreakdown ? '' : ' cash-bill-footer-grid--single'}`}
-        >
-          {vis.showDiscountBreakdown ? (
-            <div className="cash-bill-discount-box">
-              <h3>{labels.discountBreakdownLabel}</h3>
-              {data.discountBreakdown.length === 0 ? (
-                <div className="cash-bill-totals-row">
-                  <span>—</span>
-                  <span>0.00</span>
-                </div>
-              ) : (
-                data.discountBreakdown.map((line) => (
-                  <div key={line.label} className="cash-bill-totals-row">
-                    <span>{line.label}</span>
-                    <span>{formatMoney(line.amount)}</span>
-                  </div>
-                ))
-              )}
-              {discountTotal > 0 ? (
-                <div className="cash-bill-totals-row total">
-                  <span>{labels.totalLabel}</span>
-                  <span>{formatMoney(discountTotal)}</span>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+        <div className="cash-bill-footer-grid cash-bill-footer-grid--single">
           <div className="cash-bill-totals">
             {discountTotal > 0 ? (
               <div className="cash-bill-totals-row">

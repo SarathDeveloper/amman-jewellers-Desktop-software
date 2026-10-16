@@ -256,33 +256,7 @@ export function TaxInvoicePrint({
         <p className="tax-invoice-item-count">
           {labels.taxItemCountLabel} {data.itemCount}
         </p>
-        <div
-          className={`tax-invoice-footer-grid${vis.showDiscountBreakdown ? '' : ' tax-invoice-footer-grid--single'}`}
-        >
-          {vis.showDiscountBreakdown ? (
-            <div className="tax-invoice-discount-box">
-              <h3>{labels.discountBreakdownLabel}</h3>
-              {data.discountBreakdown.length === 0 ? (
-                <div className="tax-invoice-totals-row">
-                  <span>—</span>
-                  <span>0.00</span>
-                </div>
-              ) : (
-                data.discountBreakdown.map((line) => (
-                  <div key={line.label} className="tax-invoice-totals-row">
-                    <span>{line.label}</span>
-                    <span>{money(line.amount)}</span>
-                  </div>
-                ))
-              )}
-              {discountTotal > 0 ? (
-                <div className="tax-invoice-totals-row tax-invoice-totals-row--discount-total">
-                  <span>{labels.totalLabel}</span>
-                  <span>{money(discountTotal)}</span>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+        <div className="tax-invoice-footer-grid tax-invoice-footer-grid--single">
           <div className="tax-invoice-totals">
             <div className="tax-invoice-totals-row">
               <span>Taxable Value</span>

@@ -29,10 +29,16 @@ export function computeOldGoldValue(input: OldGoldValueInput): OldGoldValueResul
   return { grossValue, deductionAmount, finalValue, fineWeight: roundWeight(valuedWeight) }
 }
 
+/** Sale bills always drop the paise. 54790.85 becomes −0.85, never +0.15. */
 export function suggestRoundOff(amountBeforeRoundOff: number): number {
   const amount = roundMoney(amountBeforeRoundOff)
+  return roundMoney(Math.floor(amount) - amount)
+}
+
+/** Purchase invoices round to the nearest rupee. Half a rupee still reduces the total. */
+export function suggestPurchaseRoundOff(amountBeforeRoundOff: number): number {
+  const amount = roundMoney(amountBeforeRoundOff)
   const fraction = roundMoney(amount - Math.trunc(amount))
-  // Half a rupee reduces the total. 22000.50 becomes −0.50, not +0.50.
   if (Math.abs(fraction) === 0.5) {
     return roundMoney(Math.floor(amount) - amount)
   }
@@ -57,7 +63,7 @@ export function computePurchaseTotals(
   const subtotal = roundMoney(lineAmounts.reduce((sum, value) => sum + value, 0))
   const taxBreakdown = computeInvoiceTax(subtotal, useIgst)
   const amountBeforeRoundOff = roundMoney(subtotal + taxBreakdown.tax)
-  const appliedRoundOff = roundOff ?? suggestRoundOff(amountBeforeRoundOff)
+  const appliedRoundOff = roundOff ?? suggestPurchaseRoundOff(amountBeforeRoundOff)
   return {
     subtotal,
     cgst: taxBreakdown.cgst,

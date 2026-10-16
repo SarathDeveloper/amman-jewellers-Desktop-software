@@ -56,6 +56,7 @@ import { downloadPrintPdf } from '../print/downloadPrintPdf'
 import { InvoiceSuccessModal } from './InvoiceSuccessModal'
 import { BillSummaryCard } from './BillSummaryCard'
 import { MixedPaymentEditor } from './MixedPaymentEditor'
+import { HuidSuggestInput } from './HuidSuggestInput'
 import { BILL_PAYMENT_MODES, PaymentModeSelect } from './PaymentModeSelect'
 import { RecordPaymentModal } from './RecordPaymentModal'
 import { OldGoldBillLinker } from './OldGoldBillLinker'
@@ -621,6 +622,9 @@ export function InvoiceEditorPage() {
         `No gold rate is saved for ${invoiceDate}. Confirm the rate from ${appliedScheme.rateDate} before saving.`,
       )
     }
+    if (appliedRoundOff > 0) {
+      throw new Error('Round off cannot increase the bill')
+    }
     if (totals.amountPayable < -0.009) {
       throw new Error('Amount payable cannot be negative')
     }
@@ -1137,12 +1141,14 @@ export function InvoiceEditorPage() {
                               value={line.huid}
                             />
                           ) : (
-                            <input
-                              type="text"
-                              className={`sale-bill-huid-input${huidError || (huidCell.state === 'product' && needsHuid && !line.huid.trim()) ? ' is-missing' : ''}`}
+                            <HuidSuggestInput
+                              value={line.huid}
+                              suggestions={lineHuids}
                               disabled={!canEdit || busy}
-                              aria-label="Hallmark Unique ID"
-                              list={`huid-options-${line.key}`}
+                              invalid={
+                                Boolean(huidError) ||
+                                (huidCell.state === 'product' && needsHuid && !line.huid.trim())
+                              }
                               placeholder={
                                 huidCell.state === 'empty'
                                   ? 'Type HUID'
@@ -1150,9 +1156,8 @@ export function InvoiceEditorPage() {
                                     ? 'Enter HUID'
                                     : 'HUID (optional)'
                               }
-                              value={line.huid}
-                              onChange={(event) => {
-                                const value = event.target.value.toUpperCase().replace(/[^0-9A-Z]/g, '')
+                              onChange={(next) => {
+                                const value = next.toUpperCase().replace(/[^0-9A-Z]/g, '')
                                 updateLine(line.key, { huid: value })
                                 if (huidCell.state === 'empty' && value) {
                                   const match = productForHuid(value, products, lines, line.key)
@@ -1161,11 +1166,6 @@ export function InvoiceEditorPage() {
                               }}
                             />
                           )}
-                          <datalist id={`huid-options-${line.key}`}>
-                            {lineHuids.map((huid) => (
-                              <option key={huid} value={huid} />
-                            ))}
-                          </datalist>
                         </td>
                         <td className="adagu-col-purity" data-label="Purity">
                           <select
@@ -1383,6 +1383,7 @@ export function InvoiceEditorPage() {
             makingCharges={saleBreakdown.makingCharges}
             hasVa={saleBreakdown.hasVa}
             hasMc={saleBreakdown.hasMc}
+            stoneValue={saleBreakdown.stoneValue}
             otherCharges={saleBreakdown.otherCharges}
             itemCount={saleBreakdown.itemCount}
             totalGrossWeight={saleBreakdown.totalGrossWeight}

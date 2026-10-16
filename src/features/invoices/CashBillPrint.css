@@ -75,24 +75,20 @@
 
 .cash-bill-brand-row {
   display: grid;
-  grid-template-columns: 28mm 1fr 22mm;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 56mm) minmax(0, 1fr);
   align-items: start;
   gap: 3mm;
 }
 
-.cash-bill-gstin {
-  font-size: 7.5pt;
-  font-weight: 600;
-}
-
 .cash-bill-identity {
+  grid-column: 2;
   text-align: center;
 }
 
 .cash-bill-logo {
   display: block;
-  width: 14mm;
-  height: 14mm;
+  width: 18mm;
+  height: 18mm;
   object-fit: contain;
   margin: 0 auto 1mm;
 }
@@ -116,9 +112,11 @@
 .cash-bill-address {
   margin: 0;
   font-size: 7.5pt;
+  text-wrap: balance;
 }
 
 .cash-bill-marks {
+  grid-column: 3;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -261,18 +259,6 @@
 .cash-bill-item-count {
   font-size: 8pt;
   margin: 2mm 0 0;
-}
-
-.cash-bill-discount-box {
-  border: 0.5pt solid #999;
-  padding: 1.5mm 2mm;
-  min-height: 18mm;
-}
-
-.cash-bill-discount-box h3 {
-  margin: 0 0 1.5mm;
-  font-size: 8pt;
-  font-weight: 700;
 }
 
 .cash-bill-totals {
@@ -566,13 +552,17 @@
   grid-template-columns: 1fr;
 }
 
+.cash-bill-root.paper-thermal .cash-bill-identity,
+.cash-bill-root.paper-thermal .cash-bill-marks {
+  grid-column: auto;
+}
+
 .cash-bill-root.paper-thermal .cash-bill-marks,
 .cash-bill-root.paper-thermal .cash-bill-title-center {
   display: none;
 }
 
-.cash-bill-root.paper-thermal .cash-bill-meta-right,
-.cash-bill-root.paper-thermal .cash-bill-gstin {
+.cash-bill-root.paper-thermal .cash-bill-meta-right {
   text-align: left;
 }
 
