@@ -50,6 +50,16 @@ describe('billing pricing', () => {
     expect(totals.total).toBe(10300)
   })
 
+  it('keeps GST on the full subtotal when a discount is recorded', () => {
+    const totals = computeInvoiceTotals([10000], 500, true, false, 0)
+    expect(totals.subtotal).toBe(10000)
+    expect(totals.discount).toBe(500)
+    expect(totals.tax).toBe(300)
+    expect(totals.cgst).toBe(150)
+    expect(totals.sgst).toBe(150)
+    expect(totals.total).toBe(10300)
+  })
+
   it('resolves 18K gold and 925 silver against their own rates', () => {
     const rates = {
       gold24k: 16500,

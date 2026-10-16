@@ -58,14 +58,16 @@ export function OldBillPage() {
 
   const preview = useMemo(() => {
     const amount = roundMoney(numericFieldToNumber(subtotal))
-    const discountAmount = roundMoney(Math.min(numericFieldToNumber(discount), amount))
-    const taxable = roundMoney(amount - discountAmount)
     if (billFormat === 'tax_invoice' && autoTax) {
-      const gst = computeInvoiceTax(taxable, useIgst)
-      return { total: roundMoney(taxable + gst.tax), tax: gst.tax }
+      const gst = computeInvoiceTax(amount, useIgst)
+      const invoiceTotal = roundMoney(amount + gst.tax)
+      const discountAmount = roundMoney(Math.min(numericFieldToNumber(discount), invoiceTotal))
+      return { total: roundMoney(invoiceTotal - discountAmount), tax: gst.tax }
     }
     const manualTax = billFormat === 'tax_invoice' ? roundMoney(numericFieldToNumber(tax)) : 0
-    return { total: roundMoney(taxable + manualTax), tax: manualTax }
+    const invoiceTotal = roundMoney(amount + manualTax)
+    const discountAmount = roundMoney(Math.min(numericFieldToNumber(discount), invoiceTotal))
+    return { total: roundMoney(invoiceTotal - discountAmount), tax: manualTax }
   }, [subtotal, discount, billFormat, autoTax, useIgst, tax])
 
   async function save() {

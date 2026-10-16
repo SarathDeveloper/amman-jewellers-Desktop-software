@@ -1254,7 +1254,7 @@ const runners: Record<ReportId, (db: ReturnType<typeof getDatabase>, scope: Scop
     const rows = rowsOf(
       db,
       `SELECT strftime('%Y-%m', i.invoice_date) AS month,
-              SUM(i.subtotal - i.discount) AS taxable,
+              SUM(i.subtotal) AS taxable,
               SUM(i.cgst) AS cgst, SUM(i.sgst) AS sgst, SUM(i.igst) AS igst,
               COUNT(*) AS bills
        FROM invoices i
@@ -1319,7 +1319,7 @@ const runners: Record<ReportId, (db: ReturnType<typeof getDatabase>, scope: Scop
     const { where, params } = gstWhere(scope)
     const row = oneOf(
       db,
-      `SELECT COALESCE(SUM(i.subtotal - i.discount), 0) AS taxable,
+      `SELECT COALESCE(SUM(i.subtotal), 0) AS taxable,
               COALESCE(SUM(i.cgst), 0) AS cgst, COALESCE(SUM(i.sgst), 0) AS sgst,
               COALESCE(SUM(i.igst), 0) AS igst, COUNT(i.id) AS bills
        FROM invoices i
@@ -1351,7 +1351,7 @@ const runners: Record<ReportId, (db: ReturnType<typeof getDatabase>, scope: Scop
       db,
       `SELECT i.invoice_date AS date, i.invoice_no AS invoice_no,
               ${paymentLabel('i.bill_format')} AS format, c.name AS customer,
-              i.subtotal - i.discount AS taxable, i.cgst AS cgst, i.sgst AS sgst, i.igst AS igst,
+              i.subtotal AS taxable, i.cgst AS cgst, i.sgst AS sgst, i.igst AS igst,
               ${PAYABLE} AS total
        FROM invoices i
        JOIN customers c ON c.id = i.customer_id

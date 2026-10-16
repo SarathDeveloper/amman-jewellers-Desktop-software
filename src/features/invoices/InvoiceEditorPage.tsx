@@ -70,7 +70,6 @@ import {
   type SaleBillingType,
 } from './billingType'
 import { BillCustomerSearch } from './BillCustomerSearch'
-import { CustomerRecordPanel } from '../customers/CustomerRecordPanel'
 import {
   assertCustomerInput,
   takeCustomerFormError,
@@ -1028,7 +1027,6 @@ export function InvoiceEditorPage() {
                 )}
               </div>
             ) : null}
-            {selectedCustomer ? <CustomerRecordPanel customer={selectedCustomer} /> : null}
           </div>
 
           <div className="adagu-design-card adagu-design-card--items-panel adagu-design-card--has-search">
@@ -1393,11 +1391,18 @@ export function InvoiceEditorPage() {
             discount={numericFieldToNumber(discount)}
             onDiscountChange={(value) => {
               setDiscount(value)
+              // Discount changes the amount before round-off; drop a stale lock so
+              // nearest-rupee auto-round recalculates (e.g. −137.32 → −0.32).
+              setRoundOffTouched(false)
               markDirty()
             }}
             onRoundOffChange={(value) => {
               setRoundOffTouched(true)
               setRoundOff(value)
+              markDirty()
+            }}
+            onRoundOffAuto={() => {
+              setRoundOffTouched(false)
               markDirty()
             }}
           />
@@ -1659,4 +1664,13 @@ export function InvoiceEditorPage() {
       )}
     </div>
   )
+}
+
+/** Remounts the editor when bill format / id / mode changes so tab switches start blank. */
+export function InvoiceEditorRoute() {
+  const { id } = useParams()
+  const { pathname } = useLocation()
+  const type = pathname.includes('/billing/tax') ? 'tax' : 'cash'
+  const mode = pathname.endsWith('/detail') ? 'detail' : id ? 'edit' : 'new'
+  return <InvoiceEditorPage key={`${type}-${id ?? 'new'}-${mode}`} />
 }

@@ -106,13 +106,13 @@ export function computeLinePricing(input: LinePricingInput): LinePricingResult {
   }
 }
 
-export function computeInvoiceTax(subtotalAfterDiscount: number, useIgst = false): {
+export function computeInvoiceTax(taxableBase: number, useIgst = false): {
   cgst: number
   sgst: number
   igst: number
   tax: number
 } {
-  const tax = roundMoney(subtotalAfterDiscount * INTRA_STATE_GST_RATE)
+  const tax = roundMoney(taxableBase * INTRA_STATE_GST_RATE)
   if (useIgst) {
     return { cgst: 0, sgst: 0, igst: tax, tax }
   }
@@ -137,12 +137,12 @@ export function computeInvoiceTotals(
   total: number
 } {
   const subtotal = roundMoney(lineSubtotals.reduce((sum, value) => sum + value, 0))
+  // Discount is recorded here but applied after tax in computeBillSummary.
   const discountApplied = roundMoney(Math.min(discount, Math.max(0, subtotal)))
-  const taxable = roundMoney(Math.max(0, subtotal - discountApplied))
   const taxBreakdown = autoTax
-    ? computeInvoiceTax(taxable, useIgst)
+    ? computeInvoiceTax(subtotal, useIgst)
     : { cgst: 0, sgst: 0, igst: 0, tax: roundMoney(manualTax) }
-  const total = roundMoney(taxable + taxBreakdown.tax)
+  const total = roundMoney(subtotal + taxBreakdown.tax)
 
   return {
     subtotal,

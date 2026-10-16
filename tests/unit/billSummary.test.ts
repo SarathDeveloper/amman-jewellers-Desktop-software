@@ -52,6 +52,48 @@ describe('bill summary', () => {
     expect(summary.amountPayable).toBe(9299.7)
   })
 
+  it('applies discount after GST without changing taxable or tax', () => {
+    const withDiscount = computeBillSummary({
+      lineSubtotals: [10000],
+      discount: 500,
+      autoTax: true,
+      roundOff: 0,
+    })
+    const withoutDiscount = computeBillSummary({
+      lineSubtotals: [10000],
+      discount: 0,
+      autoTax: true,
+      roundOff: 0,
+    })
+    expect(withDiscount.taxable).toBe(10000)
+    expect(withDiscount.tax).toBe(withoutDiscount.tax)
+    expect(withDiscount.cgst).toBe(withoutDiscount.cgst)
+    expect(withDiscount.sgst).toBe(withoutDiscount.sgst)
+    expect(withDiscount.invoiceTotal).toBe(10300)
+    expect(withDiscount.discount).toBe(500)
+    expect(withDiscount.amountBeforeRoundOff).toBe(9800)
+    expect(withDiscount.amountPayable).toBe(9800)
+  })
+
+  it('does not change GST when round off changes', () => {
+    const base = computeBillSummary({
+      lineSubtotals: [10000],
+      discount: 500,
+      autoTax: true,
+      roundOff: 0,
+    })
+    const rounded = computeBillSummary({
+      lineSubtotals: [10000],
+      discount: 500,
+      autoTax: true,
+      roundOff: -0.5,
+    })
+    expect(rounded.taxable).toBe(base.taxable)
+    expect(rounded.tax).toBe(base.tax)
+    expect(rounded.cgst).toBe(base.cgst)
+    expect(rounded.amountPayable).toBe(9799.5)
+  })
+
   it('adds linked old gold credit on top of stored old gold rows', () => {
     const summary = computeBillSummary({
       lineSubtotals: [60000],

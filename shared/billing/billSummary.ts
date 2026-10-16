@@ -139,14 +139,17 @@ export function computeBillSummary(input: BillSummaryInput): BillSummary {
   }, 0)
   const oldGoldTotal = roundMoney(oldGoldFromItems + Math.max(0, input.extraOldGoldCredit ?? 0))
   const schemeCreditTotal = roundMoney(Math.max(0, input.schemeCredit ?? 0))
-  const amountBeforeRoundOff = roundMoney(totals.total - oldGoldTotal - schemeCreditTotal)
+  // Discount comes after GST and credits — it must not change the tax base.
+  const maxDiscount = roundMoney(Math.max(0, totals.total - oldGoldTotal - schemeCreditTotal))
+  const discount = roundMoney(Math.min(totals.discount, maxDiscount))
+  const amountBeforeRoundOff = roundMoney(totals.total - oldGoldTotal - schemeCreditTotal - discount)
   const roundOff = roundMoney(input.roundOff ?? 0)
   const amountPayable = roundMoney(amountBeforeRoundOff + roundOff)
 
   return {
     subtotal: totals.subtotal,
-    discount: totals.discount,
-    taxable: roundMoney(Math.max(0, totals.subtotal - totals.discount)),
+    discount,
+    taxable: totals.subtotal,
     cgst: totals.cgst,
     sgst: totals.sgst,
     igst: totals.igst,

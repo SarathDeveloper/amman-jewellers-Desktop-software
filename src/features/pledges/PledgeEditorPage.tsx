@@ -35,7 +35,6 @@ import {
 } from "@shared/billing/pledgeValuation";
 import { localTodayIso } from "@shared/localDate";
 import { formatPanInput, isCompletePan, PAN_FORMAT_MESSAGE } from "@shared/schemas";
-import { CustomerRecordPanel } from "../customers/CustomerRecordPanel";
 import {
   assertCustomerInput,
   takeCustomerFormError,
@@ -1176,10 +1175,6 @@ export function PledgeEditorPage() {
               <div className="adagu-banner adagu-banner--warning">
                 KYC is required by settings. Enter the borrower Aadhaar or PAN before sanctioning.
               </div>
-            ) : null}
-
-            {selectedCustomer ? (
-              <CustomerRecordPanel customer={selectedCustomer} showDetails={false} />
             ) : null}
           </div>
 

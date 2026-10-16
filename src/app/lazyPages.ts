@@ -23,6 +23,11 @@ export const InvoiceEditorPage = lazy(() =>
     default: module.InvoiceEditorPage,
   })),
 )
+export const InvoiceEditorRoute = lazy(() =>
+  import('../features/invoices/InvoiceEditorPage').then((module) => ({
+    default: module.InvoiceEditorRoute,
+  })),
+)
 export const OldBillPage = lazy(() =>
   import('../features/invoices/OldBillPage').then((module) => ({ default: module.OldBillPage })),
 )

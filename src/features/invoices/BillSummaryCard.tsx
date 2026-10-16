@@ -112,16 +112,10 @@ export function BillSummaryCard({
             <span className="label">Total Jewellery Value</span>
             <span className="value">{formatCurrency(jewelleryValue)}</span>
           </div>
-          {hasVa && (
+          {(hasVa || hasMc) && (
             <div className="adagu-calculated-row">
               <span className="label">VA/MC</span>
-              <span className="value">{formatCurrency(wastageAmount)}</span>
-            </div>
-          )}
-          {hasMc && (
-            <div className="adagu-calculated-row">
-              <span className="label">Making charges</span>
-              <span className="value">{formatCurrency(makingCharges)}</span>
+              <span className="value">{formatCurrency(wastageAmount + makingCharges)}</span>
             </div>
           )}
           {otherCharges > 0 && (
@@ -130,12 +124,12 @@ export function BillSummaryCard({
               <span className="value">{formatCurrency(otherCharges)}</span>
             </div>
           )}
-          <div className="adagu-calculated-row sale-bill-summary-taxable">
-            <span className="label">Taxable Amount</span>
-            <span className="value">{formatCurrency(summary.taxable)}</span>
-          </div>
           {showTax && (
             <>
+              <div className="adagu-calculated-row sale-bill-summary-taxable">
+                <span className="label">Taxable Amount</span>
+                <span className="value">{formatCurrency(summary.taxable)}</span>
+              </div>
               <div className="adagu-calculated-row">
                 <span className="label">
                   <Percent size={14} /> CGST 1.5%

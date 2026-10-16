@@ -807,13 +807,14 @@ function assertLineHuids(
 
 function historicalAmounts(input: HistoricalInvoiceInput) {
   const subtotal = roundMoney(input.subtotal)
-  const discount = roundMoney(Math.min(input.discount ?? 0, subtotal))
-  const taxable = roundMoney(subtotal - discount)
+  const taxable = subtotal
   const useIgst = input.useIgst ?? false
   const autoTax = input.billFormat === 'tax_invoice' && (input.autoTax ?? true)
 
   if (autoTax) {
     const tax = computeInvoiceTax(taxable, useIgst)
+    const total = roundMoney(taxable + tax.tax)
+    const discount = roundMoney(Math.min(input.discount ?? 0, Math.max(0, total)))
     return {
       subtotal,
       discount,
@@ -822,11 +823,15 @@ function historicalAmounts(input: HistoricalInvoiceInput) {
       sgst: tax.sgst,
       igst: tax.igst,
       tax: tax.tax,
-      total: roundMoney(taxable + tax.tax),
+      total,
+      amountPayable: roundMoney(total - discount),
     }
   }
 
   const manualTax = input.billFormat === 'tax_invoice' ? roundMoney(input.tax ?? 0) : 0
+  const total = roundMoney(taxable + manualTax)
+  const discount = roundMoney(Math.min(input.discount ?? 0, Math.max(0, total)))
+  const amountPayable = roundMoney(total - discount)
   if (useIgst) {
     return {
       subtotal,
@@ -836,7 +841,8 @@ function historicalAmounts(input: HistoricalInvoiceInput) {
       sgst: 0,
       igst: manualTax,
       tax: manualTax,
-      total: roundMoney(taxable + manualTax),
+      total,
+      amountPayable,
     }
   }
   const half = roundMoney(manualTax / 2)
@@ -848,7 +854,8 @@ function historicalAmounts(input: HistoricalInvoiceInput) {
     sgst: roundMoney(manualTax - half),
     igst: 0,
     tax: manualTax,
-    total: roundMoney(taxable + manualTax),
+    total,
+    amountPayable,
   }
 }
 
@@ -865,15 +872,15 @@ function recordHistoricalInvoice(
   }
 
   const amounts = historicalAmounts(input)
-  if (amounts.total <= 0) {
+  if (amounts.amountPayable <= 0) {
     throw new Error('Bill amount must be greater than zero')
   }
-  if (input.amountPaid > amounts.total) {
+  if (input.amountPaid > amounts.amountPayable) {
     throw new Error('Amount paid cannot be more than the bill total')
   }
 
   const paid = roundMoney(input.amountPaid)
-  const balance = roundMoney(Math.max(0, amounts.total - paid))
+  const balance = roundMoney(Math.max(0, amounts.amountPayable - paid))
 
   const result = db
     .prepare(
@@ -901,7 +908,7 @@ function recordHistoricalInvoice(
       input.goldWeight ?? 0,
       input.silverWeight ?? 0,
       input.makingCharges ?? 0,
-      amounts.total,
+      amounts.amountPayable,
     )
 
   const id = Number(result.lastInsertRowid)
@@ -1123,7 +1130,7 @@ router.get(
       .prepare(
         `SELECT
           strftime('%Y-%m', invoice_date) AS month,
-          SUM(subtotal - discount) AS taxable_sales,
+          SUM(subtotal) AS taxable_sales,
           SUM(cgst) AS cgst,
           SUM(sgst) AS sgst,
           SUM(igst) AS igst,
