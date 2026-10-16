@@ -5,6 +5,34 @@ import { localDateIso, localTodayIso } from '@shared/localDate'
 import { formatDisplayClock, formatDisplayDate, formatDisplayMonth } from '../lib/format'
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as const
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const
+
+type CalendarPanel = 'days' | 'months' | 'years'
+
+function yearWindowStart(year: number): number {
+  return year - 6
+}
+
+function periodAllowed(startIso: string, endIso: string, min?: string, max?: string): boolean {
+  if (min && endIso < min.slice(0, 10)) return false
+  if (max && startIso > max.slice(0, 10)) return false
+  return true
+}
+
+function yearAllowed(year: number, min?: string, max?: string): boolean {
+  return periodAllowed(`${year}-01-01`, `${year}-12-31`, min, max)
+}
+
+function monthAllowed(year: number, monthIndex: number, min?: string, max?: string): boolean {
+  const month = String(monthIndex + 1).padStart(2, '0')
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate()
+  return periodAllowed(
+    `${year}-${month}-01`,
+    `${year}-${month}-${String(lastDay).padStart(2, '0')}`,
+    min,
+    max,
+  )
+}
 
 function monthKey(iso: string): { year: number; month: number } {
   const match = /^(\d{4})-(\d{2})/.exec(iso.trim()) ?? /^(\d{4})-(\d{2})/.exec(localTodayIso())
@@ -66,15 +94,24 @@ export function DateInput({
   const rootRef = useRef<HTMLSpanElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
+  const [panel, setPanel] = useState<CalendarPanel>('days')
   const [view, setView] = useState(() => monthKey(value || localTodayIso()))
   const [popStyle, setPopStyle] = useState<CSSProperties>({ visibility: 'hidden' })
   const today = localTodayIso()
+  const todayParts = monthKey(today)
+  const selectedParts = value ? monthKey(value) : null
   const days = monthCells(view.year, view.month)
   const monthLabel = formatDisplayMonth(`${view.year}-${String(view.month + 1).padStart(2, '0')}`)
+  const yearStart = yearWindowStart(view.year)
+  const title =
+    panel === 'years' ? `${yearStart} – ${yearStart + 11}` : panel === 'months' ? String(view.year) : monthLabel
+  const prevLabel = panel === 'years' ? 'Previous years' : panel === 'months' ? 'Previous year' : 'Previous month'
+  const nextLabel = panel === 'years' ? 'Next years' : panel === 'months' ? 'Next year' : 'Next month'
 
   function openCalendar() {
     if (disabled) return
     setView(monthKey(value || today))
+    setPanel('days')
     setOpen(true)
   }
 
@@ -94,6 +131,28 @@ export function DateInput({
     })
   }
 
+  function shiftPanel(delta: number) {
+    if (panel === 'years') {
+      setView((current) => ({ ...current, year: current.year + delta * 12 }))
+      return
+    }
+    if (panel === 'months') {
+      setView((current) => ({ ...current, year: current.year + delta }))
+      return
+    }
+    shiftMonth(delta)
+  }
+
+  function chooseYear(year: number) {
+    setView((current) => ({ ...current, year }))
+    setPanel('months')
+  }
+
+  function chooseMonth(month: number) {
+    setView((current) => ({ ...current, month }))
+    setPanel('days')
+  }
+
   useLayoutEffect(() => {
     if (!open) return
     function place() {
@@ -109,7 +168,7 @@ export function DateInput({
       window.removeEventListener('resize', place)
       document.removeEventListener('scroll', place, true)
     }
-  }, [open, view, value])
+  }, [open, view, value, panel])
 
   useEffect(() => {
     if (!open) return
@@ -184,51 +243,103 @@ export function DateInput({
               style={popStyle}
             >
               <div className="date-calendar-header">
-                <button type="button" className="date-calendar-nav" aria-label="Previous month" onClick={() => shiftMonth(-1)}>
+                <button type="button" className="date-calendar-nav" aria-label={prevLabel} onClick={() => shiftPanel(-1)}>
                   <ChevronLeft size={16} strokeWidth={2} />
                 </button>
-                <span className="date-calendar-title">{monthLabel}</span>
-                <button type="button" className="date-calendar-nav" aria-label="Next month" onClick={() => shiftMonth(1)}>
+                {panel === 'years' ? (
+                  <span className="date-calendar-title">{title}</span>
+                ) : (
+                  <button type="button" className="date-calendar-title" aria-label="Choose year" onClick={() => setPanel('years')}>
+                    {title}
+                  </button>
+                )}
+                <button type="button" className="date-calendar-nav" aria-label={nextLabel} onClick={() => shiftPanel(1)}>
                   <ChevronRight size={16} strokeWidth={2} />
                 </button>
               </div>
-              <div className="date-calendar-grid">
-                {WEEKDAY_LABELS.map((label) => (
-                  <span key={label} className="date-calendar-dow">
-                    {label}
-                  </span>
-                ))}
-                {days.map((cell) => {
-                  const selected = value.slice(0, 10) === cell.iso
-                  const isToday = cell.iso === today
-                  const allowed = inRange(cell.iso, min, max)
-                  return (
-                    <button
-                      key={cell.iso}
-                      type="button"
-                      className={`date-calendar-day${cell.outside ? ' is-outside' : ''}${selected ? ' is-selected' : ''}${isToday ? ' is-today' : ''}`}
-                      disabled={!allowed}
-                      aria-label={formatDisplayDate(cell.iso)}
-                      aria-pressed={selected}
-                      onClick={() => pick(cell.iso)}
-                    >
-                      {cell.day}
+              {panel === 'years' ? (
+                <div className="date-calendar-choices is-years">
+                  {Array.from({ length: 12 }, (_, index) => yearStart + index).map((year) => {
+                    const selected = selectedParts?.year === year
+                    const isCurrent = todayParts.year === year
+                    return (
+                      <button
+                        key={year}
+                        type="button"
+                        className={`date-calendar-day date-calendar-choice${selected ? ' is-selected' : ''}${isCurrent ? ' is-today' : ''}`}
+                        disabled={!yearAllowed(year, min, max)}
+                        aria-label={String(year)}
+                        aria-pressed={selected}
+                        onClick={() => chooseYear(year)}
+                      >
+                        {year}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+              {panel === 'months' ? (
+                <div className="date-calendar-choices is-months">
+                  {MONTH_LABELS.map((label, month) => {
+                    const selected = selectedParts?.year === view.year && selectedParts.month === month
+                    const isCurrent = todayParts.year === view.year && todayParts.month === month
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        className={`date-calendar-day date-calendar-choice${selected ? ' is-selected' : ''}${isCurrent ? ' is-today' : ''}`}
+                        disabled={!monthAllowed(view.year, month, min, max)}
+                        aria-label={`${label} ${view.year}`}
+                        aria-pressed={selected}
+                        onClick={() => chooseMonth(month)}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+              {panel === 'days' ? (
+                <>
+                  <div className="date-calendar-grid">
+                    {WEEKDAY_LABELS.map((label) => (
+                      <span key={label} className="date-calendar-dow">
+                        {label}
+                      </span>
+                    ))}
+                    {days.map((cell) => {
+                      const selected = value.slice(0, 10) === cell.iso
+                      const isToday = cell.iso === today
+                      const allowed = inRange(cell.iso, min, max)
+                      return (
+                        <button
+                          key={cell.iso}
+                          type="button"
+                          className={`date-calendar-day${cell.outside ? ' is-outside' : ''}${selected ? ' is-selected' : ''}${isToday ? ' is-today' : ''}`}
+                          disabled={!allowed}
+                          aria-label={formatDisplayDate(cell.iso)}
+                          aria-pressed={selected}
+                          onClick={() => pick(cell.iso)}
+                        >
+                          {cell.day}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="date-calendar-footer">
+                    <button type="button" disabled={!inRange(today, min, max)} onClick={() => pick(today)}>
+                      Today
                     </button>
-                  )
-                })}
-              </div>
-              <div className="date-calendar-footer">
-                <button type="button" disabled={!inRange(today, min, max)} onClick={() => pick(today)}>
-                  Today
-                </button>
-                {value ? (
-                  <button type="button" className="is-muted" onClick={() => pick('')}>
-                    Clear
-                  </button>
-                ) : (
-                  <span />
-                )}
-              </div>
+                    {value ? (
+                      <button type="button" className="is-muted" onClick={() => pick('')}>
+                        Clear
+                      </button>
+                    ) : (
+                      <span />
+                    )}
+                  </div>
+                </>
+              ) : null}
             </div>,
             document.body,
           )

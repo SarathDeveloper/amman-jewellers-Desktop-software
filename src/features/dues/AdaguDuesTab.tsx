@@ -35,15 +35,17 @@ export function AdaguDuesTab({
   error,
   onError,
   onReload,
+  initialFilter,
 }: {
   ledger: DuesLedger
   loading: boolean
   error: string | null
   onError: (message: string | null) => void
   onReload: () => Promise<DuesLedger>
+  initialFilter?: AdaguFilter
 }) {
   const { showToast } = useToast()
-  const [filter, setFilter] = useState<AdaguFilter>('all')
+  const [filter, setFilter] = useState<AdaguFilter>(initialFilter ?? 'all')
   const [page, setPage] = useState(1)
   const [busy, setBusy] = useState(false)
   const [redeemAction, setRedeemAction] = useState<'partial' | 'full' | null>(null)
@@ -81,6 +83,13 @@ export function AdaguDuesTab({
       setRemindersLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (initialFilter === 'reminders') {
+      setFilter('reminders')
+      setPage(1)
+    }
+  }, [initialFilter])
 
   useEffect(() => {
     // On first open show the skeleton; later visits refresh quietly so the list

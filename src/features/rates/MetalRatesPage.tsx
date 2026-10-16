@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
-import { Calendar, Pencil, Save } from 'lucide-react'
+import { Calendar, Clock, Pencil, Save } from 'lucide-react'
 import {
   deriveGoldRates,
   deriveSilverRates,
@@ -13,11 +13,11 @@ import type { MetalRates, MetalRatesInput } from '@shared/types'
 import { DataTable, TablePager } from '../../components/DataTable'
 import { DateInput } from '../../components/DateInput'
 import { LoadingState } from '../../components/LoadingState'
-import { PageHeader } from '../../components/PageHeader'
 import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
 import { formatCurrency, formatDisplayDateTime, paginate, TABLE_PAGE_SIZE } from '../../lib/format'
 import { numericFieldToNumber, parseNumericField, type NumericField } from '../../lib/numericField'
+import { MetalBarsMark } from './MetalBarsMark'
 import { flattenRateHistory } from './rateHistory'
 import { RateTrendChart, type RateTrendDays } from './RateTrendChart'
 
@@ -90,58 +90,56 @@ function draftFromRates(rates: MetalRates): DraftRates {
   }
 }
 
-function percentChange(current: number, previous: number | undefined): number | null {
-  if (previous == null || previous === 0) return null
-  return Math.round(((current - previous) / previous) * 10000) / 100
-}
-
-function formatPercent(value: number): string {
-  const abs = Math.abs(value).toFixed(2)
-  return `${value > 0 ? '+' : value < 0 ? '-' : ''}${abs}%`
-}
-
-function RateChange({ change }: { change: number | null }) {
-  if (change == null) return null
+function RatesPageHeader({
+  goldAmount,
+  silverAmount,
+}: {
+  goldAmount: number | undefined
+  silverAmount: number | undefined
+}) {
   return (
-    <span className={`rates-summary-change${change < 0 ? ' down' : change > 0 ? ' up' : ''}`}>
-      {formatPercent(change)}
+    <header className="page-header app-page-header rates-page-header">
+      <div className="rates-page-title">
+        <MetalBarsMark metal="gold" size="md" />
+        <div>
+          <h1>Gold &amp; Silver Rates</h1>
+          <p className="page-subtitle muted">
+            Manage daily bullion rates. Every update is saved with a timestamp.
+          </p>
+        </div>
+      </div>
+      <div className="page-header-actions rates-summary-pills">
+        <RateSummaryPill metal="gold" label="GOLD" amount={goldAmount} />
+        <RateSummaryPill metal="silver" label="SILVER" amount={silverAmount} />
+      </div>
+    </header>
+  )
+}
+
+function RateSummaryPill({
+  metal,
+  label,
+  amount,
+}: {
+  metal: 'gold' | 'silver'
+  label: string
+  amount: number | undefined
+}) {
+  return (
+    <span className={`rates-summary-pill rates-summary-pill-${metal}`}>
+      <MetalBarsMark metal={metal} size="sm" />
+      <span className="rates-summary-copy">
+        <span className="rates-summary-label">{label}</span>
+        <span className="rates-summary-amount num">
+          {amount != null ? `${formatCurrency(amount)}/g` : '—'}
+        </span>
+      </span>
     </span>
   )
 }
 
-function RateSummaryTicker({
-  goldAmount,
-  goldChange,
-  silverAmount,
-  silverChange,
-}: {
-  goldAmount: number | undefined
-  goldChange: number | null
-  silverAmount: number | undefined
-  silverChange: number | null
-}) {
-  return (
-    <div className="rates-summary-ticker">
-      <span className="rates-summary-side">
-        <span className="rates-summary-label">GOLD</span>
-        <span className="rates-summary-amount num">
-          {goldAmount != null ? `${formatCurrency(goldAmount)}/g` : '—'}
-        </span>
-        <RateChange change={goldChange} />
-      </span>
-      <span className="rates-summary-divider" aria-hidden />
-      <span className="rates-summary-side">
-        <span className="rates-summary-label">SILVER</span>
-        <span className="rates-summary-amount num">
-          {silverAmount != null ? `${formatCurrency(silverAmount)}/g` : '—'}
-        </span>
-        <RateChange change={silverChange} />
-      </span>
-    </div>
-  )
-}
-
 function RatePurityCard({
+  metal,
   title,
   subtitle,
   value,
@@ -151,6 +149,7 @@ function RatePurityCard({
   onChange,
   onKeyDown,
 }: {
+  metal: 'gold' | 'silver'
   title: string
   subtitle: string
   value: NumericField
@@ -176,23 +175,27 @@ function RatePurityCard({
           <Pencil size={15} strokeWidth={1.75} aria-hidden />
         </button>
       </div>
-      {editing ? (
-        <input
-          className="input rate-purity-input"
-          type="number"
-          min="0"
-          step="0.01"
-          autoFocus
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={onKeyDown}
-          aria-label={`${title} rate per gram`}
-        />
-      ) : (
-        <p className="rate-purity-amount num">{value === '' ? '—' : formatCurrency(value)}</p>
-      )}
+      <div className="rate-purity-body">
+        {editing ? (
+          <input
+            className="input rate-purity-input"
+            type="number"
+            min="0"
+            step="0.01"
+            autoFocus
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={onKeyDown}
+            aria-label={`${title} rate per gram`}
+          />
+        ) : (
+          <p className="rate-purity-amount num">{value === '' ? '—' : formatCurrency(value)}</p>
+        )}
+        <MetalBarsMark metal={metal} size="lg" />
+      </div>
       <p className="rate-purity-updated">
-        Last updated: {lastUpdated ? formatDisplayDateTime(lastUpdated) : '—'}
+        <Clock size={13} strokeWidth={1.75} aria-hidden />
+        <span>Last updated: {lastUpdated ? formatDisplayDateTime(lastUpdated) : '—'}</span>
       </p>
     </article>
   )
@@ -263,10 +266,6 @@ export function MetalRatesPage() {
       setError(err instanceof Error ? err.message : 'Failed to load rate trend')
     }
   }
-
-  const previous = history.find((row) => row.id !== latest?.id)
-  const goldChange = percentChange(latest?.gold24k ?? 0, previous?.gold24k)
-  const silverChange = percentChange(latest?.silverFine ?? 0, previous?.silverFine)
 
   const historyRows = useMemo(() => flattenRateHistory(history), [history])
   const lastHistoryPage = Math.max(1, Math.ceil(historyRows.length / TABLE_PAGE_SIZE))
@@ -361,7 +360,7 @@ export function MetalRatesPage() {
   if (loading) {
     return (
       <div className="billing-shell rates-page">
-        <PageHeader title="Gold & Silver Rates" subtitle="Manage daily bullion rates. Every update is saved with a timestamp." />
+        <RatesPageHeader goldAmount={undefined} silverAmount={undefined} />
         <LoadingState rows={4} />
       </div>
     )
@@ -369,18 +368,7 @@ export function MetalRatesPage() {
 
   return (
     <div className="billing-shell rates-page">
-      <PageHeader
-        title="Gold & Silver Rates"
-        subtitle="Manage daily bullion rates. Every update is saved with a timestamp."
-        actions={
-          <RateSummaryTicker
-            goldAmount={latest?.gold24k}
-            goldChange={goldChange}
-            silverAmount={latest?.silverFine}
-            silverChange={silverChange}
-          />
-        }
-      />
+      <RatesPageHeader goldAmount={latest?.gold24k} silverAmount={latest?.silverFine} />
 
       {error ? <div className="error-banner">{error}</div> : null}
 
@@ -393,6 +381,7 @@ export function MetalRatesPage() {
             value={effectiveDate}
             onChange={setEffectiveDate}
             ariaLabel="Effective date"
+            showIcon
           />
         </label>
         <button
@@ -406,12 +395,18 @@ export function MetalRatesPage() {
         </button>
       </div>
 
-      <section className="card padded rates-metal-panel">
-        <h2 className="rates-metal-label">GOLD</h2>
+      <section className="rates-metal-panel rates-metal-panel-gold">
+        <div className="rates-metal-head">
+          <MetalBarsMark metal="gold" size="sm" />
+          <h2 className="rates-metal-label">GOLD</h2>
+          <span className="rates-metal-divider" aria-hidden />
+          <p>Update gold rates for different purities.</p>
+        </div>
         <div className="rates-gold-grid">
           {GOLD_CARDS.map((card) => (
             <RatePurityCard
               key={card.field}
+              metal="gold"
               title={card.title}
               subtitle={`${card.karat}K (${goldPurityPercent(card.karat)})`}
               value={draft[card.field]}
@@ -425,12 +420,18 @@ export function MetalRatesPage() {
         </div>
       </section>
 
-      <section className="card padded rates-metal-panel">
-        <h2 className="rates-metal-label">SILVER</h2>
+      <section className="rates-metal-panel rates-metal-panel-silver">
+        <div className="rates-metal-head">
+          <MetalBarsMark metal="silver" size="sm" />
+          <h2 className="rates-metal-label">SILVER</h2>
+          <span className="rates-metal-divider" aria-hidden />
+          <p>Update silver rates for different purities.</p>
+        </div>
         <div className="rates-silver-grid">
           {SILVER_CARDS.map((card) => (
             <RatePurityCard
               key={card.field}
+              metal="silver"
               title={card.title}
               subtitle={`${card.fineness} (${silverPurityPercent(card.fineness)})`}
               value={draft[card.field]}
@@ -446,7 +447,7 @@ export function MetalRatesPage() {
 
       <section className="card padded rates-metal-panel">
         <h2 className="rates-metal-label">OLD GOLD BUYING RATES</h2>
-        <p className="rate-purity-updated">
+        <p className="rates-buy-note">
           Rates paid to the customer when buying old gold. Leave a rate at zero to fall back to the
           selling rate above.
         </p>

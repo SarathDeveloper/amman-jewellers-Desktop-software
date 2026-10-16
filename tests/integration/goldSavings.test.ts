@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { addDaysIso } from '@shared/billing/pledgeMath'
+import { localTodayIso } from '@shared/localDate'
 import type { GoldSavingScheme, GoldSavingSchemeInput } from '@shared/types'
 import { getDatabase } from '../../server/db'
 import { getTestAgent, loginAsAdmin, useIntegrationEnv } from './helpers/testEnv'
@@ -228,6 +230,36 @@ describe('gold savings schemes', () => {
     expect(dashboard.body.monthTarget).toBeGreaterThan(0)
     expect(dashboard.body.overdueAging).toHaveLength(4)
     expect(dashboard.body.maturityPipeline).toHaveLength(4)
+  })
+
+  it('counts scheme accounts due in the next 7 days and skips overdue installments', async () => {
+    const today = localTodayIso()
+    await seedRate(today)
+    const scheme = await createScheme({ name: 'Due This Week' })
+    const dueNow = await seedCustomer('Due Now', '9876500201')
+    const overdue = await seedCustomer('Due Late', '9876500202')
+    const dueLater = await seedCustomer('Due Later', '9876500203')
+
+    const now = await enrollAndPay(dueNow.id, scheme.id, today, {
+      firstInstallmentDate: today,
+      skipInitialPayment: true,
+    })
+    const late = await enrollAndPay(overdue.id, scheme.id, today, {
+      firstInstallmentDate: addDaysIso(today, -1),
+      skipInitialPayment: true,
+    })
+    const later = await enrollAndPay(dueLater.id, scheme.id, today, {
+      firstInstallmentDate: addDaysIso(today, 8),
+      skipInitialPayment: true,
+    })
+    expect(now.status).toBe(201)
+    expect(late.status).toBe(201)
+    expect(later.status).toBe(201)
+
+    const dashboard = await getTestAgent().get('/api/gold-savings/dashboard')
+    expect(dashboard.status).toBe(200)
+    expect(dashboard.body.dueThisWeek).toBe(1)
+    expect(dashboard.body.overdueInstallments).toBeGreaterThan(0)
   })
 
   it('credits later installments at the live rate and reprints the original receipt snapshot', async () => {

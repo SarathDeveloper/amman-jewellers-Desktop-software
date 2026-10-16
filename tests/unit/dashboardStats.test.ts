@@ -5,6 +5,7 @@ import {
   clampCustomRange,
   computeDashboardStats,
   DUE_OVERDUE_DAYS,
+  overdueBillDues,
   periodGranularity,
   resolvePeriodRange,
   weekBounds,
@@ -591,6 +592,16 @@ describe('buildDashboardAlerts', () => {
   it('ignores dues within the threshold', () => {
     const alerts = buildDashboardAlerts(ledgerWithDue(today), [], null, today)
     expect(alerts).toEqual([])
+  })
+
+  it('counts overdue bill customers and their balance', () => {
+    const overdue = overdueBillDues(ledgerWithDue(olderThan30Days, 5000), today)
+    expect(overdue.count).toBe(1)
+    expect(overdue.amount).toBe(5000)
+    expect(overdue.topCustomerName).toBe('Ram')
+    const fresh = overdueBillDues(ledgerWithDue(today, 800), today)
+    expect(fresh.count).toBe(0)
+    expect(fresh.amount).toBe(0)
   })
 
   it('flags stock reconciliation rows', () => {

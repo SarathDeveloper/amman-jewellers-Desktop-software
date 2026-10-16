@@ -32,11 +32,11 @@ test('chrome tabs show seeded personas and dashboard KPIs', async ({ window }) =
 
   await openGoldSavingsTab(window, 'Dashboard')
   await expect(window.getByRole('heading', { name: 'Monthly Gold Savings' })).toBeVisible()
-  await expect(window.locator('.dashboard-kpi-card', { hasText: 'Overdue installments' }).locator('.kpi-value')).not.toHaveText('0')
-  await expect(window.locator('.dashboard-kpi-card', { hasText: "Today's collections" }).locator('.kpi-value')).not.toHaveText('₹0')
-  for (const name of ['Ravi Kumar', 'Priya', 'Suresh', 'Meena'] as const) {
-    await expect(window.locator('.dashboard-due-name').filter({ hasText: name }).first()).toBeVisible()
-  }
+  await expect(window.locator('.gs-home-kpi', { hasText: 'Active Schemes' }).locator('.gs-home-kpi-value')).not.toHaveText('0')
+  await expect(window.locator('.gs-home-kpi', { hasText: 'Enrolled Customers' }).locator('.gs-home-kpi-value')).not.toHaveText('0')
+  await expect(window.locator('.gs-home-kpi', { hasText: 'This Month Collection' }).locator('.gs-home-kpi-value')).not.toHaveText('₹0')
+  await expect(window.locator('.gs-home-kpi', { hasText: 'Total Gold Accumulated' }).locator('.gs-home-kpi-value')).not.toHaveText('0.000 g')
+  await expect(window.getByLabel('This month\'s collections')).not.toContainText('No installments are scheduled this month.')
 
   const tabHeadings = [
     ['Schemes', 'Scheme configuration'],

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Banknote,
+  AlertTriangle,
+  Bell,
   Calendar,
+  CalendarDays,
   ChevronDown,
-  Coins,
-  FileEdit,
-  IndianRupee,
+  Clock,
   Package,
   Plus,
   RefreshCw,
@@ -21,24 +21,16 @@ import { localTodayIso } from '@shared/localDate'
 import type {
   DuesLedger,
   GoldSavingDashboard,
-  InvoiceListStats,
   ItemStockRow,
   MetalRates,
   StockReconciliationRow,
 } from '@shared/types'
-import { formatCurrency, formatDisplayDate, formatInr, formatWeight } from '../../lib/format'
+import { formatCurrency, formatDisplayDate } from '../../lib/format'
 import { api } from '../../lib/api'
 import { useAuth } from '../auth/authContext'
 import { CategoryStockCard } from './CategoryStockCard'
 import { DashboardAlertsMenu } from './DashboardAlertsMenu'
-import {
-  applyInvoiceStats,
-  buildDashboardAlerts,
-  periodGranularity,
-  resolvePeriodRange,
-  type DashboardStats,
-  type OldGoldTodayStats,
-} from './dashboardStats'
+import { buildDashboardAlerts, computeDashboardStats, overdueBillDues } from './dashboardStats'
 
 function formatDashboardDate(isoDate: string): string {
   const formatted = formatDisplayDate(isoDate)
@@ -56,25 +48,6 @@ function greetingForHour(hour: number): string {
 
 type KpiTone = 'brand' | 'success' | 'danger' | 'info'
 
-function KpiSparkline({ values }: { values: number[] }) {
-  if (!values.length) {
-    return null
-  }
-  const max = Math.max(...values, 1)
-  const points = values
-    .map((value, index) => {
-      const x = (index / Math.max(values.length - 1, 1)) * 100
-      const y = 22 - (value / max) * 20
-      return `${x},${y}`
-    })
-    .join(' ')
-  return (
-    <svg className="dashboard-kpi-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden>
-      <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  )
-}
-
 function KpiCard({
   to,
   label,
@@ -82,7 +55,6 @@ function KpiCard({
   hint,
   icon: Icon,
   tone,
-  sparkline,
 }: {
   to?: string
   label: string
@@ -90,7 +62,6 @@ function KpiCard({
   hint?: string
   icon: LucideIcon
   tone: KpiTone
-  sparkline?: number[]
 }) {
   const body = (
     <>
@@ -102,7 +73,6 @@ function KpiCard({
         <span className="kpi-value num">{value}</span>
         {hint ? <span className="dashboard-kpi-hint">{hint}</span> : null}
       </div>
-      {sparkline ? <KpiSparkline values={sparkline} /> : null}
     </>
   )
 
@@ -247,14 +217,13 @@ export function DashboardPage() {
   const { user, can } = useAuth()
   const displayName = user?.username || 'Shop Owner'
   const avatarLetter = displayName.charAt(0).toUpperCase()
-  const [invoiceStats, setInvoiceStats] = useState<InvoiceListStats | null>(null)
   const [ledger, setLedger] = useState<DuesLedger | undefined>(undefined)
   const [goldStock, setGoldStock] = useState<ItemStockRow[]>([])
   const [silverStock, setSilverStock] = useState<ItemStockRow[]>([])
   const [metalRates, setMetalRates] = useState<MetalRates | null>(null)
   const [reconciliation, setReconciliation] = useState<StockReconciliationRow[] | null>(null)
   const [goldSavings, setGoldSavings] = useState<GoldSavingDashboard | null>(null)
-  const [oldGoldStats, setOldGoldStats] = useState<OldGoldTodayStats | null>(null)
+  const [adaguReminders, setAdaguReminders] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -263,28 +232,11 @@ export function DashboardPage() {
 
   const today = localTodayIso()
   const greeting = greetingForHour(new Date().getHours())
-  const range = resolvePeriodRange('today', today, today, today)
-  const granularity = periodGranularity('today', range)
-  const emptyStats: InvoiceListStats = {
-    sales: 0,
-    collections: 0,
-    draftCount: 0,
-    billsGenerated: 0,
-    customersBilled: 0,
-    totalItemsSold: 0,
-    chart: [],
-    collectionsChart: [],
-  }
-  const stats: DashboardStats = applyInvoiceStats(
-    invoiceStats ?? emptyStats,
-    [],
-    ledger,
-    goldStock,
-    silverStock,
-    today,
-    { period: 'today', customFrom: today, customTo: today },
-    oldGoldStats,
-  )
+  const canSchemes = can('gold_savings')
+  const stats = computeDashboardStats([], ledger, [], [], today)
+  const overdue = overdueBillDues(ledger, today)
+  const outstandingHint = stats.totalOutstanding > 0 ? formatCurrency(stats.totalOutstanding) : undefined
+  const overdueHint = overdue.amount > 0 ? formatCurrency(overdue.amount) : undefined
 
   useEffect(() => {
     let active = true
@@ -295,34 +247,24 @@ export function DashboardPage() {
           if (hasLoadedRef.current) setRefreshing(true)
           else setLoading(true)
         }
-        const [
-          statsPayload,
-          dues,
-          goldRows,
-          silverRows,
-          latestRates,
-          reconRows,
-          gsDashboard,
-          oldGoldPayload,
-        ] = await Promise.all([
-            api.getInvoiceStats({ from: range.from, to: range.to, granularity }).catch(() => emptyStats),
+        const [reminderCount, dues, goldRows, silverRows, latestRates, reconRows, gsDashboard] =
+          await Promise.all([
+            api.getUpcomingAdaguReminderCount(14).catch(() => ({ count: 0 })),
             api.listDues().catch(() => undefined),
             api.listItemStock({ stockDate: today, metal: STOCK_METALS[0] }).catch(() => [] as ItemStockRow[]),
             api.listItemStock({ stockDate: today, metal: STOCK_METALS[1] }).catch(() => [] as ItemStockRow[]),
             api.getLatestMetalRates().catch(() => null),
             can('stock') ? api.getStockReconciliation(today).catch(() => null) : Promise.resolve(null),
-            can('gold_savings') ? api.getGsDashboard().catch(() => null) : Promise.resolve(null),
-            api.getOldGoldPurchaseStats(today).catch(() => null),
+            canSchemes ? api.getGsDashboard().catch(() => null) : Promise.resolve(null),
           ])
         if (active) {
-          setInvoiceStats(statsPayload ?? emptyStats)
+          setAdaguReminders(reminderCount?.count ?? 0)
           setLedger(dues)
           setGoldStock(goldRows)
           setSilverStock(silverRows)
           setMetalRates(latestRates)
           setReconciliation(reconRows)
           setGoldSavings(gsDashboard)
-          setOldGoldStats(oldGoldPayload)
           hasLoadedRef.current = true
         }
       } catch (err) {
@@ -339,22 +281,11 @@ export function DashboardPage() {
     return () => {
       active = false
     }
-  }, [today, refreshKey, range.from, range.to, granularity, can])
+  }, [today, refreshKey, can, canSchemes])
 
-  const sales = stats.salesOverview
-  const outstandingHint =
-    stats.outstandingCustomerCount > 0
-      ? `${stats.outstandingCustomerCount} customer${stats.outstandingCustomerCount === 1 ? '' : 's'}`
-      : undefined
-  const draftHint = stats.draftCount > 0 ? 'Needs attention' : undefined
-  const oldGold = stats.oldGoldToday
-  const oldGoldHint =
-    oldGold.count > 0
-      ? `${formatWeight(oldGold.netWeight)} · open ₹ ${formatInr(oldGold.openBalance)}`
-      : undefined
-  const salesSparkline = sales.hourlyTotals
-  const collectionsSparkline = sales.collectionTotals
   const alerts = buildDashboardAlerts(ledger, reconciliation, goldSavings, today)
+  const schemeOverdue = goldSavings?.overdueInstallments ?? 0
+  const schemeDueThisWeek = goldSavings?.dueThisWeek ?? 0
 
   return (
     <div className="dashboard-page">
@@ -405,42 +336,43 @@ export function DashboardPage() {
         <>
           <div className="dashboard-kpi-grid">
             <KpiCard
-              label="Today's sales"
-              value={`₹ ${formatInr(stats.todaySales)}`}
-              icon={IndianRupee}
+              to="/dues?tab=adagu&filter=reminders"
+              label="Adagu reminders"
+              value={String(adaguReminders)}
+              hint="Next 14 days"
+              icon={Bell}
               tone="brand"
-              sparkline={salesSparkline}
-            />
-            <KpiCard
-              label="Today's collections"
-              value={`₹ ${formatInr(stats.todayCollections)}`}
-              icon={Banknote}
-              tone="success"
-              sparkline={collectionsSparkline}
             />
             <KpiCard
               to="/dues"
-              label="Outstanding"
-              value={`₹ ${formatInr(stats.totalOutstanding)}`}
+              label="Outstanding customers"
+              value={String(stats.outstandingCustomerCount)}
               hint={outstandingHint}
               icon={Wallet}
               tone="danger"
             />
             <KpiCard
-              to="/billing"
-              label="Draft bills"
-              value={String(stats.draftCount)}
-              hint={draftHint}
-              icon={FileEdit}
-              tone="info"
+              to="/dues"
+              label="Overdue bill dues"
+              value={String(overdue.count)}
+              hint={overdueHint}
+              icon={AlertTriangle}
+              tone="danger"
             />
             <KpiCard
-              to="/inventory/old-gold"
-              label="Old gold bought"
-              value={`₹ ${formatInr(oldGold.amount)}`}
-              hint={oldGoldHint}
-              icon={Coins}
-              tone="brand"
+              to={canSchemes ? '/gold-savings/overdue' : undefined}
+              label="Scheme installments overdue"
+              value={String(schemeOverdue)}
+              icon={Clock}
+              tone="danger"
+            />
+            <KpiCard
+              to={canSchemes ? '/gold-savings/collections' : undefined}
+              label="Scheme dues this week"
+              value={String(schemeDueThisWeek)}
+              hint="Next 7 days"
+              icon={CalendarDays}
+              tone="info"
             />
           </div>
 

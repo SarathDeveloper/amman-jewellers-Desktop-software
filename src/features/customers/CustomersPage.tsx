@@ -216,15 +216,31 @@ export function CustomersPage() {
                 const due = dueByCustomer.get(customer.id) ?? 0
                 const last = lastBillByCustomer.get(customer.id)
                 const schemeAccounts = gsAccountsByCustomer.get(customer.id) ?? []
+                const profilePath = `/customers/${customer.id}`
                 return (
-                  <tr key={customer.id}>
+                  <tr
+                    key={customer.id}
+                    className="customer-list-row"
+                    tabIndex={0}
+                    onClick={() => navigate(profilePath)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        navigate(profilePath)
+                      }
+                    }}
+                  >
                     <td>{String((page - 1) * TABLE_PAGE_SIZE + index + 1).padStart(2, '0')}</td>
                     <td>
                       <button
                         type="button"
                         className="btn ghost customer-name-btn"
                         title={customer.name}
-                        onClick={() => navigate(`/customers/${customer.id}`)}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          navigate(profilePath)
+                        }}
                       >
                         {customer.name}
                       </button>
@@ -241,7 +257,8 @@ export function CustomersPage() {
                           <button
                             type="button"
                             className="btn ghost"
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation()
                               if (schemeAccounts.length === 1) {
                                 setCollectAccountId(schemeAccounts[0].id)
                               } else {
@@ -253,11 +270,25 @@ export function CustomersPage() {
                             Collect scheme
                           </button>
                         ) : null}
-                        <button type="button" className="btn ghost" onClick={() => openEdit(customer)}>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openEdit(customer)
+                          }}
+                        >
                           <Pencil size={16} />
                           Edit
                         </button>
-                        <button type="button" className="btn link-danger" onClick={() => setDeleteId(customer.id)}>
+                        <button
+                          type="button"
+                          className="btn link-danger"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setDeleteId(customer.id)
+                          }}
+                        >
                           <Trash2 size={16} />
                           Delete
                         </button>

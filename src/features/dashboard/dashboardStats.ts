@@ -441,6 +441,32 @@ function computeDueCollections(
   }
 }
 
+export interface OverdueBillDues {
+  count: number
+  amount: number
+  topCustomerName: string | null
+  topBalance: number
+}
+
+/** Customers who still owe, and whose oldest due is older than `DUE_OVERDUE_DAYS`. */
+export function overdueBillDues(
+  ledger: DuesLedger | null | undefined,
+  today: string,
+): OverdueBillDues {
+  const rows = (ledger?.columns ?? [])
+    .filter((column) => column.balance > 0)
+    .map((column) => ({ column, oldest: oldestDueDate(column.entries ?? []) }))
+    .filter((row) => row.oldest !== null && daysBetween(row.oldest, today) > DUE_OVERDUE_DAYS)
+    .sort((a, b) => b.column.balance - a.column.balance)
+
+  return {
+    count: rows.length,
+    amount: rows.reduce((sum, row) => sum + row.column.balance, 0),
+    topCustomerName: rows[0]?.column.customerName ?? null,
+    topBalance: rows[0]?.column.balance ?? 0,
+  }
+}
+
 /** Builds the dashboard notification list from dues, stock reconciliation and Gold Savings. */
 export function buildDashboardAlerts(
   ledger: DuesLedger | null | undefined,
@@ -450,18 +476,14 @@ export function buildDashboardAlerts(
 ): DashboardAlert[] {
   const alerts: DashboardAlert[] = []
 
-  const overdueDues = (ledger?.columns ?? [])
-    .filter((column) => column.balance > 0)
-    .map((column) => ({ column, oldest: oldestDueDate(column.entries ?? []) }))
-    .filter((row) => row.oldest !== null && daysBetween(row.oldest, today) > DUE_OVERDUE_DAYS)
-    .sort((a, b) => b.column.balance - a.column.balance)
-  if (overdueDues.length > 0) {
-    const count = overdueDues.length
+  const overdueDues = overdueBillDues(ledger, today)
+  if (overdueDues.count > 0 && overdueDues.topCustomerName) {
+    const count = overdueDues.count
     alerts.push({
       id: 'dues-overdue',
       tone: 'danger',
       title: `${count} due${count === 1 ? '' : 's'} over ${DUE_OVERDUE_DAYS} days`,
-      detail: `${overdueDues[0].column.customerName} · ${formatCurrency(overdueDues[0].column.balance)}`,
+      detail: `${overdueDues.topCustomerName} · ${formatCurrency(overdueDues.topBalance)}`,
       to: '/dues',
     })
   }

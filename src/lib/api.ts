@@ -509,6 +509,8 @@ export const api = {
     request<PledgePayoff>(`/api/pledges/${id}/payoff${qs({ date })}`),
   listPledgeReminders: (date?: string) =>
     request<PledgeReminderEntry[]>(`/api/pledges/reminders${qs({ date })}`),
+  getUpcomingAdaguReminderCount: (withinDays = 14) =>
+    request<{ count: number }>(`/api/pledges/reminders${qs({ withinDays })}`),
   listPledgePhotos: (id: number) => request<PledgePhoto[]>(`/api/pledges/${id}/photos`),
   uploadPledgePhoto: async (id: number, kind: PledgePhotoKind, file: File) => {
     const body = new FormData()

@@ -40,7 +40,7 @@ import { PledgePreviewModal } from '../pledges/PledgePreviewModal'
 const PAGE_SIZE_OPTIONS = [5, 10, 25]
 const DEFAULT_PAGE_SIZE = 5
 
-type SaleStatusChip = 'all' | 'draft' | 'estimate' | 'final' | 'cancelled'
+type SaleStatusChip = 'all' | 'draft' | 'final' | 'cancelled'
 type PledgeStatusChip = 'all' | 'draft' | 'active' | 'redeemed' | 'forfeited' | 'renewed'
 type BillTypeFilter = 'all' | BillingType
 
@@ -89,7 +89,6 @@ type BillRow =
 
 function listStatus(invoice: Invoice): StatusKind {
   if (invoice.status === 'cancelled') return 'cancelled'
-  if (invoice.isEstimate) return 'estimate'
   if (invoice.status === 'draft') return 'draft'
   if (invoice.balanceDue > 0) return 'due'
   return 'final'
@@ -461,7 +460,7 @@ export function InvoicesPage() {
             />
           </label>
           <DateInput
-            className="input"
+            className="input billing-header-date"
             value={selectedDate}
             showIcon
             ariaLabel="Billing date"
@@ -493,7 +492,6 @@ export function InvoicesPage() {
                   options={[
                     { value: 'all', label: 'All' },
                     { value: 'draft', label: 'Draft' },
-                    { value: 'estimate', label: 'Estimate' },
                     { value: 'final', label: 'Final' },
                     { value: 'cancelled', label: 'Cancelled' },
                   ]}
@@ -530,15 +528,7 @@ export function InvoicesPage() {
                   ]}
                 />
               )}
-              <button
-                type="button"
-                className="btn secondary"
-                disabled={reprinting}
-                onClick={() => void reprintLast()}
-              >
-                <Printer size={16} strokeWidth={1.75} aria-hidden />
-                Reprint last
-              </button>
+              <span className="billing-toolbar-divider" aria-hidden />
               <div className="billing-toolbar-filters">
                 <label className="billing-filter-field">
                   <select
@@ -610,10 +600,19 @@ export function InvoicesPage() {
                     </label>
                   </>
                 ) : null}
-                <button type="button" className="btn secondary" onClick={resetFilters}>
+                <button type="button" className="btn secondary billing-reset-btn" onClick={resetFilters}>
                   Reset
                 </button>
               </div>
+              <button
+                type="button"
+                className="btn secondary billing-reprint-btn"
+                disabled={reprinting}
+                onClick={() => void reprintLast()}
+              >
+                <Printer size={16} strokeWidth={1.75} aria-hidden />
+                Reprint last
+              </button>
             </div>
           }
           footer={

@@ -1,50 +1,38 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  AlertTriangle,
-  Coins,
-  IndianRupee,
-  LayoutDashboard,
-  MessageCircle,
-  PiggyBank,
-  Plus,
-  UserPlus,
-  Users,
-} from 'lucide-react'
+import { BarChart3, CalendarDays, FileText, IndianRupee, Plus, User, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type {
-  GoldSavingAccount,
-  GoldSavingAgingBucket,
-  GoldSavingDashboard,
-  GoldSavingMaturityPipelineBucket,
-} from '@shared/types'
+import type { GoldSavingAccount, GoldSavingDashboard, GoldSavingPayment } from '@shared/types'
 import { PageHeader } from '../../components/PageHeader'
 import { LoadingState } from '../../components/LoadingState'
 import { formatCurrency, formatDisplayDate, formatWeight } from '../../lib/format'
 import { api } from '../../lib/api'
-import { goldSavingsReminderMessage, whatsappLink } from '../../lib/whatsapp'
-import { useShopBranding } from '../settings/shopBrandingContext'
-import { GsStatusBadge } from './GsStatusBadge'
 
-type KpiTone = 'brand' | 'success' | 'danger' | 'info'
+type KpiTone = 'brand' | 'info' | 'success' | 'gold'
 
 function monthProgressPct(collected: number, target: number): number {
   if (target <= 0) return collected > 0 ? 100 : 0
   return Math.round((collected / target) * 100)
 }
 
-/** WhatsApp reminder for an account whose next installment is due soon. */
-function dueReminderHref(account: GoldSavingAccount, shopName: string): string | null {
-  if (!account.customerPhone || !account.nextDueDate) return null
-  return whatsappLink(
-    account.customerPhone,
-    goldSavingsReminderMessage({
-      shopName,
-      customerName: account.customerName,
-      accountNo: account.accountNo,
-      dueDate: account.nextDueDate,
-      amount: account.monthlyAmount,
-    }),
+function GoldBarsIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 8.2 7.2 6.6h9.6L20 8.2l-3.2 1.6H7.2L4 8.2Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path d="M7.2 9.8v2.2M16.8 9.8v2.2" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+      <path
+        d="M4 15.6 7.2 14h9.6l3.2 1.6-3.2 1.6H7.2L4 15.6Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+      <path d="M7.2 17.2V19.4M16.8 17.2V19.4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
+    </svg>
   )
 }
 
@@ -52,44 +40,89 @@ function KpiCard({
   to,
   label,
   value,
-  hint,
-  icon: Icon,
+  icon,
   tone,
 }: {
   to?: string
   label: string
   value: string
-  hint?: string
-  icon: LucideIcon
+  icon: ReactNode
   tone: KpiTone
 }) {
   const body = (
     <>
-      <div className={`dashboard-kpi-icon dashboard-kpi-icon-${tone}`}>
-        <Icon size={20} strokeWidth={1.75} aria-hidden />
-      </div>
-      <div className="dashboard-kpi-body">
-        <span className="kpi-label">{label}</span>
-        <span className="kpi-value num">{value}</span>
-        {hint ? <span className="dashboard-kpi-hint">{hint}</span> : null}
-      </div>
+      <span className={`gs-home-kpi-icon gs-home-kpi-icon-${tone}`}>{icon}</span>
+      <span className="gs-home-kpi-body">
+        <span className="gs-home-kpi-label">{label}</span>
+        <span className="gs-home-kpi-value num">{value}</span>
+      </span>
     </>
   )
   if (to) {
     return (
-      <Link to={to} className="card padded dashboard-kpi-card dashboard-kpi-card-link">
+      <Link to={to} className="card padded gs-home-kpi">
         {body}
       </Link>
     )
   }
-  return <div className="card padded dashboard-kpi-card">{body}</div>
+  return <div className="card padded gs-home-kpi">{body}</div>
+}
+
+function PanelEmpty({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: LucideIcon
+  title: string
+  description: string
+}) {
+  return (
+    <div className="gs-home-empty">
+      <span className="gs-home-empty-icon">
+        <Icon size={22} strokeWidth={1.75} aria-hidden />
+      </span>
+      <p className="gs-home-empty-title">{title}</p>
+      <p className="muted">{description}</p>
+    </div>
+  )
+}
+
+function CollectionRows({ payments }: { payments: GoldSavingPayment[] }) {
+  if (payments.length === 0) return null
+  return (
+    <div className="gs-home-list">
+      {payments.map((payment) => (
+        <div key={payment.id} className="gs-home-row">
+          <span className="gs-home-row-name">{payment.customerName}</span>
+          <span className="muted">
+            {formatDisplayDate(payment.paymentDate)} · {formatCurrency(payment.amount)}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MaturityRows({ accounts }: { accounts: GoldSavingAccount[] }) {
+  return (
+    <div className="gs-home-list">
+      {accounts.map((account) => (
+        <Link key={account.id} to={`/gold-savings/accounts/${account.id}`} className="gs-home-row">
+          <span className="gs-home-row-name">{account.customerName}</span>
+          <span className="muted">
+            {account.accountNo} · {formatDisplayDate(account.maturityDate)} · {formatWeight(account.goldAccumulated, 3)}
+          </span>
+        </Link>
+      ))}
+    </div>
+  )
 }
 
 export function GoldSavingsDashboardPage() {
   const [data, setData] = useState<GoldSavingDashboard | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const { shopName } = useShopBranding()
 
   useEffect(() => {
     let active = true
@@ -111,359 +144,143 @@ export function GoldSavingsDashboardPage() {
 
   if (loading) {
     return (
-      <div className="app-page dashboard-page">
+      <div className="app-page gs-home">
         <LoadingState />
       </div>
     )
   }
   if (error) {
     return (
-      <div className="app-page dashboard-page">
+      <div className="app-page gs-home">
         <div className="error-banner">{error}</div>
       </div>
     )
   }
   if (!data) return null
 
-  const monthlyChart = data.monthlyChart ?? []
-  const schemeEnrollments = data.schemeEnrollments ?? []
-  const upcomingDues = data.upcomingDues ?? []
-  const recentCollections = data.recentCollections ?? []
-  const recentEnrollments = data.recentEnrollments ?? []
+  const monthPayments = data.monthPayments ?? []
   const maturingAccounts = data.maturingAccounts ?? []
-  const maxChart = Math.max(...monthlyChart.map((point) => point.amount), 1)
-  const maxEnroll = Math.max(...schemeEnrollments.map((row) => row.count), 1)
   const monthPct = monthProgressPct(data.monthCollections, data.monthTarget)
   const monthBarPct = Math.min(100, monthPct)
+  const collectionsEmpty = data.monthCollections === 0 && data.monthTarget === 0
+  let collectionsBody: ReactNode
+  if (collectionsEmpty) {
+    collectionsBody = (
+      <PanelEmpty
+        icon={FileText}
+        title="No collections yet"
+        description="No installments are scheduled this month."
+      />
+    )
+  } else {
+    collectionsBody = (
+      <>
+        <p className="muted gs-home-progress-caption">
+          {monthPct}% of scheduled installments due this month
+        </p>
+        <CollectionRows payments={monthPayments} />
+      </>
+    )
+  }
 
   return (
-    <div className="app-page dashboard-page">
+    <div className="app-page gs-home">
       <PageHeader
         title="Monthly Gold Savings"
         subtitle="Scheme collections, enrollments and upcoming maturities"
         actions={
           <>
             <Link className="btn" to="/gold-savings/enroll">
-              <UserPlus size={18} strokeWidth={2} aria-hidden />
-              Enroll customer
+              <Plus size={18} strokeWidth={2} aria-hidden />
+              New Enrollment
             </Link>
             <Link className="btn secondary" to="/gold-savings/collections">
               <IndianRupee size={18} strokeWidth={1.75} aria-hidden />
-              Collect payment
+              Collect Payment
             </Link>
           </>
         }
       />
 
-      <div className="dashboard-kpi-grid">
+      <div className="gs-home-kpis">
         <KpiCard
           to="/gold-savings/schemes"
-          label="Active schemes"
+          label="Active Schemes"
           value={String(data.activeSchemes)}
-          icon={LayoutDashboard}
+          icon={<Users size={20} strokeWidth={1.75} aria-hidden />}
           tone="brand"
         />
         <KpiCard
           to="/gold-savings/accounts"
-          label="Enrolled customers"
+          label="Enrolled Customers"
           value={String(data.enrolledCustomers)}
-          icon={Users}
+          icon={<User size={20} strokeWidth={1.75} aria-hidden />}
           tone="info"
         />
         <KpiCard
           to="/gold-savings/collections"
-          label="Today's collections"
-          value={formatCurrency(data.todayCollections)}
-          icon={IndianRupee}
+          label="This Month Collection"
+          value={formatCurrency(data.monthCollections)}
+          icon={<IndianRupee size={20} strokeWidth={1.75} aria-hidden />}
           tone="success"
         />
         <KpiCard
-          label="This month"
-          value={formatCurrency(data.monthCollections)}
-          hint={
-            data.monthTarget > 0
-              ? `${monthPct}% of ${formatCurrency(data.monthTarget)} due`
-              : 'No installments due this month'
-          }
-          icon={PiggyBank}
-          tone="brand"
-        />
-        <KpiCard
-          label="Total collected"
-          value={formatCurrency(data.totalCollected)}
-          icon={IndianRupee}
-          tone="info"
-        />
-        <KpiCard
-          label="Gold accumulated"
+          label="Total Gold Accumulated"
           value={formatWeight(data.totalGold, 3)}
-          icon={Coins}
-          tone="brand"
-        />
-        <KpiCard
-          to="/gold-savings/maturity"
-          label="Upcoming maturities"
-          value={String(data.upcomingMaturities)}
-          icon={PiggyBank}
-          tone="info"
-        />
-        <KpiCard
-          to="/gold-savings/overdue"
-          label="Overdue installments"
-          value={String(data.overdueInstallments)}
-          icon={AlertTriangle}
-          tone={data.overdueInstallments > 0 ? 'danger' : 'info'}
+          icon={<GoldBarsIcon />}
+          tone="gold"
         />
       </div>
 
-      <section className="dashboard-quick-section" aria-label="Quick actions">
-        <h2 className="dashboard-quick-title">Quick actions</h2>
-        <div className="dashboard-quick-actions">
-          <Link to="/gold-savings/enroll" className="btn dashboard-quick-primary">
-            <Plus size={18} strokeWidth={2} aria-hidden />
-            New enrollment
-          </Link>
-          <Link to="/gold-savings/collections" className="btn secondary dashboard-quick-btn">
-            <IndianRupee size={18} strokeWidth={1.75} aria-hidden />
-            Collect installment
-          </Link>
-          <Link to="/gold-savings/accounts" className="btn secondary dashboard-quick-btn">
-            <Users size={18} strokeWidth={1.75} aria-hidden />
-            Accounts
-          </Link>
-          <Link to="/gold-savings/schemes" className="btn secondary dashboard-quick-btn">
-            <LayoutDashboard size={18} strokeWidth={1.75} aria-hidden />
-            Schemes
-          </Link>
-        </div>
-      </section>
-
-      <section className="card padded gs-month-target" aria-label="This month collection progress">
-        <div className="gs-month-target-head">
-          <h2>This month's collections</h2>
-          <span className="num">
-            {formatCurrency(data.monthCollections)} of {formatCurrency(data.monthTarget)}
-          </span>
-        </div>
-        <div className="gs-progress-track" role="progressbar" aria-valuenow={monthBarPct} aria-valuemin={0} aria-valuemax={100}>
-          <div className="gs-progress-fill" style={{ width: `${monthBarPct}%` }} />
-        </div>
-        <p className="muted">
-          {data.monthTarget > 0
-            ? `${monthPct}% of scheduled installments due this month`
-            : 'No installments are scheduled this month'}
-        </p>
-      </section>
-
-      <div className="dashboard-lifecycle-grid">
-        <OverdueAgingPanel buckets={data.overdueAging ?? []} />
-        <MaturityPipelinePanel buckets={data.maturityPipeline ?? []} />
-      </div>
-
-      <div className="dashboard-mid-grid">
-        <section className="card padded dashboard-panel">
-          <div className="dashboard-panel-head">
-            <h2>Monthly collections</h2>
+      <div className="gs-home-panels">
+        <section className="card gs-home-panel" aria-label="This month's collections">
+          <div className="gs-home-panel-head">
+            <h2>
+              <span className="gs-home-panel-icon">
+                <BarChart3 size={18} strokeWidth={1.75} aria-hidden />
+              </span>
+              This Month's Collections
+            </h2>
+            <span className="num gs-home-panel-meta">
+              {formatCurrency(data.monthCollections)} of {formatCurrency(data.monthTarget)}
+            </span>
           </div>
-          <div className="dashboard-sales-chart" role="img" aria-label="Monthly collections">
-            <div className="dashboard-sales-bars">
-              {monthlyChart.length === 0 ? (
-                <p className="dashboard-empty-state">No collections yet</p>
-              ) : (
-                monthlyChart.map((point) => (
-                  <div key={point.key} className="dashboard-sales-bar-col">
-                    <div className="dashboard-sales-bar-track">
-                      <div
-                        className="dashboard-sales-bar-fill"
-                        style={{ height: `${(point.amount / maxChart) * 100}%` }}
-                        title={`${point.label}: ${formatCurrency(point.amount)}`}
-                      />
-                    </div>
-                    <span className="dashboard-sales-bar-label">{point.label}</span>
-                  </div>
-                ))
-              )}
-            </div>
+          <div
+            className="gs-progress-track"
+            role="progressbar"
+            aria-valuenow={monthBarPct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="This month collection progress"
+          >
+            <div className="gs-progress-fill" style={{ width: `${monthBarPct}%` }} />
           </div>
+          {collectionsBody}
         </section>
-        <section className="card padded dashboard-panel">
-          <div className="dashboard-panel-head">
-            <h2>Scheme-wise enrollment</h2>
+
+        <section className="card gs-home-panel" aria-label="Upcoming maturities">
+          <div className="gs-home-panel-head">
+            <h2>
+              <span className="gs-home-panel-icon">
+                <CalendarDays size={18} strokeWidth={1.75} aria-hidden />
+              </span>
+              Upcoming Maturities
+            </h2>
+            <Link to="/gold-savings/maturity" className="gs-home-view-all">
+              View all
+            </Link>
           </div>
-          {schemeEnrollments.length === 0 ? (
-            <p className="dashboard-empty-state">No schemes yet</p>
+          {maturingAccounts.length === 0 ? (
+            <PanelEmpty
+              icon={CalendarDays}
+              title="No upcoming maturities"
+              description="No accounts maturing in the next 6 months."
+            />
           ) : (
-            <div className="gs-enroll-bars">
-              {schemeEnrollments.map((row) => (
-                <div key={row.schemeName} className="gs-enroll-row">
-                  <span>{row.schemeName}</span>
-                  <div className="gs-enroll-track">
-                    <div style={{ width: `${(row.count / maxEnroll) * 100}%` }} />
-                  </div>
-                  <strong className="num">{row.count}</strong>
-                </div>
-              ))}
-            </div>
+            <MaturityRows accounts={maturingAccounts} />
           )}
         </section>
       </div>
-
-      <div className="dashboard-lower-grid">
-        <ListCard title="Upcoming dues" empty="No dues in the next 7 days" to="/gold-savings/collections">
-          {upcomingDues.map((account) => {
-            const href = dueReminderHref(account, shopName)
-            return (
-              <div key={account.id} className="dashboard-due-row">
-                <Link to={`/gold-savings/accounts/${account.id}`} className="dashboard-due-main">
-                  <span className="dashboard-due-name">{account.customerName}</span>
-                  <span className="muted">
-                    {account.accountNo} · {account.nextDueDate ? formatDisplayDate(account.nextDueDate) : '—'}
-                  </span>
-                </Link>
-                {href ? (
-                  <a
-                    className="btn ghost btn-sm"
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="Send a WhatsApp reminder"
-                  >
-                    <MessageCircle size={15} strokeWidth={1.75} aria-hidden />
-                    Remind
-                  </a>
-                ) : null}
-              </div>
-            )
-          })}
-        </ListCard>
-        <ListCard title="Recent collections" empty="No collections yet" to="/gold-savings/collections">
-          {recentCollections.map((payment) => (
-            <div key={payment.id} className="dashboard-due-row">
-              <span className="dashboard-due-name">{payment.customerName}</span>
-              <span className="muted">
-                {payment.receiptNo} · {formatCurrency(payment.amount)} · {formatWeight(payment.goldWeight, 3)}
-              </span>
-            </div>
-          ))}
-        </ListCard>
-        <ListCard title="Recently enrolled" empty="No enrollments yet" to="/gold-savings/accounts">
-          {recentEnrollments.map((account) => (
-            <Link key={account.id} to={`/gold-savings/accounts/${account.id}`} className="dashboard-due-row">
-              <span className="dashboard-due-name">{account.customerName}</span>
-              <span className="muted">
-                {account.accountNo} · {formatDisplayDate(account.enrollmentDate)}
-              </span>
-            </Link>
-          ))}
-        </ListCard>
-        <ListCard title="Maturing accounts" empty="No accounts maturing soon" to="/gold-savings/maturity">
-          {maturingAccounts.map((account) => (
-            <Link key={account.id} to={`/gold-savings/accounts/${account.id}`} className="dashboard-due-row">
-              <span className="dashboard-due-name">{account.customerName}</span>
-              <span className="muted">
-                {formatDisplayDate(account.maturityDate)} · <GsStatusBadge status={account.status} />
-              </span>
-            </Link>
-          ))}
-        </ListCard>
-      </div>
     </div>
-  )
-}
-
-function ListCard({
-  title,
-  empty,
-  to,
-  children,
-}: {
-  title: string
-  empty: string
-  to: string
-  children: ReactNode
-}) {
-  const items = Array.isArray(children) ? children : [children]
-  const hasItems = items.filter(Boolean).length > 0
-  return (
-    <section>
-      <div className="dashboard-section-head">
-        <h2 className="dashboard-section-title">{title}</h2>
-        <Link to={to} className="dashboard-panel-link">
-          View all
-        </Link>
-      </div>
-      {hasItems ? (
-        <div className="card dashboard-due-list">{children}</div>
-      ) : (
-        <div className="card padded dashboard-empty-state">{empty}</div>
-      )}
-    </section>
-  )
-}
-
-const AGING_TONES = ['warn', 'orange', 'danger', 'critical'] as const
-
-function OverdueAgingPanel({ buckets }: { buckets: GoldSavingAgingBucket[] }) {
-  const max = Math.max(...buckets.map((row) => row.count), 1)
-  const total = buckets.reduce((sum, row) => sum + row.count, 0)
-  return (
-    <section className="card padded dashboard-panel">
-      <div className="dashboard-panel-head">
-        <h2>Overdue aging</h2>
-        <Link to="/gold-savings/overdue" className="dashboard-panel-link">
-          View all
-        </Link>
-      </div>
-      {total === 0 ? (
-        <p className="dashboard-empty-state">No overdue installments</p>
-      ) : (
-        <div className="gs-aging-bars">
-          {buckets.map((row, index) => (
-            <div key={row.bucket} className="gs-aging-row">
-              <span>{row.bucket}</span>
-              <div className="gs-enroll-track">
-                <div
-                  className={`gs-aging-fill gs-aging-fill-${AGING_TONES[index] ?? 'warn'}`}
-                  style={{ width: `${(row.count / max) * 100}%` }}
-                />
-              </div>
-              <strong className="num">{row.count}</strong>
-              <span className="muted num">{formatCurrency(row.amount)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  )
-}
-
-function MaturityPipelinePanel({ buckets }: { buckets: GoldSavingMaturityPipelineBucket[] }) {
-  const max = Math.max(...buckets.map((row) => row.count), 1)
-  const total = buckets.reduce((sum, row) => sum + row.count, 0)
-  return (
-    <section className="card padded dashboard-panel">
-      <div className="dashboard-panel-head">
-        <h2>Maturity pipeline</h2>
-        <Link to="/gold-savings/maturity" className="dashboard-panel-link">
-          View all
-        </Link>
-      </div>
-      {total === 0 ? (
-        <p className="dashboard-empty-state">No accounts maturing in the next 6 months</p>
-      ) : (
-        <div className="gs-aging-bars">
-          {buckets.map((row) => (
-            <div key={row.bucket} className="gs-aging-row">
-              <span>{row.bucket}</span>
-              <div className="gs-enroll-track">
-                <div className="gs-pipeline-fill" style={{ width: `${(row.count / max) * 100}%` }} />
-              </div>
-              <strong className="num">{row.count}</strong>
-              <span className="muted num">{formatWeight(row.gold, 3)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
   )
 }

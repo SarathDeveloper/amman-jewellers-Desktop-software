@@ -1991,12 +1991,15 @@ export interface GoldSavingDashboard {
   totalGold: number
   upcomingMaturities: number
   overdueInstallments: number
+  /** Active accounts with an unpaid installment due from today through 7 days. */
+  dueThisWeek: number
   overdueAging: GoldSavingAgingBucket[]
   maturityPipeline: GoldSavingMaturityPipelineBucket[]
   monthlyChart: GoldSavingDashboardChartPoint[]
   schemeEnrollments: { schemeName: string; count: number }[]
   upcomingDues: GoldSavingAccount[]
   recentCollections: GoldSavingPayment[]
+  monthPayments: GoldSavingPayment[]
   recentEnrollments: GoldSavingAccount[]
   maturingAccounts: GoldSavingAccount[]
 }

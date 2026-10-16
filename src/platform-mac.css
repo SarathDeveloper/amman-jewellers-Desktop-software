@@ -29,16 +29,20 @@ html.platform-mac ::-webkit-scrollbar-corner {
 }
 
 /* Safari ignores the app's padding and height on a <select> and paints a native
-   rounded control instead. Reset it and draw the same chevron everywhere. */
-html.platform-mac select:not([multiple]) {
-  -webkit-appearance: none;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.6rem center;
-  background-size: 0.7rem 0.7rem;
-  padding-right: 1.9rem;
-  text-overflow: ellipsis;
+   rounded control instead. Reset it and draw the same chevron everywhere.
+   Browsers with a customizable picker draw ::picker-icon, so this fallback
+   stays off there and does not put a second arrow on the field. */
+@supports not (appearance: base-select) {
+  html.platform-mac select:not([multiple]) {
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 0.7rem 0.7rem;
+    padding-right: 1.9rem;
+    text-overflow: ellipsis;
+  }
 }
 
 /* Safari draws checkboxes and radios at its own size and colour. */

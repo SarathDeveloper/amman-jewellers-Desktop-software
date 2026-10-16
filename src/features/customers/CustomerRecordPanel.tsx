@@ -1,43 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { Customer, Pledge, PledgeStatus } from '@shared/types'
+import type { Customer, Pledge } from '@shared/types'
 import { formatCurrency, formatDisplayDate } from '../../lib/format'
-import { api } from '../../lib/api'
-
-const LOAN_PAGE_SIZE = 50
-
-async function loadCustomerLoans(customerId: number): Promise<Pledge[]> {
-  const first = await api.listPledges({
-    customerId,
-    page: 1,
-    pageSize: LOAN_PAGE_SIZE,
-    sort: 'desc',
-  })
-  const items = [...(first.items ?? [])]
-  const total = first.total ?? items.length
-  let page = 1
-  while (items.length < total && page < 20) {
-    page += 1
-    const next = await api.listPledges({
-      customerId,
-      page,
-      pageSize: LOAN_PAGE_SIZE,
-      sort: 'desc',
-    })
-    const batch = next.items ?? []
-    if (batch.length === 0) break
-    items.push(...batch)
-  }
-  return items
-}
-
-function loanStatusLabel(status: PledgeStatus): string {
-  if (status === 'redeemed') return 'Redeemed'
-  if (status === 'forfeited') return 'Forfeited'
-  if (status === 'renewed') return 'Renewed'
-  if (status === 'draft') return 'Draft'
-  return 'Active'
-}
+import { loadCustomerLoans, loanStatusLabel } from './customerLoans'
 
 function detail(label: string, value: string, wide = false) {
   return (
@@ -53,6 +18,7 @@ export function CustomerRecordPanel({
   profileTitle = 'Customer',
   showDetails = true,
   linkLoans = false,
+  loans: loansProp,
 }: {
   customer: Customer
   profileTitle?: string
@@ -60,28 +26,35 @@ export function CustomerRecordPanel({
   showDetails?: boolean
   /** Receipt links leave the current screen. Keep them on the customer page only. */
   linkLoans?: boolean
+  /** When provided, skip the internal fetch so the customer page can share one load. */
+  loans?: Pledge[]
 }) {
-  const [loans, setLoans] = useState<Pledge[] | null>(null)
+  const [fetchedLoans, setFetchedLoans] = useState<Pledge[] | null>(null)
   const [loanError, setLoanError] = useState<string | null>(null)
+  const provided = loansProp !== undefined
 
   useEffect(() => {
+    if (provided) return
     let active = true
-    setLoans(null)
-    setLoanError(null)
     void loadCustomerLoans(customer.id)
       .then((rows) => {
-        if (active) setLoans(rows)
+        if (active) {
+          setFetchedLoans(rows)
+          setLoanError(null)
+        }
       })
       .catch(() => {
         if (active) {
-          setLoans([])
+          setFetchedLoans([])
           setLoanError('Loan history could not be loaded')
         }
       })
     return () => {
       active = false
     }
-  }, [customer.id])
+  }, [customer.id, provided])
+
+  const loans = provided ? loansProp : fetchedLoans
 
   return (
     <div className="customer-record">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Gem, Receipt } from 'lucide-react'
 import type { DuesLedger, Invoice } from '@shared/types'
 import { PageHeader } from '../../components/PageHeader'
@@ -14,9 +15,15 @@ import { billColumns, billOutstanding, emptyDuesLedger, isBillEntry } from './du
 
 type DuesTab = 'bills' | 'adagu'
 
+function duesTabFromSearch(tab: string | null): DuesTab {
+  return tab === 'adagu' ? 'adagu' : 'bills'
+}
+
 export function DuesPage() {
   const today = localTodayIso()
-  const [tab, setTab] = useState<DuesTab>('bills')
+  const [searchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const [tab, setTab] = useState<DuesTab>(() => duesTabFromSearch(tabParam))
   const [search, setSearch] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [ledger, setLedger] = useState<DuesLedger>(emptyDuesLedger())
@@ -47,6 +54,10 @@ export function DuesPage() {
     const timer = window.setTimeout(() => setSearchQuery(search.trim()), 300)
     return () => window.clearTimeout(timer)
   }, [search])
+
+  useEffect(() => {
+    setTab(duesTabFromSearch(tabParam))
+  }, [tabParam])
 
   useEffect(() => {
     let active = true
@@ -176,6 +187,7 @@ export function DuesPage() {
               error={error}
               onError={setError}
               onReload={loadLedger}
+              initialFilter={searchParams.get('filter') === 'reminders' ? 'reminders' : undefined}
             />
           )}
         </div>

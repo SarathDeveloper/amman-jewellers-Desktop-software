@@ -62,6 +62,19 @@ export function getDashboard(db: Database.Database): GoldSavingDashboard {
       )
       .get(today) as { count: number }
   ).count
+  const dueThisWeek = (
+    db
+      .prepare(
+        `SELECT COUNT(DISTINCT a.id) AS count
+         FROM gold_saving_accounts a
+         JOIN gold_saving_installments i ON i.account_id = a.id
+         WHERE a.status = 'active'
+           AND i.status NOT IN ('paid', 'waived')
+           AND i.due_date >= ?
+           AND i.due_date <= date(?, '+7 days')`,
+      )
+      .get(today, today) as { count: number }
+  ).count
   const monthTarget = (
     db
       .prepare(
@@ -121,6 +134,17 @@ export function getDashboard(db: Database.Database): GoldSavingDashboard {
     db.prepare(`${PAYMENT_SELECT} WHERE p.status = 'posted' ORDER BY p.id DESC LIMIT 8`).all() as PaymentRow[]
   ).map((row) => mapPayment(row, { paid: row.amount, gold: row.gold_weight }))
 
+  const monthPayments = (
+    db
+      .prepare(
+        `${PAYMENT_SELECT}
+         WHERE p.status = 'posted' AND p.payment_date >= ? AND p.payment_date <= ?
+         ORDER BY p.id DESC
+         LIMIT 8`,
+      )
+      .all(monthStart, today) as PaymentRow[]
+  ).map((row) => mapPayment(row, { paid: row.amount, gold: row.gold_weight }))
+
   const recentEnrollments = (
     db.prepare(`${ACCOUNT_SELECT} ORDER BY a.id DESC LIMIT 8`).all() as AccountRow[]
   ).map(mapAccount)
@@ -130,7 +154,8 @@ export function getDashboard(db: Database.Database): GoldSavingDashboard {
       .prepare(
         `${ACCOUNT_SELECT}
          WHERE a.status IN ('active', 'matured')
-           AND a.maturity_date >= ? AND a.maturity_date <= date(?, '+45 days')
+           AND a.maturity_date >= ?
+           AND a.maturity_date < date(?, 'start of month', '+7 months')
          ORDER BY a.maturity_date ASC
          LIMIT 8`,
       )
@@ -147,12 +172,14 @@ export function getDashboard(db: Database.Database): GoldSavingDashboard {
     totalGold: totals.gold,
     upcomingMaturities,
     overdueInstallments,
+    dueThisWeek,
     overdueAging,
     maturityPipeline,
     monthlyChart,
     schemeEnrollments,
     upcomingDues,
     recentCollections,
+    monthPayments,
     recentEnrollments,
     maturingAccounts,
   }

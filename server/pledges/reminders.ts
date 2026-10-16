@@ -42,12 +42,8 @@ function statusOf(value: string): PledgeStatus {
   return value as PledgeStatus
 }
 
-export function buildPledgeReminders(
-  db: Database.Database,
-  asOf: string = localTodayIso(),
-): PledgeReminderEntry[] {
-  const settings = loadShopSettings(db)
-  const rows = db
+function loadActiveReminderPledges(db: Database.Database): ReminderPledgeRow[] {
+  return db
     .prepare(
       `SELECT p.id, p.customer_id, p.pledge_date, p.loan_amount, p.interest_pct,
               p.status, p.redeemed_date, p.receipt_no, p.repayment_due_date,
@@ -62,6 +58,39 @@ export function buildPledgeReminders(
        ORDER BY p.pledge_date ASC, p.id ASC`,
     )
     .all() as ReminderPledgeRow[]
+}
+
+function dateInLookahead(asOf: string, dueDate: string | null, withinDays: number): boolean {
+  if (!dueDate) return false
+  const days = signedDaysBetween(asOf, dueDate)
+  return days >= 0 && days <= withinDays
+}
+
+/**
+ * Active loans whose next interest date or repayment date falls from `asOf`
+ * through `withinDays` ahead. Already-late interest and auction items are not counted.
+ */
+export function countUpcomingAdaguReminders(
+  db: Database.Database,
+  asOf: string = localTodayIso(),
+  withinDays = 14,
+): number {
+  let count = 0
+  for (const row of loadActiveReminderPledges(db)) {
+    const { result } = replayForPledge(db, row, asOf)
+    const interestDue = dateInLookahead(asOf, result.nextInterestDue, withinDays)
+    const repaymentDue = dateInLookahead(asOf, row.repayment_due_date, withinDays)
+    if (interestDue || repaymentDue) count += 1
+  }
+  return count
+}
+
+export function buildPledgeReminders(
+  db: Database.Database,
+  asOf: string = localTodayIso(),
+): PledgeReminderEntry[] {
+  const settings = loadShopSettings(db)
+  const rows = loadActiveReminderPledges(db)
 
   const entries: PledgeReminderEntry[] = []
 

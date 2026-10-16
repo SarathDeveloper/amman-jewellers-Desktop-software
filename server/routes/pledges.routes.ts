@@ -51,7 +51,7 @@ import { loadPledgeAuction } from '../pledges/auctions'
 import { loadPledgePayments } from '../pledges/ledger'
 import { addPledgePhoto, deletePledgePhoto, loadPledgePhotos } from '../pledges/photos'
 import { computePledgePayoff, recordPledgePayment } from '../pledges/payments'
-import { buildPledgeReminders } from '../pledges/reminders'
+import { buildPledgeReminders, countUpcomingAdaguReminders } from '../pledges/reminders'
 import { loadPledgeTopups } from '../pledges/topups'
 import { recordWeightMovement } from '../stock/movements'
 import { getLatestMetalRates } from './metalRates.routes'
@@ -522,6 +522,15 @@ router.get(
   asyncHandler((req, res) => {
     const db = getDatabase()
     const asOf = queryString(req.query, 'date') || undefined
+    const withinRaw = queryString(req.query, 'withinDays')
+    if (withinRaw) {
+      const withinDays = Number.parseInt(withinRaw, 10)
+      if (!Number.isInteger(withinDays) || withinDays < 0 || withinDays > 366) {
+        throw new HttpError(400, 'Invalid withinDays')
+      }
+      res.json({ count: countUpcomingAdaguReminders(db, asOf, withinDays) })
+      return
+    }
     res.json(buildPledgeReminders(db, asOf))
   }),
 )

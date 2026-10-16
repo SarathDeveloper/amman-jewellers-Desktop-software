@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { addDaysIso } from '@shared/billing/pledgeMath'
+import { localTodayIso } from '@shared/localDate'
 import { getDatabase } from '../../server/db'
 import { setShopSetting } from '../../server/lib/settingsStore'
 import { getTestAgent, ipc, IPC_CHANNELS, useIntegrationEnv, withHuids } from './helpers/testEnv'
@@ -1239,5 +1241,71 @@ describe('pledges API', () => {
     expect(items.length).toBeGreaterThan(0)
     expect(items.every((row) => row.customerId === first)).toBe(true)
     expect(items.some((row) => row.id === created.body.id)).toBe(true)
+  })
+
+  it('counts Adagu reminders due within 14 days and leaves the reminder list unchanged', async () => {
+    const asOf = localTodayIso()
+    const interestSoon = await createPledgeCustomer('Reminder Soon', '9000000061')
+    const interestLater = await createPledgeCustomer('Reminder Later', '9000000062')
+    const interestLate = await createPledgeCustomer('Reminder Late', '9000000063')
+    const repaymentSoon = await createPledgeCustomer('Reminder Repayment', '9000000064')
+
+    const soon = await getTestAgent().post('/api/pledges').send({
+      customerId: interestSoon,
+      pledgeDate: addDaysIso(asOf, -16),
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      items: [goldItem('Chain')],
+    })
+    const later = await getTestAgent().post('/api/pledges').send({
+      customerId: interestLater,
+      pledgeDate: addDaysIso(asOf, -15),
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      items: [goldItem('Bangle')],
+    })
+    const late = await getTestAgent().post('/api/pledges').send({
+      customerId: interestLate,
+      pledgeDate: addDaysIso(asOf, -40),
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      items: [goldItem('Ring')],
+    })
+    const repayment = await getTestAgent().post('/api/pledges').send({
+      customerId: repaymentSoon,
+      pledgeDate: asOf,
+      repaymentDueDate: addDaysIso(asOf, 14),
+      assessedValue: 40000,
+      loanAmount: 20000,
+      interestPct: 2,
+      items: [goldItem('Studs')],
+    })
+    expect(soon.status).toBe(201)
+    expect(later.status).toBe(201)
+    expect(late.status).toBe(201)
+    expect(repayment.status).toBe(201)
+
+    for (const pledge of [soon, later, late, repayment]) {
+      const sanctioned = await getTestAgent().post(`/api/pledges/${pledge.body.id}/sanction`)
+      expect(sanctioned.status).toBe(200)
+    }
+
+    const counted = await getTestAgent().get('/api/pledges/reminders').query({ withinDays: 14, date: asOf })
+    expect(counted.status).toBe(200)
+    expect(counted.body.count).toBe(2)
+
+    const invalid = await getTestAgent().get('/api/pledges/reminders').query({ withinDays: 'soon' })
+    expect(invalid.status).toBe(400)
+
+    const list = await getTestAgent().get('/api/pledges/reminders').query({ date: asOf })
+    expect(Array.isArray(list.body)).toBe(true)
+    const rows = list.body as Array<{ pledgeId: number; reason: string }>
+    expect(rows.some((row) => row.pledgeId === soon.body.id)).toBe(false)
+    expect(rows.some((row) => row.pledgeId === later.body.id)).toBe(false)
+    expect(rows.find((row) => row.pledgeId === late.body.id)?.reason).toBe('interest_overdue')
+    expect(rows.find((row) => row.pledgeId === repayment.body.id)?.reason).toBe('maturity')
   })
 })

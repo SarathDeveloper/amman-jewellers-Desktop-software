@@ -401,6 +401,7 @@
   .users-search,
   .billing-search,
   .billing-search .input,
+  .billing-header-date,
   .billing-date-field {
     width: 100%;
     max-width: 100%;
@@ -492,11 +493,8 @@
 
   /* --- Rates ------------------------------------------------------------ */
 
-  .rates-summary-ticker {
-    white-space: normal;
+  .rates-summary-pills {
     flex-wrap: wrap;
-    justify-content: center;
-    row-gap: 0.25rem;
   }
 
   .rates-trend-head {
