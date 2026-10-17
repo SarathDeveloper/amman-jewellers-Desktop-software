@@ -11,6 +11,7 @@ import {
   Printer,
   Save,
   Shield,
+  Sparkles,
   StickyNote,
   Trash2,
   Truck,
@@ -54,6 +55,7 @@ type LineState = {
   purity: string
   qty: NumericField
   grossWeight: NumericField
+  stoneWeight: NumericField
   netWeight: NumericField
   rate: NumericField
   makingCharges: NumericField
@@ -86,6 +88,7 @@ function blankProductLine(): LineState {
     purity: '22K',
     qty: 1,
     grossWeight: '',
+    stoneWeight: '',
     netWeight: '',
     rate: '',
     makingCharges: '',
@@ -104,6 +107,7 @@ function blankRawLine(category?: string): LineState {
     purity: '22K',
     qty: 1,
     grossWeight: '',
+    stoneWeight: '',
     netWeight: '',
     rate: '',
     makingCharges: '',
@@ -120,6 +124,7 @@ function lineFromProduct(product: Product): LineState {
     category: product.category,
     purity: product.purity || (isSilver(product.metal) ? SILVER_PURITIES[0] : '22K'),
     grossWeight: product.grossWeight || '',
+    stoneWeight: product.stoneWeight || '',
     netWeight: product.netWeight || '',
     makingCharges: product.makingCharges || '',
   }
@@ -135,6 +140,10 @@ function linesFromInward(inward: Inward): LineState[] {
     purity: item.purity,
     qty: item.qty,
     grossWeight: item.grossWeight || '',
+    stoneWeight:
+      item.grossWeight && item.netWeight && item.grossWeight > item.netWeight
+        ? Math.round((item.grossWeight - item.netWeight) * 1000) / 1000
+        : '',
     netWeight: item.netWeight,
     rate: item.rate,
     makingCharges: item.makingCharges || '',
@@ -352,6 +361,7 @@ export function InwardEditorModal({
       category: product?.category ?? '',
       purity: product?.purity || (product && isSilver(product.metal) ? SILVER_PURITIES[0] : '22K'),
       grossWeight: product ? product.grossWeight || '' : '',
+      stoneWeight: product ? product.stoneWeight || '' : '',
       netWeight: product ? product.netWeight || '' : '',
       makingCharges: product ? product.makingCharges || '' : '',
       hsnCode: DEFAULT_HSN,
@@ -621,6 +631,7 @@ export function InwardEditorModal({
                   const rate = numericFieldToNumber(line.rate)
                   const makingCharges = numericFieldToNumber(line.makingCharges)
                   const grossWeight = numericFieldToNumber(line.grossWeight)
+                  const stoneWeight = numericFieldToNumber(line.stoneWeight)
                   const lineAmount = computePurchaseLineAmount({
                     qty,
                     netWeight,
@@ -767,7 +778,7 @@ export function InwardEditorModal({
                         </Field>
                       </div>
 
-                      <div className="product-form-grid-4">
+                      <div className="product-form-grid-5">
                         <Field label="Qty">
                           {readOnly ? (
                             <Control icon={<Package size={14} strokeWidth={1.75} />} unit="pcs">
@@ -811,11 +822,43 @@ export function InwardEditorModal({
                                 min={0}
                                 placeholder="e.g. 8.50"
                                 value={line.grossWeight}
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                  const grossField = parseNumericField(event.target.value)
+                                  const g = numericFieldToNumber(grossField)
+                                  const s = numericFieldToNumber(line.stoneWeight)
                                   updateLine(line.key, {
-                                    grossWeight: parseNumericField(event.target.value),
+                                    grossWeight: grossField,
+                                    netWeight: g > 0 && s > 0 ? Math.max(0, Math.round((g - s) * 1000) / 1000) : line.netWeight,
                                   })
-                                }
+                                }}
+                              />
+                            </Control>
+                          )}
+                        </Field>
+                        <Field label="Stone wt">
+                          {readOnly ? (
+                            <Control icon={<Sparkles size={14} strokeWidth={1.75} />}>
+                              <StaticValue>{formatWeight(stoneWeight)}</StaticValue>
+                            </Control>
+                          ) : (
+                            <Control icon={<Sparkles size={14} strokeWidth={1.75} />} unit="g">
+                              <input
+                                className="input"
+                                aria-label="Stone weight"
+                                type="number"
+                                step="0.001"
+                                min={0}
+                                placeholder="e.g. 0.50"
+                                value={line.stoneWeight}
+                                onChange={(event) => {
+                                  const stoneField = parseNumericField(event.target.value)
+                                  const s = numericFieldToNumber(stoneField)
+                                  const g = numericFieldToNumber(line.grossWeight)
+                                  updateLine(line.key, {
+                                    stoneWeight: stoneField,
+                                    netWeight: g > 0 ? Math.max(0, Math.round((g - s) * 1000) / 1000) : line.netWeight,
+                                  })
+                                }}
                               />
                             </Control>
                           )}
