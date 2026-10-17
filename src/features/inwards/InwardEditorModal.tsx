@@ -38,8 +38,10 @@ import { numericFieldToNumber, parseNumericField, type NumericField } from '../.
 import { isSilver } from '../products/productDisplay'
 import { HuidEntryList, resizeHuidRows } from '../products/HuidEntryList'
 import { SupplierFormModal } from '../suppliers/SupplierFormModal'
+import { ProductFormModal } from '../products/ProductFormModal'
 import { PrintPreviewModal } from '../print/PrintPreviewModal'
 import { printPreviewPaths } from '../print/printPreviewPaths'
+import type { ProductInput } from '@shared/types'
 
 type LineKind = 'product' | 'raw'
 
@@ -260,6 +262,8 @@ export function InwardEditorModal({
   })
   const [inwardId, setInwardId] = useState<number | null>(inward?.id ?? null)
   const [supplierModalOpen, setSupplierModalOpen] = useState(false)
+  const [productModalOpen, setProductModalOpen] = useState(false)
+  const [productModalLineKey, setProductModalLineKey] = useState<string | null>(null)
   const [confirmFinalize, setConfirmFinalize] = useState(false)
   const [printOpen, setPrintOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -659,26 +663,39 @@ export function InwardEditorModal({
                                 <StaticValue>{product?.name ?? 'Product'}</StaticValue>
                               </Control>
                             ) : (
-                              <Control icon={<Package size={14} strokeWidth={1.75} />}>
-                                <select
-                                  className="select"
-                                  aria-label="Product"
-                                  value={line.productId}
-                                  onChange={(event) =>
-                                    selectProduct(
-                                      line.key,
-                                      event.target.value ? Number(event.target.value) : '',
-                                    )
-                                  }
+                              <div className="inward-supplier-row">
+                                <Control icon={<Package size={14} strokeWidth={1.75} />}>
+                                  <select
+                                    className="select"
+                                    aria-label="Product"
+                                    value={line.productId}
+                                    onChange={(event) =>
+                                      selectProduct(
+                                        line.key,
+                                        event.target.value ? Number(event.target.value) : '',
+                                      )
+                                    }
+                                  >
+                                    <option value="">Select product</option>
+                                    {products.map((item) => (
+                                      <option key={item.id} value={item.id}>
+                                        {item.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Control>
+                                <button
+                                  type="button"
+                                  className="btn secondary"
+                                  onClick={() => {
+                                    setProductModalLineKey(line.key)
+                                    setProductModalOpen(true)
+                                  }}
                                 >
-                                  <option value="">Select product</option>
-                                  {products.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                      {item.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </Control>
+                                  <Plus size={16} aria-hidden />
+                                  New
+                                </button>
+                              </div>
                             )}
                           </Field>
                         ) : (
@@ -1044,6 +1061,33 @@ export function InwardEditorModal({
         }}
         onError={(message) => setError(message)}
       />
+
+      {productModalOpen ? (
+        <ProductFormModal
+          product={null}
+          products={products}
+          onClose={() => {
+            setProductModalOpen(false)
+            setProductModalLineKey(null)
+          }}
+          onSave={async (input: ProductInput) => {
+            try {
+              const created = await api.createProduct(input)
+              setProducts((current) => [created, ...current])
+              if (productModalLineKey) {
+                selectProduct(productModalLineKey, created.id)
+              }
+              showToast('Product created', 'success')
+              setProductModalOpen(false)
+              setProductModalLineKey(null)
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Failed to create product'
+              setError(message)
+              throw err
+            }
+          }}
+        />
+      ) : null}
 
       {printOpen && inwardId != null ? (
         <PrintPreviewModal
