@@ -15,6 +15,21 @@ export const huidSchema = z
   .toUpperCase()
   .regex(/^[0-9A-Z]+$/, 'HUID can only be letters and digits')
 
+const openingPieceSchema = z.object({
+  tagCode: z.string().trim().max(30).optional().default(''),
+  huid: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[0-9A-Z]*$/, 'HUID can only be letters and digits')
+    .max(20)
+    .optional()
+    .default(''),
+  grossWeight: z.number().nonnegative().optional().default(0),
+  stoneWeight: z.number().nonnegative().optional().default(0),
+  netWeight: z.number().positive({ message: 'Enter the net weight for each piece' }),
+})
+
 export const productInputSchema = z
   .object({
     name: z.string().min(1).max(200),
@@ -34,6 +49,8 @@ export const productInputSchema = z
     attributes: productAttributesSchema.optional().default({}),
     isActive: z.boolean().optional().default(true),
     huids: z.array(huidSchema).max(500).optional().default([]),
+    trackPieces: z.boolean().optional(),
+    pieces: z.array(openingPieceSchema).max(500).optional(),
   })
   .refine((data) => data.netWeight <= data.grossWeight, {
     message: 'Net weight cannot exceed gross weight',
@@ -74,6 +91,43 @@ export const productInputSchema = z
         path: ['huids'],
       })
     }
+
+    const pieces = data.pieces ?? []
+    if (pieces.length > 0 && pieces.length !== data.stockQty) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Enter one row for each piece in stock',
+        path: ['pieces'],
+      })
+    }
+    const seenPieceHuids = new Set<string>()
+    pieces.forEach((piece, index) => {
+      const gross = piece.grossWeight ?? 0
+      if (gross > 0 && piece.netWeight > gross) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Piece ${index + 1} net weight cannot exceed gross weight`,
+          path: ['pieces', index, 'netWeight'],
+        })
+      }
+      if (gross > 0 && (piece.stoneWeight ?? 0) > gross) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Piece ${index + 1} stone weight cannot exceed gross weight`,
+          path: ['pieces', index, 'stoneWeight'],
+        })
+      }
+      if (piece.huid) {
+        if (seenPieceHuids.has(piece.huid)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `HUID ${piece.huid} is duplicated`,
+            path: ['pieces', index, 'huid'],
+          })
+        }
+        seenPieceHuids.add(piece.huid)
+      }
+    })
   })
 
 const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/
@@ -204,6 +258,7 @@ export const invoiceItemInputSchema = z
       .toUpperCase()
       .regex(/^[0-9A-Z]*$/, 'HUID can only be letters and digits')
       .optional(),
+    pieceId: z.number().int().positive().nullable().optional(),
   })
   .superRefine((data, ctx) => {
     const kind = data.lineKind ?? 'sale'
@@ -594,6 +649,7 @@ export const stockAdjustmentLineInputSchema = z.object({
   weightDelta: z.number().default(0),
   reason: z.string().trim().max(200).optional(),
   huids: z.array(huidSchema).max(500).optional().default([]),
+  pieceIds: z.array(z.number().int().positive()).max(500).optional().default([]),
 })
 
 export const stockAdjustmentInputSchema = z.object({
@@ -638,6 +694,21 @@ export const supplierInputSchema = z.object({
     .transform((value) => value.trim().toUpperCase()),
 })
 
+export const inwardPieceInputSchema = z.object({
+  tagCode: z.string().trim().max(30).optional().default(''),
+  huid: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[0-9A-Z]*$/, 'HUID can only be letters and digits')
+    .max(20)
+    .optional()
+    .default(''),
+  grossWeight: z.number().nonnegative().optional().default(0),
+  stoneWeight: z.number().nonnegative().optional().default(0),
+  netWeight: z.number().positive(),
+})
+
 export const inwardItemInputSchema = z
   .object({
     productId: z.number().int().positive().nullable().optional(),
@@ -651,6 +722,7 @@ export const inwardItemInputSchema = z
     makingCharges: z.number().nonnegative().optional().default(0),
     hsnCode: z.string().trim().max(20).optional().default('7113'),
     huids: z.array(huidSchema).max(500).optional().default([]),
+    pieces: z.array(inwardPieceInputSchema).max(500).optional().default([]),
   })
   .superRefine((data, ctx) => {
     const seen = new Map<string, number>()
@@ -680,13 +752,57 @@ export const inwardItemInputSchema = z
         path: ['huids'],
       })
     }
+    if (data.productId == null && data.pieces.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Raw metal lines cannot carry piece rows',
+        path: ['pieces'],
+      })
+    }
+    if (data.pieces.length > 0 && data.pieces.length !== data.qty) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Quantity must equal the number of piece rows',
+        path: ['qty'],
+      })
+    }
+    const seenTags = new Set<string>()
+    const seenPieceHuids = new Set<string>()
+    data.pieces.forEach((piece, index) => {
+      const tag = (piece.tagCode ?? '').trim().toUpperCase()
+      if (tag) {
+        if (seenTags.has(tag)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Tag ${tag} is duplicated on this line`,
+            path: ['pieces', index, 'tagCode'],
+          })
+        }
+        seenTags.add(tag)
+      }
+      if (piece.huid) {
+        if (seenPieceHuids.has(piece.huid)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `HUID ${piece.huid} is duplicated on this line`,
+            path: ['pieces', index, 'huid'],
+          })
+        }
+        seenPieceHuids.add(piece.huid)
+      }
+    })
   })
+
+export const purchaseGstModeSchema = z.enum(['none', 'intra', 'inter'])
 
 const inwardBaseSchema = z.object({
   supplierId: z.number().int().positive(),
+  supplierInvoiceNo: z.string().trim().max(100).optional().default(''),
   inwardDate: z.string().min(1),
   notes: z.string().max(1000).optional(),
   paymentMode: purchasePaymentModeSchema.optional().default('cash'),
+  discount: z.number().nonnegative().optional().default(0),
+  gstMode: purchaseGstModeSchema.optional().default('none'),
   roundOff: z.number().optional(),
   items: z.array(inwardItemInputSchema).min(1),
 })
@@ -695,6 +811,10 @@ export const inwardInputSchema = inwardBaseSchema
 
 export const inwardUpdateInputSchema = inwardBaseSchema.extend({
   id: idSchema,
+})
+
+export const inwardCancelInputSchema = z.object({
+  reason: z.string().trim().min(1).max(500),
 })
 
 export const oldGoldPurchaseItemInputSchema = oldGoldItemInputSchema

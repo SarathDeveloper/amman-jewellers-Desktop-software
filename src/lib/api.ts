@@ -22,6 +22,7 @@ import type {
   InvoiceListStats,
   InvoicePaymentInput,
   InvoiceUpdateInput,
+  InventoryPiece,
   ItemStockListInput,
   ItemStockRow,
   ItemStockUpsertInput,
@@ -206,6 +207,14 @@ export const api = {
   updateProduct: (id: number, input: ProductInput) =>
     request<Product>(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteProduct: (id: number) => request<void>(`/api/products/${id}`, { method: 'DELETE' }),
+  listProductPieces: (id: number, onlyInStock = false) =>
+    request<InventoryPiece[]>(
+      `/api/products/${id}/pieces${onlyInStock ? '?status=in_stock' : ''}`,
+    ),
+  lookupPiece: (term: string) =>
+    request<InventoryPiece>(`/api/products/pieces/lookup${qs({ term })}`),
+  convertProductToTracked: (id: number) =>
+    request<Product>(`/api/products/${id}/track-pieces`, { method: 'POST' }),
 
   listItemStock: (input: ItemStockListInput) =>
     request<ItemStockRow[]>(`/api/stock${qs({ stockDate: input.stockDate, metal: input.metal })}`),
@@ -286,6 +295,13 @@ export const api = {
     request<Inward>(`/api/inwards/${input.id}`, { method: 'PUT', body: JSON.stringify(input) }),
   finalizeInward: (id: number) =>
     request<Inward>(`/api/inwards/${id}/finalize`, { method: 'POST' }),
+  cancelInward: (id: number, reason: string) =>
+    request<Inward>(`/api/inwards/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  copyInward: (id: number) =>
+    request<Inward>(`/api/inwards/${id}/copy`, { method: 'POST' }),
   deleteInward: (id: number) => request<void>(`/api/inwards/${id}`, { method: 'DELETE' }),
 
   listOldGoldPurchases: (params: {

@@ -4971,6 +4971,139 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   font-size: 0.8125rem;
   color: var(--text-muted);
 }
+.inward-pieces {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed var(--border);
+}
+.inward-pieces-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+.inward-pieces-head strong {
+  font-size: 0.8125rem;
+}
+.inward-pieces-head .btn {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+}
+.inward-pieces-wrap {
+  overflow-x: auto;
+}
+.inward-pieces-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.inward-pieces-table th {
+  padding: 0 0.3rem 0.3rem;
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.inward-pieces-table td {
+  padding: 0.15rem 0.3rem;
+}
+.inward-pieces-table td:nth-child(1),
+.inward-pieces-table td:nth-child(2) {
+  min-width: 7.5rem;
+}
+.inward-pieces-table td:nth-child(3),
+.inward-pieces-table td:nth-child(4),
+.inward-pieces-table td:nth-child(5) {
+  min-width: 6rem;
+}
+.inward-pieces-table .input {
+  min-height: 2rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8125rem;
+}
+.opening-pieces .inward-pieces-table td:nth-child(1) {
+  width: 2rem;
+  min-width: 2rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.opening-pieces .inward-pieces-table td:nth-child(2) {
+  min-width: 7.5rem;
+}
+.opening-pieces .inward-pieces-table td:nth-child(3),
+.opening-pieces .inward-pieces-table td:nth-child(4),
+.opening-pieces .inward-pieces-table td:nth-child(5) {
+  min-width: 5.5rem;
+}
+.purchase-review {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.purchase-review-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.purchase-review-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface);
+  font-size: 0.8125rem;
+}
+.purchase-review-lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.purchase-review-lines li span:last-child {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.purchase-review-warning {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--warning, #d97706) 12%, transparent);
+  color: var(--warning, #b45309);
+  font-size: 0.8125rem;
+}
+.purchase-review-metals {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.purchase-review-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface);
+  font-size: 0.8125rem;
+}
+.purchase-review-totals > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.purchase-review-totals .grand {
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+  font-weight: 700;
+}
 .purchase-totals {
   display: flex;
   flex-direction: column;
@@ -5173,6 +5306,9 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   display: flex;
   flex-direction: column;
   max-height: min(92vh, 54rem);
+}
+.modal.product-form-modal.purchase-form-modal {
+  width: min(72rem, calc(100vw - 2rem));
 }
 .product-form-shell {
   display: flex;
@@ -5675,6 +5811,45 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   align-self: center;
   font-weight: 700;
 }
+.product-detail-pieces-card {
+  margin-top: 1rem;
+}
+.product-detail-pieces-wrap {
+  overflow: auto;
+  max-height: 22rem;
+}
+.product-detail-pieces {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+.product-detail-pieces th,
+.product-detail-pieces td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.product-detail-pieces th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.product-detail-pieces tr:last-child td {
+  border-bottom: none;
+}
+.product-detail-piece-status {
+  text-transform: capitalize;
+  font-weight: 600;
+}
+.product-detail-pieces-card .muted,
+.product-detail-pieces-card .form-error {
+  padding: 0.85rem 1.1rem;
+}
 .modal-backdrop:has(.product-form-modal),
 .modal-backdrop:has(.adjust-stock-modal),
 .modal-backdrop:has(.confirm-dialog-copy) {
@@ -5968,6 +6143,29 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.billing-customer-piece-group {
+  display: flex;
+  flex-direction: column;
+}
+.billing-customer-pieces {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0.5rem 0.35rem 1.35rem;
+  border-left: 2px solid var(--border);
+  margin: 0 0 0.25rem 0.75rem;
+}
+.billing-customer-option--piece {
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.4rem;
+}
+.billing-customer-option--piece .billing-customer-option-name {
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+.billing-customer-pieces-empty {
+  display: block;
+  padding: 0.35rem 0.6rem;
 }
 .billing-customer-no-match {
   color: var(--brand);
@@ -9425,6 +9623,14 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   min-width: 0;
   font-size: 0.6875rem;
   color: var(--text-muted);
+}
+.sale-bill-piece-tag {
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 600;
+  white-space: nowrap;
 }
 .sale-bill-huid-input {
   display: block;

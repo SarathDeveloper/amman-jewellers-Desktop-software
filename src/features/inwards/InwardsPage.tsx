@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Eye, Pencil, Plus, Printer, Trash2 } from 'lucide-react'
+import { Ban, CopyPlus, Eye, Pencil, Plus, Printer, Trash2 } from 'lucide-react'
 import type { Inward, InwardStatus } from '@shared/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { DateInput } from '../../components/DateInput'
 import { DataTable, TablePager } from '../../components/DataTable'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingState } from '../../components/LoadingState'
+import { Modal } from '../../components/Modal'
 import { PageHeader } from '../../components/PageHeader'
 import { SearchBar } from '../../components/SearchBar'
 import { useToast } from '../../components/toastContext'
@@ -31,6 +32,10 @@ export function InwardsPage() {
   const [editor, setEditor] = useState<{ inward: Inward | null; readOnly: boolean } | null>(null)
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [finalizeId, setFinalizeId] = useState<number | null>(null)
+  const [cancelId, setCancelId] = useState<number | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelBusy, setCancelBusy] = useState(false)
+  const [copyBusyId, setCopyBusyId] = useState<number | null>(null)
   const [printInwardId, setPrintInwardId] = useState<number | null>(null)
 
   async function load() {
@@ -82,6 +87,7 @@ export function InwardsPage() {
       if (!query) return true
       return (
         inward.inwardNo.toLowerCase().includes(query) ||
+        inward.supplierInvoiceNo.toLowerCase().includes(query) ||
         inward.supplierName.toLowerCase().includes(query)
       )
     })
@@ -91,15 +97,22 @@ export function InwardsPage() {
     let total = 0
     let weight = 0
     let drafts = 0
+    let finals = 0
+    let cancelled = 0
     for (const inward of filtered) {
       if (inward.status === 'draft') {
         drafts += 1
         continue
       }
+      if (inward.status === 'cancelled') {
+        cancelled += 1
+        continue
+      }
+      finals += 1
       total += inward.total
       for (const item of inward.items) weight += item.netWeight * item.qty
     }
-    return { total, weight, drafts, finals: filtered.length - drafts }
+    return { total, weight, drafts, finals, cancelled }
   }, [filtered])
 
   const hasExtraFilters = fromDate !== '' || toDate !== '' || supplierFilter !== ''
@@ -129,6 +142,41 @@ export function InwardsPage() {
     }
   }
 
+  async function cancelPurchase() {
+    if (cancelId == null) return
+    const reason = cancelReason.trim()
+    if (!reason) {
+      setError('Enter a reason for cancelling this purchase')
+      return
+    }
+    try {
+      setCancelBusy(true)
+      await api.cancelInward(cancelId, reason)
+      setCancelId(null)
+      setCancelReason('')
+      showToast('Purchase cancelled — stock reversed', 'success')
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel purchase')
+    } finally {
+      setCancelBusy(false)
+    }
+  }
+
+  async function copyPurchase(id: number) {
+    try {
+      setCopyBusyId(id)
+      const draft = await api.copyInward(id)
+      showToast(`Draft ${draft.inwardNo} created`, 'success')
+      await load()
+      setEditor({ inward: draft, readOnly: false })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to copy purchase')
+    } finally {
+      setCopyBusyId(null)
+    }
+  }
+
   return (
     <div className="app-page app-page-fill">
       <PageHeader
@@ -153,7 +201,7 @@ export function InwardsPage() {
       />
 
       <div className="filter-bar" role="group" aria-label="Purchase status">
-        {(['all', 'draft', 'final'] as const).map((status) => (
+        {(['all', 'draft', 'final', 'cancelled'] as const).map((status) => (
           <button
             key={status}
             type="button"
@@ -164,7 +212,13 @@ export function InwardsPage() {
               setPage(1)
             }}
           >
-            {status === 'all' ? 'All' : status === 'draft' ? 'Draft' : 'Final'}
+            {status === 'all'
+              ? 'All'
+              : status === 'draft'
+                ? 'Draft'
+                : status === 'final'
+                  ? 'Final'
+                  : 'Cancelled'}
           </button>
         ))}
       </div>
@@ -234,6 +288,9 @@ export function InwardsPage() {
         <p className="muted">
           {summary.finals} final · {formatCurrency(summary.total)} · {formatWeight(summary.weight)}
           {summary.drafts > 0 ? ` · ${summary.drafts} draft${summary.drafts === 1 ? '' : 's'} not in stock yet` : ''}
+          {summary.cancelled > 0
+            ? ` · ${summary.cancelled} cancelled (excluded from totals)`
+            : ''}
         </p>
       ) : null}
 
@@ -268,7 +325,13 @@ export function InwardsPage() {
                     {inward.source === 'stock_add' ? <span className="badge stock-add">Stock add</span> : null}
                   </td>
                   <td>
-                    <span className={`badge ${inward.status}`}>{inward.status === 'draft' ? 'Draft' : 'Final'}</span>
+                    <span className={`badge ${inward.status}`}>
+                      {inward.status === 'draft'
+                        ? 'Draft'
+                        : inward.status === 'final'
+                          ? 'Final'
+                          : 'Cancelled'}
+                    </span>
                   </td>
                   <td className="num">{formatCurrency(inward.total)}</td>
                   <td>
@@ -325,6 +388,30 @@ export function InwardsPage() {
                           >
                             <Printer size={15} />
                           </button>
+                          {inward.status === 'final' && inward.source === 'purchase' ? (
+                            <button
+                              type="button"
+                              className="btn ghost row-action-danger"
+                              onClick={() => {
+                                setCancelReason('')
+                                setCancelId(inward.id)
+                              }}
+                            >
+                              <Ban size={15} aria-hidden />
+                              Cancel
+                            </button>
+                          ) : null}
+                          {inward.status === 'cancelled' ? (
+                            <button
+                              type="button"
+                              className="btn ghost"
+                              disabled={copyBusyId === inward.id}
+                              onClick={() => void copyPurchase(inward.id)}
+                            >
+                              <CopyPlus size={15} aria-hidden />
+                              {copyBusyId === inward.id ? 'Copying…' : 'Copy to draft'}
+                            </button>
+                          ) : null}
                         </>
                       )}
                     </div>
@@ -368,6 +455,49 @@ export function InwardsPage() {
             void finalize(finalizeId)
           }}
         />
+      ) : null}
+
+      {cancelId != null ? (
+        <Modal
+          title="Cancel purchase?"
+          onClose={() => setCancelId(null)}
+          footer={
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={cancelBusy}
+                onClick={() => setCancelId(null)}
+              >
+                Keep purchase
+              </button>
+              <button
+                type="button"
+                className="btn danger"
+                disabled={cancelBusy || cancelReason.trim() === ''}
+                onClick={() => void cancelPurchase()}
+              >
+                {cancelBusy ? 'Cancelling…' : 'Cancel purchase'}
+              </button>
+            </div>
+          }
+        >
+          <p className="confirm-dialog-copy">
+            This removes the pieces and weight the purchase added, and marks it cancelled. The
+            original lines stay for the audit trail. It is refused if any of the pieces were already
+            sold.
+          </p>
+          <label className="field">
+            <span>Reason (required)</span>
+            <textarea
+              className="input"
+              rows={3}
+              value={cancelReason}
+              placeholder="e.g. Supplier invoice entered twice"
+              onChange={(event) => setCancelReason(event.target.value)}
+            />
+          </label>
+        </Modal>
       ) : null}
 
       {printInwardId != null ? (

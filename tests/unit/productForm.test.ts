@@ -7,6 +7,9 @@ import {
   emptyProductForm,
   formToProductInput,
   metalOptions,
+  newOpeningPiece,
+  resizeOpeningPieces,
+  productInputForSource,
   productMatchesListContext,
   purityOptions,
   resolvePurityForMetal,
@@ -27,6 +30,7 @@ function form(overrides: Partial<ProductFormState> = {}): ProductFormState {
     stockQty: 4,
     imagePath: '',
     huids: ['AA0001', 'AA0002', 'AA0003', 'AA0004'],
+    openingPieces: [],
     ...overrides,
   }
 }
@@ -143,9 +147,67 @@ describe('formToProductInput', () => {
     expect(input.imagePath).toBe('/tmp/ring.jpg')
   })
 
+  it('sends one opening piece per row, with that row’s weight and HUID', () => {
+    const input = formToProductInput(
+      form({
+        trackPieces: true,
+        stockQty: 2,
+        openingPieces: [
+          { ...newOpeningPiece({ grossWeight: 5.2, stoneWeight: 0.2, netWeight: 5 }), huid: 'fh44' },
+          { ...newOpeningPiece({ grossWeight: 5.4, stoneWeight: 0.4, netWeight: 5 }), huid: '' },
+        ],
+      }),
+    )
+    expect(input.pieces).toEqual([
+      { huid: 'FH44', grossWeight: 5.2, stoneWeight: 0.2, netWeight: 5 },
+      { huid: '', grossWeight: 5.4, stoneWeight: 0.4, netWeight: 5 },
+    ])
+    expect(input.huids).toEqual(['FH44'])
+  })
+
+  it('adds a piece row when the stock quantity grows', () => {
+    const first = newOpeningPiece({ grossWeight: 5, stoneWeight: 0, netWeight: 5 })
+    const next = resizeOpeningPieces([first], 2, { grossWeight: 5, stoneWeight: 0, netWeight: 5 })
+    expect(next).toHaveLength(2)
+    expect(next[0]).toBe(first)
+    expect(next[1].netWeight).toBe(5)
+    expect(resizeOpeningPieces(next, 2, { grossWeight: 1, stoneWeight: 0, netWeight: 1 })).toBe(next)
+  })
+
+  it('requires a net weight on each opening piece', () => {
+    const errors = validateProductForm(
+      form({
+        trackPieces: true,
+        stockQty: 1,
+        openingPieces: [newOpeningPiece({ grossWeight: 5, stoneWeight: 0, netWeight: '' })],
+      }),
+      [],
+      null,
+    )
+    expect(errors.pieces).toBe('Enter the net weight for piece 1')
+  })
+
   it('uppercases and dedupes HUIDs', () => {
     const input = formToProductInput(form({ huids: [' a1b2c3 ', 'A1B2C3', '', 'd4e5f6'] }))
     expect(input.huids).toEqual(['A1B2C3', 'D4E5F6'])
+  })
+})
+
+describe('productInputForSource', () => {
+  it('save from the products page keeps stock, HUIDs and the tracking choice', () => {
+    const input = productInputForSource(form({ trackPieces: false }), 'products')
+    expect(input.stockQty).toBe(4)
+    expect(input.huids).toEqual(['AA0001', 'AA0002', 'AA0003', 'AA0004'])
+    expect(input.trackPieces).toBe(false)
+  })
+
+  it('save from a purchase line starts with no stock and tracks pieces', () => {
+    const input = productInputForSource(form(), 'purchase')
+    expect(input.stockQty).toBe(0)
+    expect(input.huids).toEqual([])
+    expect(input.trackPieces).toBe(true)
+    expect(input.name).toBe('Gold chain')
+    expect(input.netWeight).toBe(9)
   })
 })
 

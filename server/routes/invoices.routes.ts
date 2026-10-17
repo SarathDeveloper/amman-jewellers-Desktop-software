@@ -39,6 +39,7 @@ import type {
 import { computeInvoiceAmounts, computeInvoiceLines } from '../billing/invoiceCompute'
 import { getDatabase } from '../db'
 import { assertMetalsOpenForDate } from '../db/metalDayClosing'
+import { audit } from '../lib/audit'
 import { syncDueEntryForFinalInvoice } from '../dues/invoiceSync'
 import {
   finalizeGoldSavingLinks,
@@ -50,6 +51,13 @@ import { asyncHandler, parseBody, parseIdParam, parsePaging, queryString } from 
 import { saveLastPrintedBill } from '../lib/settingsStore'
 import { listHuids, appendHuids, removeHuids } from '../products/huids'
 import { recordPieceMovement } from '../stock/movements'
+import {
+  assertPieceAvailableForBill,
+  assignHuidToPiece,
+  loadPiece,
+  restorePiece,
+  sellPiece,
+} from '../stock/pieces'
 import { EMPTY_PRODUCT_VARIANT_FIELDS } from '@shared/types'
 import { assertCustomerAllowedForBill } from './customers.routes'
 import { insertPayment } from './dues.routes'
@@ -122,6 +130,9 @@ type InvoiceItemRow = {
   description: string
   purity: string
   huid: string
+  piece_id: number | null
+  piece_huid: string | null
+  piece_tag: string | null
 }
 
 function yearFromInvoiceDate(invoiceDate?: string): string {
@@ -205,6 +216,7 @@ function loadProductsMap(db: ReturnType<typeof getDatabase>) {
     stone_details?: string | null
     attributes?: string | null
     is_active?: number | null
+    track_pieces?: number | null
   }[]
 
   return new Map(
@@ -229,6 +241,7 @@ function loadProductsMap(db: ReturnType<typeof getDatabase>) {
         stoneWeight: p.stone_weight ?? 0,
         stoneDetails: p.stone_details ?? '',
         isActive: (p.is_active ?? 1) === 1,
+        trackPieces: (p.track_pieces ?? 0) === 1,
       },
     ]),
   )
@@ -237,9 +250,10 @@ function loadProductsMap(db: ReturnType<typeof getDatabase>) {
 function loadInvoiceItems(db: ReturnType<typeof getDatabase>, invoiceId: number): InvoiceItem[] {
   const rows = db
     .prepare(
-      `SELECT ii.*, p.name AS product_name
+      `SELECT ii.*, p.name AS product_name, ip.huid AS piece_huid, ip.tag_code AS piece_tag
        FROM invoice_items ii
        LEFT JOIN products p ON p.id = ii.product_id
+       LEFT JOIN inventory_pieces ip ON ip.id = ii.piece_id
        WHERE ii.invoice_id = ?
        ORDER BY ii.id`,
     )
@@ -273,6 +287,9 @@ function loadInvoiceItems(db: ReturnType<typeof getDatabase>, invoiceId: number)
     description: row.description ?? '',
     purity: row.purity ?? '',
     huid: row.huid ?? '',
+    pieceId: row.piece_id ?? null,
+    pieceHuid: row.piece_huid ?? '',
+    pieceTag: row.piece_tag ?? '',
   }))
 }
 
@@ -708,8 +725,8 @@ function insertItems(
       invoice_id, product_id, qty, rate, line_total,
       gross_weight, net_weight, stone_weight, metal_rate, making_charges,
       wastage_pct, stone_rate, other_charges, line_subtotal, line_tax, hsn_code, metal, category,
-      line_kind, description, purity, huid
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      line_kind, description, purity, huid, piece_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   for (const line of computedLines) {
     insert.run(
@@ -735,6 +752,7 @@ function insertItems(
       line.description,
       line.purity,
       (line.input.huid ?? '').trim().toUpperCase(),
+      line.input.pieceId ?? null,
     )
   }
 }
@@ -805,6 +823,69 @@ function assertLineHuids(
     if (otherBill) {
       throw new Error(`HUID ${huid} is already used on bill ${otherBill.invoice_no}`)
     }
+  }
+}
+
+/**
+ * Validates an exact piece on a bill line: right product, still in stock, and
+ * not claimed by another live bill. Drafts reserve a piece exactly like a HUID.
+ */
+function assertLinePieces(
+  db: ReturnType<typeof getDatabase>,
+  lines: ReturnType<typeof computeInvoiceLines>,
+  invoiceId?: number,
+): void {
+  const seen = new Set<number>()
+  for (const line of lines) {
+    if (line.lineKind === 'exchange') continue
+    const pieceId = line.input.pieceId ?? null
+    if (line.productId == null) {
+      if (pieceId != null) {
+        throw new Error('A tracked piece can only be sold on a product line')
+      }
+      continue
+    }
+    const product = db
+      .prepare('SELECT name, track_pieces FROM products WHERE id = ?')
+      .get(line.productId) as { name: string; track_pieces: number } | undefined
+    if (product?.track_pieces === 1) {
+      if (pieceId == null) {
+        throw new Error(
+          `${product.name} tracks each piece. Pick the tag being sold on this line.`,
+        )
+      }
+      if ((line.input.qty ?? 1) !== 1) {
+        throw new Error(`A tracked piece is sold one at a time (${product.name})`)
+      }
+    }
+    if (pieceId == null) continue
+    if (seen.has(pieceId)) {
+      throw new Error('The same piece is used twice on this bill')
+    }
+    seen.add(pieceId)
+    const piece = loadPiece(db, pieceId)
+    if (!piece) {
+      throw new Error('Piece not found')
+    }
+    if (piece.product_id !== line.productId) {
+      throw new Error(`Tag ${piece.tag_code} belongs to another product`)
+    }
+    const lineHuid = (line.input.huid ?? '').trim().toUpperCase()
+    const pieceHuid = (piece.huid ?? '').trim().toUpperCase()
+    if (pieceHuid && lineHuid && pieceHuid !== lineHuid) {
+      throw new Error(`Tag ${piece.tag_code} already has HUID ${pieceHuid}`)
+    }
+    if (piece.status !== 'in_stock') {
+      const bill = piece.invoice_id
+        ? (db.prepare('SELECT invoice_no FROM invoices WHERE id = ?').get(piece.invoice_id) as
+            | { invoice_no: string }
+            | undefined)
+        : undefined
+      throw new Error(
+        `Tag ${piece.tag_code} is ${piece.status}${bill ? ` on bill ${bill.invoice_no}` : ''}`,
+      )
+    }
+    assertPieceAvailableForBill(db, pieceId, invoiceId)
   }
 }
 
@@ -932,6 +1013,7 @@ function saveDraftInvoice(
   const metalRates = getLatestMetalRates(db)
   const computedLines = computeInvoiceLines(input.items, productsById, metalRates)
   assertLineHuids(db, computedLines, invoiceId)
+  assertLinePieces(db, computedLines, invoiceId)
 
   const paymentMode: PaymentMode = input.paymentMode ?? 'cash'
   const discount = input.discount ?? 0
@@ -1420,8 +1502,31 @@ router.post(
         items.map((item) => item.metal).filter(Boolean),
       )
 
+      const assignedNo = isDraftInvoiceNo(row.invoice_no)
+        ? nextInvoiceNo(db, row.bill_format, row.invoice_date)
+        : row.invoice_no
+
       for (const item of items) {
         if (item.lineKind === 'exchange' || item.productId == null) {
+          continue
+        }
+        if (item.pieceId != null) {
+          // A tracked piece owns its own weight. A hallmark typed on the bill
+          // is stored on the piece first, when the piece did not already have one.
+          const piece = loadPiece(db, item.pieceId)
+          const typedHuid = (item.huid ?? '').trim().toUpperCase()
+          if (piece && !(piece.huid ?? '').trim() && typedHuid) {
+            assignHuidToPiece(db, piece, typedHuid)
+          }
+          sellPiece(db, {
+            pieceId: item.pieceId,
+            productId: item.productId,
+            invoiceId: id,
+            invoiceItemId: item.id,
+            invoiceNo: assignedNo,
+            movementDate: row.invoice_date,
+            operatorId: req.user?.id ?? null,
+          })
           continue
         }
         const taggedHuids = listHuids(db, item.productId)
@@ -1460,9 +1565,6 @@ router.post(
         .get(row.customer_id) as
         | { name: string; phone: string; address: string; gstin: string; guardian_name: string }
         | undefined
-      const assignedNo = isDraftInvoiceNo(row.invoice_no)
-        ? nextInvoiceNo(db, row.bill_format, row.invoice_date)
-        : row.invoice_no
       db.prepare(
         `UPDATE invoices
          SET status = 'final',
@@ -1527,6 +1629,7 @@ router.post(
       }
 
       const cancelDate = localTodayIso()
+      const before = mapInvoice(db, getInvoiceRow(db, id))
       const items = loadInvoiceItems(db, id)
       assertMetalsOpenForDate(
         db,
@@ -1536,6 +1639,16 @@ router.post(
 
       for (const item of items) {
         if (item.lineKind === 'exchange' || item.productId == null) {
+          continue
+        }
+        if (item.pieceId != null) {
+          restorePiece(db, {
+            pieceId: item.pieceId,
+            invoiceId: id,
+            invoiceNo: row.invoice_no,
+            movementDate: cancelDate,
+            operatorId: req.user?.id ?? null,
+          })
           continue
         }
         const qty = item.qty || 1
@@ -1569,7 +1682,16 @@ router.post(
          SET status = 'cancelled', cancelled_at = datetime('now'), cancel_reason = ?, cancelled_by = ?
          WHERE id = ?`,
       ).run(input.reason.trim(), req.user?.id ?? null, id)
-      return mapInvoice(db, getInvoiceRow(db, id))
+      const after = mapInvoice(db, getInvoiceRow(db, id))
+      audit(db, {
+        entityType: 'invoice',
+        entityId: id,
+        action: 'cancel',
+        before,
+        after,
+        operatorId: req.user?.id ?? null,
+      })
+      return after
     })
     res.json(tx())
   }),

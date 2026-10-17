@@ -90,6 +90,8 @@ export interface Product {
   attributes: ProductAttributes
   isActive: boolean
   huids: string[]
+  /** When true, each ornament is tracked separately in inventory_pieces. */
+  trackPieces: boolean
 }
 
 export interface ProductInput {
@@ -110,6 +112,9 @@ export interface ProductInput {
   attributes?: ProductAttributes
   isActive?: boolean
   huids?: string[]
+  trackPieces?: boolean
+  /** Opening ornaments, one per piece of stock, when piece tracking starts here. */
+  pieces?: InwardPieceInput[]
 }
 
 export interface Customer {
@@ -168,6 +173,12 @@ export interface InvoiceItem {
   purity: string
   /** Hallmark Unique ID chosen for this piece, empty when not tagged. */
   huid: string
+  /** Exact tracked piece sold on this line, null for untracked products. */
+  pieceId: number | null
+  /** HUID stored on that piece, when the line names one. Empty when the piece has none. */
+  pieceHuid?: string
+  /** Tag printed on that piece, e.g. `T000003`. */
+  pieceTag?: string
 }
 
 export interface InvoiceItemInput {
@@ -189,6 +200,7 @@ export interface InvoiceItemInput {
   category?: string
   purity?: string
   huid?: string
+  pieceId?: number | null
 }
 
 export interface OldGoldItemInput {
@@ -1164,6 +1176,8 @@ export interface StockAdjustmentLineInput {
   weightDelta: number
   reason?: string
   huids?: string[]
+  /** Tracked products change stock by naming the exact pieces to remove. */
+  pieceIds?: number[]
 }
 
 export interface StockAdjustmentInput {
@@ -1237,9 +1251,43 @@ export interface SupplierInput {
   gstin?: string
 }
 
-export type InwardStatus = 'draft' | 'final'
+export type InwardStatus = 'draft' | 'final' | 'cancelled'
 export type InwardSource = 'purchase' | 'stock_add'
 export type PurchasePaymentMode = Extract<PaymentMode, 'cash' | 'upi' | 'card'>
+export type PurchaseGstMode = 'none' | 'intra' | 'inter'
+
+export type InventoryPieceStatus = 'in_stock' | 'sold' | 'reversed' | 'damaged' | 'lost'
+
+export interface InventoryPiece {
+  id: number
+  productId: number
+  productName?: string
+  tagCode: string
+  huid: string
+  grossWeight: number
+  stoneWeight: number
+  netWeight: number
+  cost: number | null
+  status: InventoryPieceStatus
+  inwardId: number | null
+  inwardItemId: number | null
+  invoiceId: number | null
+  invoiceItemId: number | null
+  createdAt: string
+  updatedAt: string
+  /** Purchase and bill numbers, resolved for the Pieces tab. */
+  inwardNo?: string
+  invoiceNo?: string
+}
+
+/** One physical ornament on a tracked purchase line. */
+export interface InwardPieceInput {
+  tagCode?: string
+  huid?: string
+  grossWeight?: number
+  stoneWeight?: number
+  netWeight: number
+}
 
 export interface InwardItem {
   id: number
@@ -1257,6 +1305,7 @@ export interface InwardItem {
   hsnCode: string
   lineTotal: number
   huids: string[]
+  pieces: InwardPieceInput[]
 }
 
 export interface InwardItemInput {
@@ -1271,6 +1320,7 @@ export interface InwardItemInput {
   makingCharges?: number
   hsnCode?: string
   huids?: string[]
+  pieces?: InwardPieceInput[]
 }
 
 export interface Inward {
@@ -1281,27 +1331,36 @@ export interface Inward {
   supplierAddress: string
   supplierGstin: string
   inwardNo: string
+  supplierInvoiceNo: string
   inwardDate: string
   status: InwardStatus
   paymentMode: PurchasePaymentMode
   subtotal: number
+  discount: number
+  taxable: number
   cgst: number
   sgst: number
   igst: number
+  gstMode: PurchaseGstMode
   roundOff: number
   total: number
   notes: string
   source: InwardSource
   createdAt: string
   finalizedAt: string | null
+  cancelledAt: string | null
+  cancelReason: string
   items: InwardItem[]
 }
 
 export interface InwardInput {
   supplierId: number
+  supplierInvoiceNo?: string
   inwardDate: string
   notes?: string
   paymentMode?: PurchasePaymentMode
+  discount?: number
+  gstMode?: PurchaseGstMode
   roundOff?: number
   items: InwardItemInput[]
 }

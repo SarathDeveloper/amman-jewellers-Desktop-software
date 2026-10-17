@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import { DEFAULT_HSN } from '@shared/billing/pricing'
-import type { StockAdjustmentLineInput } from '@shared/types'
+import type { InwardPieceInput, StockAdjustmentLineInput } from '@shared/types'
 import { assertUniqueHuids, stringifyHuids } from '../products/huids'
 import { applyInwardStock } from './finalize'
 import { nextInwardNo } from './numbering'
@@ -16,6 +16,7 @@ type ProductRow = {
   purity: string
   gross_weight: number
   net_weight: number
+  track_pieces: number
 }
 
 export function ensureStockAdditionSupplier(db: Database.Database): number {
@@ -43,7 +44,7 @@ export function ensureStockAdditionSupplier(db: Database.Database): number {
 function loadProduct(db: Database.Database, productId: number): ProductRow {
   const product = db
     .prepare(
-      `SELECT id, name, metal, category, purity, gross_weight, net_weight
+      `SELECT id, name, metal, category, purity, gross_weight, net_weight, track_pieces
        FROM products WHERE id = ?`,
     )
     .get(productId) as ProductRow | undefined
@@ -90,12 +91,13 @@ export function createAndFinalizeStockAddInward(
   const insert = db.prepare(
     `INSERT INTO inward_items (
        inward_id, product_id, metal, category, purity, qty, gross_weight, net_weight, rate,
-       making_charges, hsn_code, line_total, huids
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 0, ?)`,
+       making_charges, hsn_code, line_total, huids, pieces
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 0, ?, ?)`,
   )
 
   const huidsOnInward = new Set<string>()
   const stockItems: Array<{
+    id: number
     productId: number
     productName: string
     metal: string
@@ -103,6 +105,7 @@ export function createAndFinalizeStockAddInward(
     qty: number
     netWeight: number
     huids: string[]
+    pieces: InwardPieceInput[]
   }> = []
 
   for (const line of addLines) {
@@ -117,7 +120,16 @@ export function createAndFinalizeStockAddInward(
     }
     assertUniqueHuids(db, huids)
     const netWeight = lineNetWeight(line, product)
-    insert.run(
+    const tracked = product.track_pieces === 1
+    const pieces: InwardPieceInput[] = tracked
+      ? Array.from({ length: line.qtyDelta }, (_, index) => ({
+          huid: huids[index] ?? '',
+          grossWeight: product.gross_weight || netWeight,
+          stoneWeight: 0,
+          netWeight,
+        }))
+      : []
+    const result = insert.run(
       inwardId,
       product.id,
       product.metal,
@@ -128,8 +140,10 @@ export function createAndFinalizeStockAddInward(
       netWeight,
       DEFAULT_HSN,
       stringifyHuids(huids),
+      JSON.stringify(pieces),
     )
     stockItems.push({
+      id: Number(result.lastInsertRowid),
       productId: product.id,
       productName: product.name,
       metal: product.metal,
@@ -137,6 +151,7 @@ export function createAndFinalizeStockAddInward(
       qty: line.qtyDelta,
       netWeight,
       huids,
+      pieces,
     })
   }
 

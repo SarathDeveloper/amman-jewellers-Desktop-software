@@ -29,6 +29,7 @@ import type {
   StockDayLineKind,
   StockHistoryRow,
   Inward,
+  InwardItem,
 } from '@shared/types'
 import { EmptyState } from '../../components/EmptyState'
 import { DateInput } from '../../components/DateInput'
@@ -73,6 +74,23 @@ const emptyForm: CategoryForm = {
   openingWeight: '',
   salesOverride: '',
   overrideReason: '',
+}
+
+/** Line totals. Piece rows carry their own weights; other lines store one weight times quantity. */
+function inwardLineWeights(item: InwardItem): { gross: number; stone: number; net: number } {
+  const pieces = item.pieces ?? []
+  if (pieces.length > 0) {
+    const gross = pieces.reduce(
+      (sum, piece) => sum + (piece.grossWeight || piece.netWeight),
+      0,
+    )
+    const stone = pieces.reduce((sum, piece) => sum + (piece.stoneWeight ?? 0), 0)
+    const net = pieces.reduce((sum, piece) => sum + piece.netWeight, 0)
+    return { gross, stone, net }
+  }
+  const net = item.netWeight * item.qty
+  const gross = (item.grossWeight || item.netWeight) * item.qty
+  return { gross, stone: Math.max(0, gross - net), net }
 }
 
 function formFromRow(row: ItemStockRow): CategoryForm {
@@ -825,7 +843,7 @@ export function StockPage() {
               <tbody>
                 {filteredInwards.map((row) => {
                   const totalWeight = row.items.reduce(
-                    (sum, item) => sum + item.netWeight * item.qty,
+                    (sum, item) => sum + inwardLineWeights(item).net,
                     0,
                   )
                   const expanded = expandedInwardId === row.id
@@ -869,24 +887,31 @@ export function StockPage() {
                                   <th>Category</th>
                                   <th>Purity</th>
                                   <th className="num">Qty</th>
-                                  <th className="num">Net wt</th>
+                                  <th className="num">Gross</th>
+                                  <th className="num">Stone</th>
+                                  <th className="num">Net</th>
                                   <th className="num">Rate</th>
                                   <th className="num">Line</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {row.items.map((item) => (
-                                  <tr key={item.id}>
-                                    <td>{item.productName || 'Weight only'}</td>
-                                    <td>{item.metal}</td>
-                                    <td>{item.category || '—'}</td>
-                                    <td>{item.purity || '—'}</td>
-                                    <td className="num">{item.qty}</td>
-                                    <td className="num">{formatWeight(item.netWeight)}</td>
-                                    <td className="num">{formatCurrency(item.rate)}</td>
-                                    <td className="num">{formatCurrency(item.lineTotal)}</td>
-                                  </tr>
-                                ))}
+                                {row.items.map((item) => {
+                                  const weights = inwardLineWeights(item)
+                                  return (
+                                    <tr key={item.id}>
+                                      <td>{item.productName || 'Weight only'}</td>
+                                      <td>{item.metal}</td>
+                                      <td>{item.category || '—'}</td>
+                                      <td>{item.purity || '—'}</td>
+                                      <td className="num">{item.qty}</td>
+                                      <td className="num">{formatWeight(weights.gross)}</td>
+                                      <td className="num">{formatWeight(weights.stone)}</td>
+                                      <td className="num">{formatWeight(weights.net)}</td>
+                                      <td className="num">{formatCurrency(item.rate)}</td>
+                                      <td className="num">{formatCurrency(item.lineTotal)}</td>
+                                    </tr>
+                                  )
+                                })}
                               </tbody>
                             </table>
                           </td>

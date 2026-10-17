@@ -18,8 +18,17 @@ export async function fillProductDialog(
     netWeight: string
     makingCharges?: string
     stockQty: string
+    trackPieces?: boolean
   },
 ) {
+  const trackPieces = dialog.getByRole('checkbox', { name: /Track each piece/ })
+  if (await trackPieces.count()) {
+    if (values.trackPieces) {
+      if (!(await trackPieces.isChecked())) await trackPieces.check()
+    } else if (await trackPieces.isChecked()) {
+      await trackPieces.uncheck()
+    }
+  }
   await dialog.getByLabel('Product name').fill(values.name)
   await dialog.getByLabel('Category').selectOption(values.category)
   await dialog.getByLabel('Metal').selectOption(values.metal ?? 'Gold')

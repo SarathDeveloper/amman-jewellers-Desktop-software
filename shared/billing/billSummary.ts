@@ -1,5 +1,5 @@
-import type { OldGoldItemInput } from '../types'
-import { computeInvoiceTax, computeInvoiceTotals, roundMoney, roundWeight } from './pricing'
+import type { OldGoldItemInput, PurchaseGstMode } from '../types'
+import { computeInvoiceTotals, INTRA_STATE_GST_RATE, roundMoney, roundWeight } from './pricing'
 
 export interface OldGoldValueInput {
   netWeight: number
@@ -47,6 +47,8 @@ export function suggestPurchaseRoundOff(amountBeforeRoundOff: number): number {
 
 export interface PurchaseTotalsResult {
   subtotal: number
+  discount: number
+  taxable: number
   cgst: number
   sgst: number
   igst: number
@@ -55,20 +57,36 @@ export interface PurchaseTotalsResult {
   total: number
 }
 
+/** How GST is recorded on a supplier purchase. Mirrors `inwards.gst_mode`. */
+export interface PurchaseTotalsOptions {
+  discount?: number
+  gstMode?: PurchaseGstMode
+}
+
 export function computePurchaseTotals(
   lineAmounts: number[],
   roundOff?: number,
-  _useIgst = false,
+  options: PurchaseTotalsOptions = {},
 ): PurchaseTotalsResult {
   const subtotal = roundMoney(lineAmounts.reduce((sum, value) => sum + value, 0))
-  const amountBeforeRoundOff = subtotal
+  const discount = roundMoney(Math.min(Math.max(0, options.discount ?? 0), Math.max(0, subtotal)))
+  const taxable = roundMoney(Math.max(0, subtotal - discount))
+  const gstMode: PurchaseGstMode = options.gstMode ?? 'none'
+  // Jewellery is 3% (HSN 7113): CGST + SGST intra-state, IGST inter-state.
+  const tax = gstMode === 'none' ? 0 : roundMoney(taxable * INTRA_STATE_GST_RATE)
+  const cgst = gstMode === 'intra' ? roundMoney(tax / 2) : 0
+  const sgst = gstMode === 'intra' ? roundMoney(tax - cgst) : 0
+  const igst = gstMode === 'inter' ? tax : 0
+  const amountBeforeRoundOff = roundMoney(taxable + tax)
   const appliedRoundOff = roundOff ?? suggestPurchaseRoundOff(amountBeforeRoundOff)
   return {
     subtotal,
-    cgst: 0,
-    sgst: 0,
-    igst: 0,
-    tax: 0,
+    discount,
+    taxable,
+    cgst,
+    sgst,
+    igst,
+    tax,
     roundOff: appliedRoundOff,
     total: roundMoney(amountBeforeRoundOff + appliedRoundOff),
   }

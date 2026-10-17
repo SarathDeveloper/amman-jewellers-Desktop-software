@@ -27,13 +27,17 @@ import { HuidEntryList, resizeHuidRows } from './HuidEntryList'
 import { ProductThumb } from './productDisplay'
 import {
   categoryOptions,
-  formToProductInput,
   metalOptions,
   newAttributeRow,
+  newOpeningPiece,
+  productInputForSource,
   productToForm,
   purityOptions,
+  resizeOpeningPieces,
   resolvePurityForMetal,
+  syncFollowingPieces,
   validateProductForm,
+  type OpeningPieceRow,
   type ProductFormErrors,
   type ProductFormState,
 } from './productForm'
@@ -121,6 +125,7 @@ function UnitField({
   unit,
   icon,
   placeholder,
+  disabled,
 }: {
   value: ProductFormState['grossWeight']
   onChange: (value: ProductFormState['grossWeight']) => void
@@ -129,6 +134,7 @@ function UnitField({
   unit: string
   icon?: ReactNode
   placeholder?: string
+  disabled?: boolean
 }) {
   return (
     <Control icon={icon} unit={unit}>
@@ -137,6 +143,7 @@ function UnitField({
         type="number"
         step={step}
         min={0}
+        disabled={disabled}
         placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(parseNumericField(event.target.value))}
@@ -169,30 +176,90 @@ function SectionHead({
   )
 }
 
+function ImageField({
+  imagePath,
+  metal,
+  previewName,
+  onPick,
+  onRemove,
+}: {
+  imagePath: string
+  metal: string
+  previewName: string
+  onPick: (file: File) => void
+  onRemove: () => void
+}) {
+  return (
+    <div className="product-form-image-block">
+      <span className="product-form-image-label">Product image</span>
+      <div className="product-image-uploader">
+        {imagePath ? (
+          <div className="product-image-thumb">
+            <img src={localImageSrc(imagePath, '')} alt="" />
+            <button
+              type="button"
+              className="btn ghost icon-btn product-image-remove"
+              aria-label="Remove image"
+              onClick={onRemove}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <div className="product-image-thumb" aria-hidden>
+            <ProductThumb metal={metal} name={previewName} />
+          </div>
+        )}
+        <label className="product-image-drop">
+          <Upload size={18} strokeWidth={1.75} aria-hidden />
+          <strong>{imagePath ? 'Change image' : 'Upload image'}</strong>
+          <span>PNG, JPEG (max 2MB)</span>
+          <input
+            type="file"
+            accept="image/png,image/jpeg"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) onPick(file)
+              event.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+    </div>
+  )
+}
+
 export function ProductFormModal({
   product,
   products,
-  parentProduct = null,
   initialName,
+  initialValues,
+  source = 'products',
   onClose,
   onSave,
 }: {
   product: Product | null
   products: Product[]
-  parentProduct?: Product | null
   initialName?: string
+  /** Pre-fills fields that were already typed on the purchase line. */
+  initialValues?: Partial<ProductFormState>
+  /**
+   * Where the form was opened from. A product created inside a purchase must
+   * start with no stock: the purchase line itself is what adds the pieces when
+   * it is finalized, so entering a stock quantity here would count them twice.
+   */
+  source?: 'products' | 'purchase'
   onClose: () => void
   onSave: (input: ProductInput) => Promise<void>
 }) {
+  const isPurchase = source === 'purchase'
   const isEdit = Boolean(product)
-  const isVariant = Boolean(parentProduct) || Boolean(product?.parentId)
-  const lockedParent = parentProduct ?? products.find((row) => row.id === product?.parentId) ?? null
+  const isVariant = Boolean(product?.parentId)
   const [form, setForm] = useState<ProductFormState>(() => {
-    const base = productToForm(product, parentProduct)
-    if (!product && !parentProduct && initialName?.trim()) {
-      return { ...base, name: initialName.trim() }
-    }
-    return base
+    const base = productToForm(product)
+    const named = !product && initialName?.trim() ? { ...base, name: initialName.trim() } : base
+    return initialValues ? { ...named, ...initialValues } : named
   })
   const [errors, setErrors] = useState<ProductFormErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
@@ -229,36 +296,91 @@ export function ProductFormModal({
     setForm((current) => {
       const nextQty = Math.max(0, Math.trunc(numericFieldToNumber(current.stockQty)))
       const nextHuids = resizeHuidRows(current.huids, nextQty, true)
-      if (
+      const template = {
+        grossWeight: current.grossWeight,
+        stoneWeight: current.stoneWeight,
+        netWeight: current.netWeight,
+      }
+      const nextPieces = current.trackPieces
+        ? resizeOpeningPieces(current.openingPieces ?? [], nextQty, template)
+        : (current.openingPieces ?? [])
+      const huidsSame =
         nextHuids.length === current.huids.length &&
         nextHuids.every((value, index) => value === current.huids[index])
-      ) {
-        return current
-      }
-      return { ...current, huids: nextHuids }
+      if (huidsSame && nextPieces === (current.openingPieces ?? [])) return current
+      return { ...current, huids: nextHuids, openingPieces: nextPieces }
     })
-  }, [form.stockQty])
+  }, [form.stockQty, form.trackPieces])
 
   const previewName = form.name.trim() || 'Untitled product'
-  const formTitle = isEdit
-    ? isVariant
-      ? 'Edit variant'
-      : 'Edit product'
-    : isVariant
-      ? 'Add variant'
-      : 'Add product'
+  const formTitle = isEdit ? (isVariant ? 'Edit variant' : 'Edit product') : 'Add product'
   const formSubtitle = isEdit
     ? isVariant
       ? 'Update this weight, size, and stone variant'
       : 'Update this jewellery item in your inventory'
-    : isVariant
-      ? `Add a sellable variant of ${lockedParent?.name ?? 'this design'}`
-      : 'Create a jewellery item and define its pricing, stock and variants'
+    : isPurchase
+      ? 'Create the design once. This purchase adds its pieces on finalize'
+      : 'Create a jewellery item and define its pricing and stock'
 
   function updateField<K extends keyof ProductFormState>(key: K, value: ProductFormState[K]) {
-    setForm((current) => ({ ...current, [key]: value }))
-    setErrors((current) => ({ ...current, [key]: undefined }))
+    setForm((current) => {
+      const next = { ...current, [key]: value }
+      if (key === 'grossWeight' || key === 'netWeight' || key === 'stoneWeight') {
+        return syncFollowingPieces(next)
+      }
+      return next
+    })
+    setErrors((current) => ({ ...current, [key]: undefined, pieces: undefined }))
     setFormError(null)
+  }
+
+  function updateOpeningPiece(id: string, patch: Partial<OpeningPieceRow>) {
+    setForm((current) => ({
+      ...current,
+      openingPieces: current.openingPieces.map((piece) => {
+        if (piece.id !== id) return piece
+        const weightEdit =
+          patch.grossWeight !== undefined ||
+          patch.stoneWeight !== undefined ||
+          patch.netWeight !== undefined
+        const next = { ...piece, ...patch, followsDesign: weightEdit ? false : piece.followsDesign }
+        const gross = numericFieldToNumber(
+          patch.grossWeight !== undefined ? patch.grossWeight : piece.grossWeight,
+        )
+        const stone = numericFieldToNumber(
+          patch.stoneWeight !== undefined ? patch.stoneWeight : piece.stoneWeight,
+        )
+        if (patch.grossWeight !== undefined || patch.stoneWeight !== undefined) {
+          next.netWeight = gross > 0 ? Math.max(0, Math.round((gross - stone) * 1000) / 1000) : piece.netWeight
+        }
+        return next
+      }),
+    }))
+    setErrors((current) => ({ ...current, pieces: undefined }))
+    setFormError(null)
+  }
+
+  function addOpeningPiece() {
+    setForm((current) => {
+      const openingPieces = [
+        ...current.openingPieces,
+        newOpeningPiece({
+          grossWeight: current.grossWeight,
+          stoneWeight: current.stoneWeight,
+          netWeight: current.netWeight,
+        }),
+      ]
+      return { ...current, openingPieces, stockQty: openingPieces.length }
+    })
+    setErrors((current) => ({ ...current, pieces: undefined }))
+  }
+
+  function removeOpeningPiece(id: string) {
+    setForm((current) => {
+      const openingPieces = current.openingPieces.filter((piece) => piece.id !== id)
+      return { ...current, openingPieces, stockQty: openingPieces.length }
+    })
+    setErrors((current) => ({ ...current, pieces: undefined }))
   }
 
   function updateAttribute(index: number, patch: Partial<ProductFormState['attributes'][number]>) {
@@ -307,7 +429,12 @@ export function ProductFormModal({
   }
 
   async function handleSave() {
-    const nextErrors = validateProductForm(form, products, product?.id ?? null, categoryNames)
+    // A purchase-created product owns no stock yet; the purchase line adds the
+    // pieces on finalize. Validate and save with that empty stock.
+    const effectiveForm: ProductFormState = isPurchase
+      ? { ...form, stockQty: 0, huids: [], trackPieces: true, openingPieces: [] }
+      : form
+    const nextErrors = validateProductForm(effectiveForm, products, product?.id ?? null, categoryNames)
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
       return
@@ -316,7 +443,7 @@ export function ProductFormModal({
     try {
       setSaving(true)
       setFormError(null)
-      await onSave(formToProductInput(form))
+      await onSave(productInputForSource(form, isPurchase ? 'purchase' : 'products'))
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to save product')
     } finally {
@@ -388,43 +515,15 @@ export function ProductFormModal({
                   </Control>
                 </Field>
               </div>
-              <div className="product-form-image-block">
-                <span className="product-form-image-label">Product image</span>
-                <div className="product-image-uploader">
-                  {form.imagePath ? (
-                    <div className="product-image-thumb">
-                      <img src={localImageSrc(form.imagePath, '')} alt="" />
-                      <button
-                        type="button"
-                        className="btn ghost icon-btn product-image-remove"
-                        aria-label="Remove image"
-                        onClick={() => updateField('imagePath', '')}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="product-image-thumb" aria-hidden>
-                      <ProductThumb metal={form.metal} name={previewName} />
-                    </div>
-                  )}
-                  <label className="product-image-drop">
-                    <Upload size={18} strokeWidth={1.75} aria-hidden />
-                    <strong>{form.imagePath ? 'Change image' : 'Upload image'}</strong>
-                    <span>PNG, JPEG (max 2MB)</span>
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg"
-                      hidden
-                      onChange={(event) => {
-                        const file = event.target.files?.[0]
-                        if (file) void pickImage(file)
-                        event.target.value = ''
-                      }}
-                    />
-                  </label>
-                </div>
-              </div>
+              {isPurchase ? null : (
+                <ImageField
+                  imagePath={form.imagePath}
+                  metal={form.metal}
+                  previewName={previewName}
+                  onPick={pickImage}
+                  onRemove={() => updateField('imagePath', '')}
+                />
+              )}
             </div>
           </section>
 
@@ -556,20 +655,37 @@ export function ProductFormModal({
           <section className="product-section">
             <SectionHead
               step={4}
-              title="Stock & variant"
-              subtitle="Quantity, size, and extra details"
+              title={isPurchase ? 'More details' : 'Stock & variant'}
+              subtitle={
+                isPurchase
+                  ? 'Optional size, stone details, image and attributes'
+                  : 'Quantity, size, and extra details'
+              }
             />
             <div className="product-form-grid-3">
-              <Field label="Stock quantity" required>
-                <UnitField
-                  value={form.stockQty}
-                  onChange={(value) => updateField('stockQty', value)}
-                  step="1"
-                  unit="pcs"
-                  placeholder="e.g. 3"
-                  icon={<Package size={14} strokeWidth={1.75} />}
-                />
-              </Field>
+              {isPurchase ? null : (
+                <Field
+                  label="Stock quantity"
+                  required
+                  hint={
+                    product?.trackPieces
+                      ? 'Counted from pieces. Change stock in Adjust stock or on a purchase.'
+                      : form.trackPieces
+                        ? 'One row below for each piece.'
+                        : undefined
+                  }
+                >
+                  <UnitField
+                    value={form.stockQty}
+                    onChange={(value) => updateField('stockQty', value)}
+                    step="1"
+                    unit="pcs"
+                    placeholder="e.g. 3"
+                    disabled={product?.trackPieces === true}
+                    icon={<Package size={14} strokeWidth={1.75} />}
+                  />
+                </Field>
+              )}
               <Field label="Size">
                 <Control icon={<Ruler size={14} strokeWidth={1.75} />}>
                   <input
@@ -591,28 +707,179 @@ export function ProductFormModal({
                 </Control>
               </Field>
             </div>
-            <div className="product-attr-editor">
-              <div className="product-attr-head">
-                <span>HUID (Hallmark Unique ID)</span>
-              </div>
+            {isPurchase ? (
+              <ImageField
+                imagePath={form.imagePath}
+                metal={form.metal}
+                previewName={previewName}
+                onPick={pickImage}
+                onRemove={() => updateField('imagePath', '')}
+              />
+            ) : null}
+            {isPurchase ? (
               <p className="muted">
-                {taggedHuidCount} of {stockQty} pieces tagged · optional
+                Stock, pieces and HUIDs are added when this purchase is finalized, so they are not
+                entered here.
               </p>
-              {stockQty === 0 && taggedHuidCount === 0 ? (
-                <p className="muted">No HUID needed while stock is 0.</p>
-              ) : (
-                <HuidEntryList
-                  values={form.huids}
-                  error={errors.huids}
-                  allowRemove={form.huids.length > stockQty}
-                  onChange={(huids) => {
-                    setForm((current) => ({ ...current, huids }))
-                    setErrors((current) => ({ ...current, huids: undefined }))
-                    setFormError(null)
-                  }}
+            ) : form.trackPieces && product?.trackPieces ? (
+              <div className="product-attr-editor">
+                <div className="product-attr-head">
+                  <span>Pieces</span>
+                </div>
+                <p className="muted">
+                  Every ornament gets its own tag, weight, HUID and cost. New pieces are created by
+                  a purchase or by Adjust stock.
+                </p>
+              </div>
+            ) : form.trackPieces ? (
+              <div className="inward-pieces opening-pieces">
+                <div className="inward-pieces-head">
+                  <strong>Pieces ({form.openingPieces.length})</strong>
+                  <button type="button" className="btn secondary" onClick={addOpeningPiece}>
+                    <Plus size={14} strokeWidth={2} aria-hidden />
+                    Add piece
+                  </button>
+                </div>
+                <p className="muted">
+                  Enter each ornament. A tag is assigned when you save. HUID is optional.
+                </p>
+                {errors.pieces ? <span className="product-form-error">{errors.pieces}</span> : null}
+                {form.openingPieces.length === 0 ? (
+                  <p className="muted">Set a stock quantity to enter each piece.</p>
+                ) : (
+                  <div className="inward-pieces-wrap">
+                    <table className="inward-pieces-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>HUID</th>
+                          <th>Gross</th>
+                          <th>Stone</th>
+                          <th>Net</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {form.openingPieces.map((piece, index) => (
+                          <tr key={piece.id}>
+                            <td>{index + 1}</td>
+                            <td>
+                              <input
+                                className="input"
+                                aria-label={`Piece ${index + 1} HUID`}
+                                placeholder="Optional"
+                                value={piece.huid}
+                                onChange={(event) =>
+                                  updateOpeningPiece(piece.id, {
+                                    huid: event.target.value.toUpperCase().replace(/[^0-9A-Z]/g, ''),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="input"
+                                type="number"
+                                step="0.001"
+                                min={0}
+                                aria-label={`Piece ${index + 1} gross weight`}
+                                value={piece.grossWeight}
+                                onChange={(event) =>
+                                  updateOpeningPiece(piece.id, {
+                                    grossWeight: parseNumericField(event.target.value),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="input"
+                                type="number"
+                                step="0.001"
+                                min={0}
+                                aria-label={`Piece ${index + 1} stone weight`}
+                                value={piece.stoneWeight}
+                                onChange={(event) =>
+                                  updateOpeningPiece(piece.id, {
+                                    stoneWeight: parseNumericField(event.target.value),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="input"
+                                type="number"
+                                step="0.001"
+                                min={0}
+                                aria-label={`Piece ${index + 1} net weight`}
+                                value={piece.netWeight}
+                                onChange={(event) =>
+                                  updateOpeningPiece(piece.id, {
+                                    netWeight: parseNumericField(event.target.value),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn ghost icon-btn"
+                                aria-label={`Remove piece ${index + 1}`}
+                                onClick={() => removeOpeningPiece(piece.id)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="product-attr-editor">
+                <div className="product-attr-head">
+                  <span>HUID (Hallmark Unique ID)</span>
+                </div>
+                <p className="muted">
+                  {taggedHuidCount} of {stockQty} pieces tagged · optional
+                </p>
+                {stockQty === 0 && taggedHuidCount === 0 ? (
+                  <p className="muted">No HUID needed while stock is 0.</p>
+                ) : (
+                  <HuidEntryList
+                    values={form.huids}
+                    error={errors.huids}
+                    allowRemove={form.huids.length > stockQty}
+                    onChange={(huids) => {
+                      setForm((current) => ({ ...current, huids }))
+                      setErrors((current) => ({ ...current, huids: undefined }))
+                      setFormError(null)
+                    }}
+                  />
+                )}
+              </div>
+            )}
+            {isPurchase ? null : (
+              <label className="product-form-toggle">
+                <input
+                  type="checkbox"
+                  checked={form.trackPieces}
+                  disabled={product?.trackPieces === true}
+                  onChange={(event) => updateField('trackPieces', event.target.checked)}
                 />
-              )}
-            </div>
+                <span>
+                  <strong>Track each piece</strong>
+                  <span>
+                    {product?.trackPieces
+                      ? 'This product already tracks each piece. It cannot be turned off.'
+                      : 'Give every ornament its own tag, weight and HUID. On by default.'}
+                  </span>
+                </span>
+              </label>
+            )}
             <label className="product-form-toggle">
               <input
                 type="checkbox"

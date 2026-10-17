@@ -361,7 +361,20 @@ function productLines(db: ReturnType<typeof getDatabase>, scope: Scope, metal?: 
   const rows = rowsOf(
     db,
     `SELECT p.name AS product, p.metal, p.category, p.purity, p.stock_qty AS qty,
-            p.net_weight AS net_weight, p.stock_qty * p.net_weight AS stock_weight
+            CASE
+              WHEN p.track_pieces = 1 THEN
+                CASE WHEN p.stock_qty > 0 THEN
+                  COALESCE((SELECT SUM(ip.net_weight) FROM inventory_pieces ip
+                            WHERE ip.product_id = p.id AND ip.status = 'in_stock'), 0) / p.stock_qty
+                ELSE p.net_weight END
+              ELSE p.net_weight
+            END AS net_weight,
+            CASE
+              WHEN p.track_pieces = 1 THEN
+                COALESCE((SELECT SUM(ip.net_weight) FROM inventory_pieces ip
+                          WHERE ip.product_id = p.id AND ip.status = 'in_stock'), 0)
+              ELSE p.stock_qty * p.net_weight
+            END AS stock_weight
      FROM products p
      WHERE ${where}
      ORDER BY p.metal, p.category, p.name`,
@@ -649,13 +662,68 @@ const runners: Record<ReportId, (db: ReturnType<typeof getDatabase>, scope: Scop
   'current-stock': (db, scope) => productLines(db, scope),
   'gold-stock': (db, scope) => productLines(db, scope, 'Gold'),
   'silver-stock': (db, scope) => productLines(db, scope, 'Silver'),
+  'piece-register': (db, scope) => {
+    const params: unknown[] = []
+    const clauses = ['1 = 1']
+    let where = clauses.join(' AND ')
+    where += metalClause('p.metal', scope, params)
+    where += productClause('p.id', scope, params)
+    const rows = rowsOf(
+      db,
+      `SELECT ip.tag_code AS tag, ip.huid AS huid, p.name AS product, p.metal AS metal,
+              p.category AS category, ip.net_weight AS net_weight, ip.cost AS cost,
+              ip.status AS status, COALESCE(i.inward_no, '') AS inward_no,
+              COALESCE(v.invoice_no, '') AS invoice_no
+       FROM inventory_pieces ip
+       JOIN products p ON p.id = ip.product_id
+       LEFT JOIN inwards i ON i.id = ip.inward_id
+       LEFT JOIN invoices v ON v.id = ip.invoice_id
+       WHERE ${where}
+       ORDER BY p.name, ip.tag_code`,
+      params,
+    )
+    return result(
+      [
+        { key: 'tag', label: 'Tag' },
+        { key: 'huid', label: 'HUID' },
+        { key: 'product', label: 'Product' },
+        { key: 'metal', label: 'Metal' },
+        { key: 'category', label: 'Category' },
+        { key: 'netWeight', label: 'Net (g)', align: 'right', format: 'weight', total: true },
+        { key: 'cost', label: 'Cost', align: 'right', format: 'money', total: true },
+        { key: 'status', label: 'Status' },
+        { key: 'inwardNo', label: 'Purchase' },
+        { key: 'invoiceNo', label: 'Bill' },
+      ],
+      rows.map((row) => ({
+        tag: text(row.tag),
+        huid: text(row.huid),
+        product: text(row.product),
+        metal: text(row.metal),
+        category: text(row.category),
+        netWeight: weight(row.net_weight),
+        cost: money(row.cost),
+        status: text(row.status).replace(/_/g, ' '),
+        inwardNo: text(row.inward_no),
+        invoiceNo: text(row.invoice_no),
+      })),
+    )
+  },
   'product-stock': (db, scope) => {
     const params: unknown[] = []
     const metal = metalClause('p.metal', scope, params)
     const rows = rowsOf(
       db,
       `SELECT p.category AS category, p.metal AS metal, COUNT(*) AS products,
-              SUM(p.stock_qty) AS qty, SUM(p.stock_qty * p.net_weight) AS weight
+              SUM(p.stock_qty) AS qty,
+              SUM(
+                CASE
+                  WHEN p.track_pieces = 1 THEN
+                    COALESCE((SELECT SUM(ip.net_weight) FROM inventory_pieces ip
+                              WHERE ip.product_id = p.id AND ip.status = 'in_stock'), 0)
+                  ELSE p.stock_qty * p.net_weight
+                END
+              ) AS weight
        FROM products p
        WHERE 1 = 1${metal}
        GROUP BY p.category, p.metal

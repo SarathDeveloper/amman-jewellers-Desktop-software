@@ -73,6 +73,9 @@ export function getMigrations(): { version: number; sql: string; disableForeignK
     { version: 63, sql: loadMigrationSql('063_shop_address_line_break.sql') },
     { version: 64, sql: loadMigrationSql('064_invoice_guardian_snap.sql') },
     { version: 65, sql: loadMigrationSql('065_clear_orphan_guardian_snap.sql') },
+    { version: 66, sql: loadMigrationSql('066_purchase_invoice_fields.sql') },
+    { version: 67, sql: loadMigrationSql('067_inward_cancel_audit.sql'), disableForeignKeys: true },
+    { version: 68, sql: loadMigrationSql('068_inventory_pieces.sql') },
   ]
 }
 

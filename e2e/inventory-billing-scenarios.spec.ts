@@ -132,6 +132,7 @@ test.describe('Inventory to billing — live Tauri scenarios', () => {
     await purchase.getByRole('button', { name: 'New' }).click()
     const supplierDialog = window.getByRole('dialog', { name: 'Add supplier' })
     await supplierDialog.getByLabel('Name').fill(supplierName)
+    await supplierDialog.getByLabel('Phone').fill(`9${String(stamp).slice(-9)}`)
     await supplierDialog.getByRole('button', { name: 'Save' }).click()
     await expect(supplierDialog).toBeHidden()
     await purchase.getByLabel('Supplier').selectOption({ label: supplierName })

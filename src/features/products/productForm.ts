@@ -11,12 +11,73 @@ import { isGold, isSilver, stockTone, type StockTone } from './productDisplay'
 
 export type ProductAttributeRow = { id: string; key: string; value: string }
 
+/** One opening ornament typed on the product form. Tags are assigned on save. */
+export type OpeningPieceRow = {
+  id: string
+  grossWeight: NumericField
+  stoneWeight: NumericField
+  netWeight: NumericField
+  huid: string
+  /** Copies the design weights until this row is edited. */
+  followsDesign: boolean
+}
+
 let attributeIdSeq = 0
+let openingPieceSeq = 0
 
 /** Stable row id so React keeps input focus when a row in the middle is removed. */
 export function newAttributeRow(key = '', value = ''): ProductAttributeRow {
   attributeIdSeq += 1
   return { id: `attr-${attributeIdSeq}`, key, value }
+}
+
+export function newOpeningPiece(
+  template: Pick<OpeningPieceRow, 'grossWeight' | 'stoneWeight' | 'netWeight'> = {
+    grossWeight: '',
+    stoneWeight: '',
+    netWeight: '',
+  },
+  huid = '',
+): OpeningPieceRow {
+  openingPieceSeq += 1
+  return {
+    id: `piece-${openingPieceSeq}`,
+    grossWeight: template.grossWeight,
+    stoneWeight: template.stoneWeight,
+    netWeight: template.netWeight,
+    huid,
+    followsDesign: true,
+  }
+}
+
+/** Grows or shrinks the piece rows to match the stock quantity. */
+export function resizeOpeningPieces(
+  current: OpeningPieceRow[],
+  qty: number,
+  template: Pick<OpeningPieceRow, 'grossWeight' | 'stoneWeight' | 'netWeight'>,
+): OpeningPieceRow[] {
+  const count = Math.max(0, Math.trunc(qty))
+  if (current.length === count) return current
+  if (current.length > count) return current.slice(0, count)
+  const extra = Array.from({ length: count - current.length }, () => newOpeningPiece(template))
+  return [...current, ...extra]
+}
+
+/** Piece rows that still follow the design pick up its latest weights. */
+export function syncFollowingPieces(form: ProductFormState): ProductFormState {
+  return {
+    ...form,
+    openingPieces: form.openingPieces.map((piece) =>
+      piece.followsDesign
+        ? {
+            ...piece,
+            grossWeight: form.grossWeight,
+            stoneWeight: form.stoneWeight,
+            netWeight: form.netWeight,
+          }
+        : piece,
+    ),
+  }
 }
 
 export type ProductFormState = Omit<
@@ -35,10 +96,17 @@ export type ProductFormState = Omit<
   stoneDetails: string
   isActive: boolean
   huids: string[]
+  /** One row per ornament; stock is then changed only through pieces. */
+  trackPieces: boolean
+  /** Opening pieces typed with the product. Empty once the product already tracks pieces. */
+  openingPieces: OpeningPieceRow[]
 }
 
 export type ProductFormErrors = Partial<
-  Record<'name' | 'category' | 'metal' | 'purity' | 'netWeight' | 'stoneWeight' | 'huids', string>
+  Record<
+    'name' | 'category' | 'metal' | 'purity' | 'netWeight' | 'stoneWeight' | 'huids' | 'pieces',
+    string
+  >
 >
 
 export const emptyProductForm: ProductFormState = {
@@ -59,6 +127,8 @@ export const emptyProductForm: ProductFormState = {
   attributes: [],
   isActive: true,
   huids: [''],
+  trackPieces: true,
+  openingPieces: [newOpeningPiece()],
 }
 
 export function defaultPurityForMetal(metal: string): string {
@@ -73,6 +143,7 @@ export function productToForm(product: Product | null, parent?: Product | null):
   if (!product && parent) {
     return {
       ...emptyProductForm,
+      openingPieces: [newOpeningPiece()],
       name: parent.name,
       category: parent.category || STOCK_ITEM_NAMES[0],
       metal: parent.metal || 'Gold',
@@ -82,7 +153,7 @@ export function productToForm(product: Product | null, parent?: Product | null):
       makingCharges: parent.makingCharges || '',
     }
   }
-  if (!product) return emptyProductForm
+  if (!product) return { ...emptyProductForm, openingPieces: [newOpeningPiece()] }
   const metal = product.metal || 'Gold'
   return {
     name: product.name,
@@ -102,6 +173,17 @@ export function productToForm(product: Product | null, parent?: Product | null):
     attributes: attributesToRows(product.attributes),
     isActive: product.isActive,
     huids: resizeHuidRows(product.huids ?? [], product.stockQty, true),
+    trackPieces: product.trackPieces,
+    openingPieces: product.trackPieces
+      ? []
+      : resizeOpeningPieces([], product.stockQty, {
+          grossWeight: product.grossWeight,
+          stoneWeight: product.stoneWeight,
+          netWeight: product.netWeight,
+        }).map((piece, index) => ({
+          ...piece,
+          huid: (product.huids ?? [])[index] ?? '',
+        })),
   }
 }
 
@@ -113,12 +195,23 @@ export function formToProductInput(form: ProductFormState): ProductInput {
   )
   const seen = new Set<string>()
   const huids: string[] = []
-  for (const raw of form.huids) {
+  const pieceRows = form.trackPieces ? form.openingPieces : []
+  const huidSource = pieceRows.length > 0 ? pieceRows.map((piece) => piece.huid) : form.huids
+  for (const raw of huidSource) {
     const huid = raw.trim().toUpperCase()
     if (!huid || seen.has(huid)) continue
     seen.add(huid)
     huids.push(huid)
   }
+  const pieces =
+    pieceRows.length > 0
+      ? pieceRows.map((piece) => ({
+          huid: piece.huid.trim().toUpperCase(),
+          grossWeight: numericFieldToNumber(piece.grossWeight),
+          stoneWeight: numericFieldToNumber(piece.stoneWeight),
+          netWeight: numericFieldToNumber(piece.netWeight),
+        }))
+      : undefined
   return {
     name: form.name.trim(),
     category: form.category.trim(),
@@ -137,7 +230,25 @@ export function formToProductInput(form: ProductFormState): ProductInput {
     attributes,
     isActive: form.isActive,
     huids,
+    trackPieces: form.trackPieces,
+    pieces,
   }
+}
+
+/**
+ * Turns the form into the create/update payload. A product created from inside
+ * a purchase must carry no stock of its own: the purchase line adds the pieces
+ * on finalize, so a stock quantity here would count them twice.
+ */
+export function productInputForSource(
+  form: ProductFormState,
+  source: 'products' | 'purchase',
+): ProductInput {
+  const effective =
+    source === 'purchase'
+      ? { ...form, stockQty: 0, huids: [], trackPieces: true, openingPieces: [] }
+      : form
+  return formToProductInput(effective)
 }
 
 function mergePreferred(preferred: readonly string[], extras: string[]): string[] {
@@ -231,6 +342,38 @@ export function validateProductForm(
   const stockQty = Math.max(0, Math.trunc(numericFieldToNumber(form.stockQty)))
   if (!errors.huids && filledHuidCount > stockQty) {
     errors.huids = 'A product cannot have more HUIDs than pieces in stock'
+  }
+
+  if (form.trackPieces && form.openingPieces.length > 0) {
+    if (form.openingPieces.length !== stockQty) {
+      errors.pieces = 'Enter one row for each piece in stock'
+    }
+    const seenPieceHuids = new Set<string>()
+    for (const [index, piece] of form.openingPieces.entries()) {
+      const huid = piece.huid.trim().toUpperCase()
+      const pieceGross = numericFieldToNumber(piece.grossWeight)
+      const pieceNet = numericFieldToNumber(piece.netWeight)
+      const pieceStone = numericFieldToNumber(piece.stoneWeight)
+      if (!errors.pieces && pieceNet <= 0) {
+        errors.pieces = `Enter the net weight for piece ${index + 1}`
+      }
+      if (!errors.pieces && pieceGross > 0 && pieceNet > pieceGross) {
+        errors.pieces = `Piece ${index + 1} net weight cannot exceed gross weight`
+      }
+      if (!errors.pieces && pieceGross > 0 && pieceStone > pieceGross) {
+        errors.pieces = `Piece ${index + 1} stone weight cannot exceed gross weight`
+      }
+      if (!huid) continue
+      if (!/^[0-9A-Z]+$/.test(huid)) {
+        errors.pieces = 'HUID can only be letters and digits'
+        break
+      }
+      if (seenPieceHuids.has(huid)) {
+        errors.pieces = `HUID ${huid} is duplicated`
+        break
+      }
+      seenPieceHuids.add(huid)
+    }
   }
 
   return errors

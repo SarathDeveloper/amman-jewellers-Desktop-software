@@ -37,6 +37,7 @@ export function buildPurchaseInvoiceData(inward: Inward): PurchaseInvoiceData {
 
   return {
     invoiceNo: inward.inwardNo,
+    supplierInvoiceNo: inward.supplierInvoiceNo,
     invoiceDate: formatDisplayDate(inward.inwardDate),
     supplierName: inward.supplierName,
     supplierGstin: inward.supplierGstin,
@@ -44,6 +45,8 @@ export function buildPurchaseInvoiceData(inward: Inward): PurchaseInvoiceData {
     supplierAddressLines: splitAddress(inward.supplierAddress),
     lines,
     subtotal: inward.subtotal,
+    discount: inward.discount,
+    taxable: inward.taxable,
     cgst: inward.cgst,
     sgst: inward.sgst,
     igst: inward.igst,
@@ -52,6 +55,11 @@ export function buildPurchaseInvoiceData(inward: Inward): PurchaseInvoiceData {
     amountInWords: amountInWords(inward.total),
     paymentMode: inward.paymentMode,
     notes: inward.notes,
-    watermark: inward.status === 'draft' ? 'DRAFT' : null,
+    watermark:
+      inward.status === 'draft'
+        ? 'DRAFT'
+        : inward.status === 'cancelled'
+          ? 'CANCELLED'
+          : null,
   }
 }

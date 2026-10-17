@@ -25,6 +25,7 @@ describe('stock IPC', () => {
       'Nanal',
       'Backchain',
       'D Studs',
+      'Bullion',
     ])
   })
 

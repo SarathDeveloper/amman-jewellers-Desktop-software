@@ -82,8 +82,13 @@ export function PurchaseInvoicePrint({
           </div>
           <div className="purchase-invoice-meta-right">
             <p>
-              <span>Invoice No</span> {data.invoiceNo}
+              <span>Purchase No</span> {data.invoiceNo}
             </p>
+            {data.supplierInvoiceNo ? (
+              <p>
+                <span>Supplier Inv</span> {data.supplierInvoiceNo}
+              </p>
+            ) : null}
             <p>
               <span>Date</span> {data.invoiceDate}
             </p>
@@ -160,9 +165,21 @@ export function PurchaseInvoicePrint({
           </div>
           <div className="purchase-invoice-totals">
             <div className="purchase-invoice-totals-row">
-              <span>Taxable</span>
+              <span>Subtotal</span>
               <span>{money(data.subtotal)}</span>
             </div>
+            {data.discount > 0 ? (
+              <div className="purchase-invoice-totals-row">
+                <span>Discount</span>
+                <span>-{money(data.discount)}</span>
+              </div>
+            ) : null}
+            {data.taxable !== data.subtotal ? (
+              <div className="purchase-invoice-totals-row">
+                <span>Taxable</span>
+                <span>{money(data.taxable)}</span>
+              </div>
+            ) : null}
             {data.cgst > 0 ? (
               <div className="purchase-invoice-totals-row">
                 <span>CGST 1.5%</span>

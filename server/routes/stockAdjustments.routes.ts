@@ -8,6 +8,7 @@ import { createAndFinalizeStockAddInward } from '../inwards/stockAdd'
 import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
 import { appendHuids, listHuids, removeHuids, requireHuidsForNewPieces } from '../products/huids'
 import { recordAdjustment } from '../stock/movements'
+import { loadPiece, markPieceStatus } from '../stock/pieces'
 
 const router = Router()
 
@@ -70,6 +71,48 @@ function applyAdjustmentHuids(
         throw new Error(max === 1 ? 'Select at most 1 HUID to remove' : `Select at most ${max} HUIDs to remove`)
       }
       removeHuids(db, line.productId, huids)
+    }
+  }
+}
+
+function isTrackedProduct(db: ReturnType<typeof getDatabase>, productId: number): boolean {
+  const row = db
+    .prepare('SELECT track_pieces FROM products WHERE id = ?')
+    .get(productId) as { track_pieces: number } | undefined
+  return (row?.track_pieces ?? 0) === 1
+}
+
+/**
+ * Removing stock from a tracked product means naming the pieces. Each one is
+ * marked damaged or lost, which writes its own movement and lowers `stock_qty`.
+ */
+function applyTrackedPieceRemoval(
+  db: ReturnType<typeof getDatabase>,
+  lines: StockAdjustmentInput['lines'],
+  adjustmentDate: string,
+  operatorId: number | null,
+): void {
+  for (const line of lines) {
+    if (line.productId == null) continue
+    const pieceIds = line.pieceIds ?? []
+    const required = Math.abs(line.qtyDelta)
+    if (pieceIds.length !== required) {
+      throw new Error(
+        `This product tracks each piece. Select ${required} piece${required === 1 ? '' : 's'} to remove.`,
+      )
+    }
+    for (const pieceId of pieceIds) {
+      const piece = loadPiece(db, pieceId)
+      if (!piece || piece.product_id !== line.productId) {
+        throw new Error('Pick pieces that belong to this product')
+      }
+      markPieceStatus(db, {
+        pieceId,
+        status: line.reason === 'lost' ? 'lost' : 'damaged',
+        reason: line.reason || 'Adjust stock',
+        movementDate: adjustmentDate,
+        operatorId,
+      })
     }
   }
 }
@@ -195,11 +238,22 @@ router.post(
         db.prepare('UPDATE stock_adjustments SET inward_id = ? WHERE id = ?').run(inwardId, adjustmentId)
       }
       if (otherLines.length > 0) {
-        applyAdjustmentHuids(db, otherLines)
+        const pieceLines = otherLines.filter(
+          (line) =>
+            line.productId != null &&
+            line.qtyDelta < 0 &&
+            isTrackedProduct(db, line.productId),
+        )
+        const plainLines = otherLines.filter((line) => !pieceLines.includes(line))
+        if (pieceLines.length > 0) {
+          applyTrackedPieceRemoval(db, pieceLines, input.adjustmentDate, req.user?.id ?? null)
+        }
+        if (plainLines.length === 0) return mapAdjustment(db, getAdjustmentRow(db, adjustmentId))
+        applyAdjustmentHuids(db, plainLines)
         recordAdjustment(db, {
           adjustmentId,
           adjustmentDate: input.adjustmentDate,
-          lines: otherLines.map((line) => ({
+          lines: plainLines.map((line) => ({
             productId: line.productId ?? null,
             metal: line.metal.trim(),
             category: line.category.trim(),

@@ -1,6 +1,8 @@
-import { ArrowLeft, FileText, Layers, PackagePlus, Pencil, Scale, SlidersHorizontal, Trash2 } from 'lucide-react'
-import type { Product } from '@shared/types'
+import { useEffect, useState } from 'react'
+import { ArrowLeft, FileText, Layers, PackagePlus, Pencil, Scale, SlidersHorizontal, Tag, Trash2 } from 'lucide-react'
+import type { InventoryPiece, Product } from '@shared/types'
 import { Modal } from '../../components/Modal'
+import { api } from '../../lib/api'
 import { formatCurrency, formatWeight } from '../../lib/format'
 import {
   childProducts,
@@ -36,22 +38,22 @@ export function ProductDetailModal({
   product,
   products,
   onClose,
-  onAddVariant,
   onAddInward,
   onAdjust,
   onEdit,
   onDelete,
   onViewChild,
+  onConverted,
 }: {
   product: Product
   products: Product[]
   onClose: () => void
-  onAddVariant: (product: Product) => void
   onAddInward: (product: Product) => void
   onAdjust: (product: Product) => void
   onEdit: (product: Product) => void
   onDelete: (product: Product) => void
   onViewChild: (product: Product) => void
+  onConverted?: (product: Product) => void
 }) {
   const title = variantDisplayName(product)
   const stockQty = effectiveStockQty(product, products)
@@ -59,10 +61,50 @@ export function ProductDetailModal({
   const ownStockQty = product.stockQty
   const hasVariants = productHasVariants(products, product.id)
   const variants = childProducts(products, product.id)
-  const isParent = product.parentId == null
   const attributeEntries = Object.entries(product.attributes).filter(
     ([key, value]) => key.trim() && value.trim(),
   )
+  const [pieces, setPieces] = useState<InventoryPiece[]>([])
+  const [piecesLoading, setPiecesLoading] = useState(false)
+  const [pieceError, setPieceError] = useState<string | null>(null)
+  const [converting, setConverting] = useState(false)
+
+  useEffect(() => {
+    if (!product.trackPieces) {
+      setPieces([])
+      return
+    }
+    let cancelled = false
+    setPiecesLoading(true)
+    setPieceError(null)
+    api
+      .listProductPieces(product.id)
+      .then((rows) => {
+        if (!cancelled) setPieces(rows)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setPieceError(err instanceof Error ? err.message : 'Failed to load pieces')
+      })
+      .finally(() => {
+        if (!cancelled) setPiecesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [product.id, product.trackPieces])
+
+  async function startTracking() {
+    setConverting(true)
+    setPieceError(null)
+    try {
+      const updated = await api.convertProductToTracked(product.id)
+      onConverted?.(updated)
+    } catch (err) {
+      setPieceError(err instanceof Error ? err.message : 'Failed to start piece tracking')
+    } finally {
+      setConverting(false)
+    }
+  }
 
   return (
     <Modal className="product-detail-modal" title={title} hideTitle footer={null} onClose={onClose}>
@@ -83,17 +125,12 @@ export function ProductDetailModal({
             </div>
           </div>
           <div className="product-detail-header-actions">
-            {isParent ? (
-              <button type="button" className="btn secondary" onClick={() => onAddVariant(product)}>
-                <Layers size={16} strokeWidth={2} aria-hidden />
-                Add variant
-              </button>
-            ) : (
+            {!hasVariants ? (
               <button type="button" className="btn secondary" onClick={() => onAddInward(product)}>
                 <PackagePlus size={16} strokeWidth={2} aria-hidden />
                 Add stock
               </button>
-            )}
+            ) : null}
             {!hasVariants ? (
               <button type="button" className="btn secondary" onClick={() => onAdjust(product)}>
                 <SlidersHorizontal size={16} strokeWidth={2} aria-hidden />
@@ -181,6 +218,73 @@ export function ProductDetailModal({
               </ul>
             </section>
           ) : null}
+          {product.trackPieces ? (
+            <section className="product-detail-card product-detail-pieces-card">
+              <div className="product-detail-card-head">
+                <Tag size={16} strokeWidth={1.75} aria-hidden />
+                <h3>Pieces</h3>
+                <span className="product-detail-variant-count">
+                  {pieces.filter((piece) => piece.status === 'in_stock').length} in stock
+                </span>
+              </div>
+              {pieceError ? <p className="form-error">{pieceError}</p> : null}
+              {piecesLoading ? (
+                <p className="muted">Loading pieces…</p>
+              ) : pieces.length === 0 ? (
+                <p className="muted">No pieces yet. They are created by a purchase or Adjust stock.</p>
+              ) : (
+                <div className="product-detail-pieces-wrap">
+                  <table className="product-detail-pieces">
+                    <thead>
+                      <tr>
+                        <th>Tag</th>
+                        <th>HUID</th>
+                        <th>Net wt</th>
+                        <th>Cost</th>
+                        <th>Status</th>
+                        <th>Purchase</th>
+                        <th>Bill</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pieces.map((piece) => (
+                        <tr key={piece.id}>
+                          <td className="num">{piece.tagCode}</td>
+                          <td>{piece.huid || '—'}</td>
+                          <td className="num">{formatWeight(piece.netWeight)}</td>
+                          <td className="num">
+                            {piece.cost == null ? '—' : formatCurrency(piece.cost)}
+                          </td>
+                          <td className="product-detail-piece-status">{piece.status}</td>
+                          <td>{piece.inwardNo || '—'}</td>
+                          <td>{piece.invoiceNo || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          ) : (
+            <section className="product-detail-card">
+              <div className="product-detail-card-head">
+                <Tag size={16} strokeWidth={1.75} aria-hidden />
+                <h3>Piece tracking</h3>
+              </div>
+              <p className="muted">
+                Off. Turn it on to give each of the {ownStockQty} piece
+                {ownStockQty === 1 ? '' : 's'} its own tag, weight and HUID.
+              </p>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={converting}
+                onClick={() => void startTracking()}
+              >
+                {converting ? 'Starting…' : 'Start tracking pieces'}
+              </button>
+            </section>
+          )}
         </div>
       </div>
     </Modal>

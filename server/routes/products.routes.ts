@@ -2,11 +2,19 @@ import { Router } from 'express'
 import { idSchema, productInputSchema } from '@shared/schemas'
 import type { Product, ProductAttributes, ProductInput } from '@shared/types'
 import { EMPTY_PRODUCT_VARIANT_FIELDS } from '@shared/types'
+import { roundWeight } from '@shared/billing/pricing'
 import { getDatabase } from '../db'
 import { assertCategoryExists, listCategoryRows, mapCategory } from '../db/stockCategories'
 import { asyncHandler, parseBody, parseIdParam } from '../lib/http'
 import { assertUniqueHuids, loadHuidsFor, replaceHuids } from '../products/huids'
 import { recordOpeningSnapshot, recordPieceMovement } from '../stock/movements'
+import {
+  convertProductToTracked,
+  createOpeningPieces,
+  findPieceByTagOrHuid,
+  listInStockPieces,
+  listPiecesForProduct,
+} from '../stock/pieces'
 
 const router = Router()
 
@@ -29,6 +37,7 @@ type ProductRow = {
   stone_details: string | null
   attributes: string | null
   is_active: number | null
+  track_pieces: number | null
 }
 
 function parseAttributes(raw: string | null | undefined): ProductAttributes {
@@ -75,6 +84,7 @@ function mapProduct(row: ProductRow, huids: string[] = []): Product {
     attributes: parseAttributes(row.attributes),
     isActive: (row.is_active ?? 1) === 1,
     huids,
+    trackPieces: (row.track_pieces ?? 0) === 1,
   }
 }
 
@@ -252,12 +262,50 @@ router.get(
 )
 
 router.get(
+  '/pieces/lookup',
+  asyncHandler((req, res) => {
+    const term = typeof req.query.term === 'string' ? req.query.term.trim() : ''
+    const piece = findPieceByTagOrHuid(getDatabase(), term)
+    if (!piece) {
+      res.status(404).json({ error: `No piece matches ${term}` })
+      return
+    }
+    res.json(piece)
+  }),
+)
+
+router.get(
   '/:id/variants',
   asyncHandler((req, res) => {
     const id = parseIdParam(req.params.id)
     const db = getDatabase()
     requireProductRow(db, id)
     res.json(mapProductRows(db, listProductRows(db, { parentId: id })))
+  }),
+)
+
+router.get(
+  '/:id/pieces',
+  asyncHandler((req, res) => {
+    const id = parseIdParam(req.params.id)
+    const db = getDatabase()
+    requireProductRow(db, id)
+    const onlyInStock = req.query.status === 'in_stock'
+    res.json(onlyInStock ? listInStockPieces(db, id) : listPiecesForProduct(db, id))
+  }),
+)
+
+router.post(
+  '/:id/track-pieces',
+  asyncHandler((req, res) => {
+    const id = parseIdParam(req.params.id)
+    const db = getDatabase()
+    const tx = db.transaction(() => {
+      requireProductRow(db, id)
+      convertProductToTracked(db, id)
+      return requireProductRow(db, id)
+    })
+    res.json(mapProductRows(getDatabase(), [tx()])[0])
   }),
 )
 
@@ -283,7 +331,13 @@ router.post(
       assertCategoryExists(db, input.category)
       const variantCode = variantCodeValue(input.variantCode)
       assertUniqueVariantCode(db, variantCode)
-      const huids = input.huids ?? []
+      const openingPieces = input.pieces ?? []
+      const huids =
+        openingPieces.length > 0
+          ? openingPieces
+              .map((piece) => (piece.huid ?? '').trim().toUpperCase())
+              .filter((huid) => huid.length > 0)
+          : (input.huids ?? [])
       assertUniqueHuids(db, huids)
       const result = db
         .prepare(
@@ -311,12 +365,29 @@ router.post(
           input.isActive === false ? 0 : 1,
         )
       const id = Number(result.lastInsertRowid)
-      replaceHuids(db, id, huids)
       if (input.stockQty > 0) {
+        const pieceNet = openingPieces.reduce((sum, piece) => sum + piece.netWeight, 0)
         recordOpeningSnapshot(db, id, {
           operatorId: req.user?.id ?? null,
           reason: 'Product create',
+          weightDelta: openingPieces.length > 0 ? roundWeight(pieceNet) : undefined,
         })
+      }
+      // New products default to piece tracking. Rows typed on the form keep their
+      // own weights; otherwise each piece copies the design weight.
+      if (openingPieces.length > 0) {
+        createOpeningPieces(db, id, openingPieces)
+      } else if (input.trackPieces === true) {
+        if (input.stockQty > 0) {
+          replaceHuids(db, id, huids)
+          convertProductToTracked(db, id)
+        } else {
+          db.prepare(
+            `UPDATE products SET track_pieces = 1, updated_at = datetime('now') WHERE id = ?`,
+          ).run(id)
+        }
+      } else {
+        replaceHuids(db, id, huids)
       }
       return requireProductRow(db, id)
     })
@@ -345,8 +416,23 @@ router.put(
       assertCategoryExists(db, input.category)
       const variantCode = variantCodeValue(input.variantCode)
       assertUniqueVariantCode(db, variantCode, id)
-      const huids = input.huids ?? []
+      const openingPieces = input.pieces ?? []
+      const huids =
+        openingPieces.length > 0
+          ? openingPieces
+              .map((piece) => (piece.huid ?? '').trim().toUpperCase())
+              .filter((huid) => huid.length > 0)
+          : (input.huids ?? [])
       assertUniqueHuids(db, huids, id)
+      const tracksPieces = (existing.track_pieces ?? 0) === 1
+      if (tracksPieces && input.trackPieces === false) {
+        throw new Error('Piece tracking cannot be turned off once a product tracks each piece')
+      }
+      if (tracksPieces && input.stockQty !== existing.stock_qty) {
+        throw new Error(
+          'This product tracks each piece. Change its stock in Adjust stock, one piece at a time.',
+        )
+      }
       db.prepare(
         `UPDATE products SET
           name = ?, category = ?, metal = ?, purity = ?,
@@ -372,9 +458,37 @@ router.put(
         input.isActive === false ? 0 : 1,
         id,
       )
-      replaceHuids(db, id, huids)
+      const willCreatePieces = !tracksPieces && openingPieces.length > 0 && input.trackPieces === true
+      if (!tracksPieces && !willCreatePieces) {
+        replaceHuids(db, id, huids)
+      }
       const delta = input.stockQty - existing.stock_qty
-      if (delta !== 0) {
+      if (willCreatePieces) {
+        const pieceNet = roundWeight(openingPieces.reduce((sum, piece) => sum + piece.netWeight, 0))
+        const currentWeight = roundWeight(
+          (
+            db
+              .prepare(
+                `SELECT COALESCE(SUM(weight_delta), 0) AS weight
+                 FROM stock_movements WHERE product_id = ?`,
+              )
+              .get(id) as { weight: number }
+          ).weight,
+        )
+        const weightDelta = roundWeight(pieceNet - currentWeight)
+        if (delta !== 0 || weightDelta !== 0) {
+          recordPieceMovement(db, {
+            type: 'adjustment',
+            productId: id,
+            qtyDelta: delta,
+            weightDelta,
+            refType: 'product',
+            refId: id,
+            reason: 'Product stock edit',
+            operatorId: req.user?.id ?? null,
+          })
+        }
+      } else if (delta !== 0) {
         recordPieceMovement(db, {
           type: 'adjustment',
           productId: id,
@@ -384,6 +498,11 @@ router.put(
           reason: 'Product stock edit',
           operatorId: req.user?.id ?? null,
         })
+      }
+      if (willCreatePieces) {
+        createOpeningPieces(db, id, openingPieces)
+      } else if (!tracksPieces && input.trackPieces === true) {
+        convertProductToTracked(db, id)
       }
       return requireProductRow(db, id)
     })
@@ -405,6 +524,16 @@ router.delete(
     if (childCount > 0) {
       throw new Error(
         `This design has ${childCount} variant${childCount === 1 ? '' : 's'}. Delete them first.`,
+      )
+    }
+    const pieceCount = (
+      db.prepare('SELECT COUNT(*) AS count FROM inventory_pieces WHERE product_id = ?').get(id) as {
+        count: number
+      }
+    ).count
+    if (pieceCount > 0) {
+      throw new Error(
+        'This product has piece history from purchases or bills, so it cannot be deleted. Deactivate it instead.',
       )
     }
     const result = db.prepare('DELETE FROM products WHERE id = ?').run(id)

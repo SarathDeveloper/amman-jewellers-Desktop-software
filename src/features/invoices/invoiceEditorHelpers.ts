@@ -39,6 +39,10 @@ export type EditorLine = Omit<InvoiceItemInput, EditorLineNumericKey> & {
   productId: number | null
   /** Hallmark Unique ID picked for this piece (only for tagged products). */
   huid: string
+  /** HUID already stored on the tracked piece. Empty means the cashier may type one. */
+  pieceHuid?: string
+  /** Display label of the exact piece sold, e.g. `T000014`. Not persisted. */
+  pieceTag?: string
   /** True until the cashier types a rate. Empty lines then follow today's metal rate. */
   metalRateAuto?: boolean
 }
@@ -167,6 +171,7 @@ export function newEditorLine(metalRates: MetalRates | null = null): EditorLine 
       description: '',
       purity: '22K',
       huid: '',
+      pieceId: null,
       metalRateAuto: true,
     },
     metalRates,
@@ -220,6 +225,9 @@ export function editorLineFromInvoiceItem(item: InvoiceItem, product?: Product |
     category: item.category,
     purity: item.purity || inferSalePurity(item.metal, product?.purity),
     huid: item.huid ?? '',
+    pieceId: item.pieceId ?? null,
+    pieceHuid: item.pieceHuid ?? '',
+    pieceTag: item.pieceTag || undefined,
     metalRateAuto: !(item.metalRate > 0),
   }
 }
@@ -431,6 +439,7 @@ export function toInvoiceItems(lines: EditorLine[]): InvoiceItemInput[] {
         category: line.category,
         purity: line.purity,
         huid: line.huid.trim() ? line.huid.trim().toUpperCase() : undefined,
+        pieceId: line.pieceId ?? undefined,
       }
     })
 }
@@ -488,6 +497,15 @@ export function lineHuidError(line: EditorLine, products: Product[], lines: Edit
   if (!huid) return null
   if (!/^[0-9A-Z]+$/.test(huid)) return 'HUID can only be letters and digits'
   if (huidsUsedByOtherLines(lines, line.key).has(huid)) return `HUID ${huid} is used twice on this bill`
+  // A tracked piece with no hallmark of its own takes a newly typed HUID.
+  // One that is already on the product belongs to another piece.
+  if (line.pieceId != null && !(line.pieceHuid ?? '').trim()) {
+    const product = productForLine(line, products)
+    if ((product?.huids ?? []).some((tag) => tag.toUpperCase() === huid)) {
+      return `HUID ${huid} is already tagged on this product`
+    }
+    return null
+  }
   if (lineNeedsHuid(line, products) && !availableHuidsForLine(line, products, lines).includes(huid)) {
     return `HUID ${huid} is not tagged on this product`
   }
@@ -552,6 +570,14 @@ export function huidCellState(line: EditorLine, products: Product[]): HuidCellSt
   if (lineOffersHuid(line, products)) return { state: 'product' }
   if (isActiveEditorLine(line)) return { state: 'manual' }
   return { state: 'disabled', reason: 'Enter item details first' }
+}
+
+/** True when this line's piece already has a hallmark, so the cell stays read-only. */
+export function pieceHuidLocked(line: EditorLine): boolean {
+  if (line.pieceId == null) return false
+  // A piece picked before this field existed still shows its own HUID as read-only.
+  if (line.pieceHuid === undefined) return Boolean(line.huid.trim())
+  return Boolean(line.pieceHuid.trim())
 }
 
 /** Pieces of each product asked for by the bill, counting every line. */

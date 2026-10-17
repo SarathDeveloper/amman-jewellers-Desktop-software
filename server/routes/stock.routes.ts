@@ -100,12 +100,14 @@ function getAutoSales(stockDate: string, metal: string, itemName: string): numbe
 
 function getAutoPurchaseIn(stockDate: string, metal: string, itemName: string): number {
   const db = getDatabase()
+  // A cancelled purchase writes a purchase_return on the day it is cancelled, so
+  // the day's net purchase weight must subtract that weight back out.
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(weight_delta), 0) AS total
        FROM stock_movements
        WHERE movement_date = ?
-         AND movement_type = 'purchase'
+         AND movement_type IN ('purchase', 'purchase_return')
          AND lower(trim(metal)) = lower(trim(?))
          AND lower(trim(category)) = lower(trim(?))`,
     )

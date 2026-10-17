@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Calculator, X } from 'lucide-react'
 import { huidRemovalRange, newPieceHuidError } from '@shared/itemTypes'
 import { localTodayIso } from '@shared/localDate'
-import type { Product } from '@shared/types'
+import type { InventoryPiece, Product } from '@shared/types'
 import { DateInput } from '../../components/DateInput'
 import { Modal } from '../../components/Modal'
 import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
+import { formatWeight } from '../../lib/format'
 import { productHasVariants, variantDisplayName } from './productDisplay'
 import { HuidEntryList, resizeHuidRows } from './HuidEntryList'
 
@@ -30,11 +31,31 @@ export function AdjustStockModal({
   const [remarks, setRemarks] = useState('')
   const [huids, setHuids] = useState<string[]>([])
   const [removedHuids, setRemovedHuids] = useState<string[]>([])
+  const [inStockPieces, setInStockPieces] = useState<InventoryPiece[]>([])
+  const [selectedPieceIds, setSelectedPieceIds] = useState<number[]>([])
+  const [removalReason, setRemovalReason] = useState<'damaged' | 'lost'>('damaged')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const itemName = variantDisplayName(product)
+  const tracksPieces = product.trackPieces
   const currentStock = product.stockQty
+
+  useEffect(() => {
+    if (!tracksPieces) return
+    let active = true
+    void api
+      .listProductPieces(product.id, true)
+      .then((rows) => {
+        if (active) setInStockPieces(rows)
+      })
+      .catch(() => {
+        if (active) setInStockPieces([])
+      })
+    return () => {
+      active = false
+    }
+  }, [product.id, tracksPieces])
   const hasVariants = productHasVariants(allProducts, product.id)
 
   const qty = useMemo(() => {
@@ -62,7 +83,10 @@ export function AdjustStockModal({
       const duplicate = filled.find((huid, index) => filled.indexOf(huid) !== index)
       if (duplicate) return `HUID ${duplicate} is duplicated`
     }
-    if (direction === 'reduce' && existingHuids.length > 0) {
+    if (tracksPieces && direction === 'reduce' && selectedPieceIds.length !== qty) {
+      return qty === 1 ? 'Select 1 piece to remove' : `Select ${qty} pieces to remove`
+    }
+    if (!tracksPieces && direction === 'reduce' && existingHuids.length > 0) {
       if (removeRange.min === removeRange.max && removedHuids.length !== removeRange.max) {
         return removeRange.max === 1 ? 'Select 1 HUID to remove' : `Select ${removeRange.max} HUIDs to remove`
       }
@@ -80,6 +104,8 @@ export function AdjustStockModal({
     currentStock,
     direction,
     huids,
+    tracksPieces,
+    selectedPieceIds.length,
     existingHuids.length,
     removedHuids.length,
     removeRange.min,
@@ -107,10 +133,15 @@ export function AdjustStockModal({
             category: product.category,
             qtyDelta,
             weightDelta: qtyDelta * product.netWeight,
-            huids:
-              direction === 'add'
+            reason: tracksPieces && direction === 'reduce' ? removalReason : undefined,
+            huids: tracksPieces
+              ? direction === 'add'
+                ? huids.map((value) => value.trim().toUpperCase()).filter(Boolean)
+                : []
+              : direction === 'add'
                 ? huids.map((value) => value.trim().toUpperCase()).filter(Boolean)
                 : removedHuids,
+            pieceIds: tracksPieces && direction === 'reduce' ? selectedPieceIds : [],
           },
         ],
       })
@@ -173,6 +204,7 @@ export function AdjustStockModal({
                     setDirection(event.target.value as Direction)
                     setError(null)
                     setRemovedHuids([])
+                    setSelectedPieceIds([])
                     setHuids((current) =>
                       event.target.value === 'add'
                         ? resizeHuidRows(current, Math.max(0, Math.trunc(Number(qtyRaw) || 0)))
@@ -226,7 +258,55 @@ export function AdjustStockModal({
             </div>
           ) : null}
 
-          {direction === 'reduce' && qty > 0 && existingHuids.length > 0 ? (
+          {tracksPieces && direction === 'reduce' && qty > 0 ? (
+            <fieldset className="product-attr-editor">
+              <legend className="product-attr-head">Select pieces to remove</legend>
+              <label>
+                Mark as
+                <select
+                  className="select"
+                  value={removalReason}
+                  onChange={(event) => setRemovalReason(event.target.value as 'damaged' | 'lost')}
+                >
+                  <option value="damaged">Damaged</option>
+                  <option value="lost">Lost</option>
+                </select>
+              </label>
+              {inStockPieces.map((piece) => {
+                const checked = selectedPieceIds.includes(piece.id)
+                const disableUnchecked = !checked && selectedPieceIds.length >= qty
+                return (
+                  <label key={piece.id} className="product-form-toggle">
+                    <input
+                      type="checkbox"
+                      aria-label={piece.tagCode}
+                      checked={checked}
+                      disabled={disableUnchecked}
+                      onChange={(event) => {
+                        setSelectedPieceIds((current) =>
+                          event.target.checked
+                            ? [...current, piece.id]
+                            : current.filter((id) => id !== piece.id),
+                        )
+                        setError(null)
+                      }}
+                    />
+                    <span>
+                      <strong>{piece.tagCode}</strong>
+                      <span>
+                        {[piece.huid || 'No HUID', `${formatWeight(piece.netWeight)} net`].join(' · ')}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+              {inStockPieces.length === 0 ? (
+                <p className="muted">No pieces are in stock.</p>
+              ) : null}
+            </fieldset>
+          ) : null}
+
+          {!tracksPieces && direction === 'reduce' && qty > 0 && existingHuids.length > 0 ? (
             <fieldset className="product-attr-editor">
               <legend className="product-attr-head">Select HUIDs to remove</legend>
               {existingHuids.map((huid) => {

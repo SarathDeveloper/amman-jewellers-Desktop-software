@@ -67,7 +67,6 @@ export function ProductsPage() {
   const hasLoadedRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<Product | null>(null)
-  const [variantParent, setVariantParent] = useState<Product | null>(null)
   const [viewing, setViewing] = useState<Product | null>(null)
   const [open, setOpen] = useState(false)
   const [inwardProducts, setInwardProducts] = useState<Product[] | null>(null)
@@ -207,23 +206,11 @@ export function ProductsPage() {
 
   function openCreate() {
     setEditing(null)
-    setVariantParent(null)
-    setOpen(true)
-  }
-
-  function openCreateVariant(parent: Product) {
-    setEditing(null)
-    setVariantParent(parent)
     setOpen(true)
   }
 
   function openEdit(product: Product) {
     setEditing(product)
-    setVariantParent(
-      product.parentId != null
-        ? (products.find((row) => row.id === product.parentId) ?? null)
-        : null,
-    )
     setOpen(true)
   }
 
@@ -290,11 +277,10 @@ export function ProductsPage() {
       showToast('Product updated', 'success')
     } else {
       await api.createProduct(input)
-      showToast(input.parentId ? 'Variant added' : 'Product added', 'success')
+      showToast('Product added', 'success')
     }
     setOpen(false)
     setEditing(null)
-    setVariantParent(null)
     await revealAfterSave(input, isCreate)
   }
 
@@ -795,12 +781,16 @@ export function ProductsPage() {
           product={viewing}
           products={products}
           onClose={() => setViewing(null)}
-          onAddVariant={openCreateVariant}
           onAddInward={openInward}
           onAdjust={openAdjust}
           onEdit={openEdit}
           onDelete={(product) => setPendingDelete([product.id])}
           onViewChild={setViewing}
+          onConverted={(product) =>
+            setProducts((current) =>
+              current.map((row) => (row.id === product.id ? product : row)),
+            )
+          }
         />
       ) : null}
 
@@ -808,11 +798,7 @@ export function ProductsPage() {
         <ProductFormModal
           product={editing}
           products={products}
-          parentProduct={variantParent}
-          onClose={() => {
-            setOpen(false)
-            setVariantParent(null)
-          }}
+          onClose={() => setOpen(false)}
           onSave={handleSave}
         />
       )}

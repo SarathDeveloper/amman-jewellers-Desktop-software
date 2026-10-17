@@ -18,6 +18,7 @@ export const REPORT_IDS = [
   'gold-stock',
   'silver-stock',
   'product-stock',
+  'piece-register',
   'variant-size-stock',
   'stock-movement',
   'stock-inward',
@@ -175,6 +176,7 @@ export const REPORTS: ReportDefinition[] = [
   { id: 'gold-stock', group: 'stock', title: 'Gold Stock', dateScope: 'none', filters: ['product'], available: true },
   { id: 'silver-stock', group: 'stock', title: 'Silver Stock', dateScope: 'none', filters: ['product'], available: true },
   { id: 'product-stock', group: 'stock', title: 'Product Stock', dateScope: 'none', filters: ['metal'], available: true },
+  { id: 'piece-register', group: 'stock', title: 'Piece Register', dateScope: 'none', filters: ['product', 'metal'], available: true },
   {
     id: 'variant-size-stock',
     group: 'stock',

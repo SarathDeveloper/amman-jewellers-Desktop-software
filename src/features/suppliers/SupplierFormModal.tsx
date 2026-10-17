@@ -44,12 +44,20 @@ export function SupplierFormModal({
     }
   }, [open, editing])
 
+  const canSave = form.name.trim().length > 0 && form.phone.trim().length > 0
+
   async function save() {
+    if (!canSave) return
+    const payload: SupplierInput = {
+      ...form,
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+    }
     try {
       setSaving(true)
       const supplier = editing
-        ? await api.updateSupplier(editing.id, form)
-        : await api.createSupplier(form)
+        ? await api.updateSupplier(editing.id, payload)
+        : await api.createSupplier(payload)
       onSaved(supplier)
       onClose()
     } catch (err) {
@@ -72,7 +80,7 @@ export function SupplierFormModal({
           <button type="button" className="btn secondary" onClick={onClose} disabled={saving}>
             Cancel
           </button>
-          <button type="button" className="btn" onClick={() => void save()} disabled={saving || !form.name.trim()}>
+          <button type="button" className="btn" onClick={() => void save()} disabled={saving || !canSave}>
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
@@ -80,18 +88,28 @@ export function SupplierFormModal({
     >
       <div className="form-grid">
         <label>
-          Name
+          <span className="field-label">
+            Name <span className="req" aria-hidden="true">*</span>
+          </span>
           <input
             className="input"
             value={form.name}
+            required
+            aria-required="true"
+            autoComplete="organization"
             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
           />
         </label>
         <label>
-          Phone
+          <span className="field-label">
+            Phone <span className="req" aria-hidden="true">*</span>
+          </span>
           <input
             className="input"
             value={form.phone}
+            required
+            aria-required="true"
+            autoComplete="tel"
             onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
           />
         </label>

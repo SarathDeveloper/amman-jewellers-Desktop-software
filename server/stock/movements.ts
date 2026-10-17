@@ -17,7 +17,7 @@ export interface PieceMovementInput {
 }
 
 export interface WeightMovementInput {
-  type: 'exchange_in' | 'purchase' | 'adjustment' | 'stocktake_adjustment'
+  type: 'exchange_in' | 'purchase' | 'purchase_return' | 'adjustment' | 'stocktake_adjustment'
   metal: string
   category: string
   weightDelta: number
@@ -127,7 +127,7 @@ function insertWeightMovement(
 export function recordOpeningSnapshot(
   db: Database.Database,
   productId: number,
-  options: { operatorId?: number | null; reason?: string } = {},
+  options: { operatorId?: number | null; reason?: string; weightDelta?: number } = {},
 ): void {
   const product = loadProduct(db, productId)
   if (product.stock_qty <= 0) return
@@ -138,6 +138,7 @@ export function recordOpeningSnapshot(
       type: 'opening',
       productId,
       qtyDelta: product.stock_qty,
+      weightDelta: options.weightDelta,
       refType: 'product',
       refId: productId,
       reason: options.reason ?? 'Opening stock',
@@ -263,6 +264,14 @@ export function postStocktake(db: Database.Database, input: StocktakePostInput):
       const countedQty = line.counted_qty ?? 0
       const qtyVariance = countedQty - line.ledger_qty
       if (qtyVariance !== 0) {
+        const tracked = db
+          .prepare('SELECT track_pieces FROM products WHERE id = ?')
+          .get(line.product_id) as { track_pieces: number } | undefined
+        if (tracked?.track_pieces === 1) {
+          throw new Error(
+            'This product tracks each piece, so a stocktake cannot change its quantity. Use Adjust stock to mark a specific piece damaged or lost.',
+          )
+        }
         recordPieceMovement(db, {
           type: 'stocktake_adjustment',
           productId: line.product_id,

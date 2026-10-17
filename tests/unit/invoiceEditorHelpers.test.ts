@@ -21,6 +21,7 @@ import {
   oldGoldPurityOptions,
   productForHuid,
   huidCellState,
+  pieceHuidLocked,
   qtyByProduct,
   rateForOldGoldPurity,
   stockAvailabilityLabel,
@@ -508,6 +509,22 @@ describe('HUID line helpers', () => {
     expect(lineOffersHuid(line, [untagged])).toBe(true)
     expect(lineNeedsHuid(line, [untagged])).toBe(false)
     expect(linesWithHuidError([line], [untagged])).toHaveLength(0)
+  })
+
+  it('accepts a newly typed HUID on a tracked piece that has none', () => {
+    const tagged = product({ stockQty: 2, huids: ['AAAAAA'] })
+    const line = saleLine({ pieceId: 4, pieceHuid: '', huid: 'NEW1' })
+    expect(pieceHuidLocked(line)).toBe(false)
+    expect(lineHuidError(line, [tagged], [line])).toBeNull()
+    const taken = saleLine({ pieceId: 4, pieceHuid: '', huid: 'AAAAAA' })
+    expect(lineHuidError(taken, [tagged], [taken])).toBe('HUID AAAAAA is already tagged on this product')
+  })
+
+  it('keeps the HUID locked when the tracked piece already has one', () => {
+    const line = saleLine({ pieceId: 4, pieceHuid: 'FH44', huid: 'FH44' })
+    expect(pieceHuidLocked(line)).toBe(true)
+    expect(pieceHuidLocked(saleLine({ pieceId: 4, huid: 'FH44' }))).toBe(true)
+    expect(pieceHuidLocked(saleLine({ pieceId: 4, huid: '' }))).toBe(false)
   })
 
   it('accepts an untagged HUID typed for a product with no tagged pieces', () => {

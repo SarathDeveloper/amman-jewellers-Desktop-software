@@ -46,6 +46,7 @@ import type {
   OldGoldPurchaseLink,
   PaymentMode,
   Product,
+  InventoryPiece,
   GoldSavingSchemeCreditPreview,
 } from '@shared/types'
 import { api } from '../../lib/api'
@@ -88,6 +89,7 @@ import {
   forgetHeldBill,
   huidCellState,
   huidsUsedByOtherLines,
+  pieceHuidLocked,
   catalogApplyIndex,
   isEmptyEditorLine,
   lineHuidError,
@@ -534,7 +536,7 @@ export function InvoiceEditorPage() {
     markDirty()
   }
 
-  function applyProduct(product: Product, huid?: string) {
+  function applyProduct(product: Product, huid?: string, piece?: InventoryPiece) {
     setLines((current) => {
       const hinted = (huid ?? '').trim().toUpperCase()
       const emptyIndex = catalogApplyIndex(current, hinted || undefined)
@@ -544,9 +546,23 @@ export function InvoiceEditorPage() {
       const requested = hinted || typed
       const safeHuid = requested && !used.has(requested) ? requested : undefined
       const patch = applyProductToLine(product, 1, metalRates, safeHuid)
+      // A tracked piece owns its tag, weights and cost, so the line copies them
+      // and stays locked to that one piece.
+      const piecePatch = piece
+        ? {
+            pieceId: piece.id,
+            qty: 1,
+            grossWeight: piece.grossWeight,
+            netWeight: piece.netWeight,
+            stoneWeight: piece.stoneWeight,
+            huid: piece.huid || safeHuid || '',
+            pieceHuid: (piece.huid ?? '').trim().toUpperCase(),
+            pieceTag: piece.tagCode,
+          }
+        : { pieceId: null, pieceHuid: '', pieceTag: undefined }
       return emptyIndex >= 0
-        ? current.map((line, index) => (index === emptyIndex ? { ...line, ...patch } : line))
-        : [...current, { ...newEditorLine(metalRates), ...patch }]
+        ? current.map((line, index) => (index === emptyIndex ? { ...line, ...patch, ...piecePatch } : line))
+        : [...current, { ...newEditorLine(metalRates), ...patch, ...piecePatch }]
     })
     markDirty()
   }
@@ -1047,6 +1063,9 @@ export function InvoiceEditorPage() {
                 <BillProductSearch
                   products={products}
                   usedQtyByProduct={stockUsed}
+                  usedPieceIds={lines
+                    .map((line) => line.pieceId)
+                    .filter((pieceId): pieceId is number => pieceId != null)}
                   disabled={!canEdit || busy}
                   hideLabel
                   hideAddButton
@@ -1092,6 +1111,8 @@ export function InvoiceEditorPage() {
                     const lineHuids = availableHuidsForLine(line, products, lines)
                     const huidError = lineHuidError(line, products, lines)
                     const shortage = overStockLines.find((row) => row.key === line.key)
+                    const lockedPiece = line.pieceId != null
+                    const pieceOwnsHuid = pieceHuidLocked(line)
                     return (
                       <tr
                         key={line.key}
@@ -1114,6 +1135,11 @@ export function InvoiceEditorPage() {
                                 />
                                 <div className="sale-bill-product-meta">
                                   <span>{line.category || line.metal || 'Item'}</span>
+                                  {lockedPiece ? (
+                                    <span className="sale-bill-piece-tag">
+                                      {line.pieceTag ? `Tag ${line.pieceTag}` : 'Tracked piece'}
+                                    </span>
+                                  ) : null}
                                 </div>
                                 {huidError ? (
                                   <span className="sale-bill-line-warning" role="alert">
@@ -1129,32 +1155,38 @@ export function InvoiceEditorPage() {
                             </div>
                         </td>
                         <td className="adagu-col-huid" data-label="HUID">
-                          {huidCell.state === 'disabled' ? (
+                          {huidCell.state === 'disabled' || pieceOwnsHuid ? (
                             <input
                               type="text"
                               className="sale-bill-huid-input"
                               disabled
                               readOnly
                               aria-label="Hallmark Unique ID"
-                              title={huidCell.reason}
+                              title={
+                                pieceOwnsHuid
+                                  ? 'This HUID belongs to the tagged piece'
+                                  : huidCell.reason
+                              }
                               placeholder="—"
                               value={line.huid}
                             />
                           ) : (
                             <HuidSuggestInput
                               value={line.huid}
-                              suggestions={lineHuids}
+                              suggestions={lockedPiece ? [] : lineHuids}
                               disabled={!canEdit || busy}
                               invalid={
                                 Boolean(huidError) ||
                                 (huidCell.state === 'product' && needsHuid && !line.huid.trim())
                               }
                               placeholder={
-                                huidCell.state === 'empty'
-                                  ? 'Type HUID'
-                                  : needsHuid
-                                    ? 'Enter HUID'
-                                    : 'HUID (optional)'
+                                lockedPiece
+                                  ? 'Enter HUID'
+                                  : huidCell.state === 'empty'
+                                    ? 'Type HUID'
+                                    : needsHuid
+                                      ? 'Enter HUID'
+                                      : 'HUID (optional)'
                               }
                               onChange={(next) => {
                                 const value = next.toUpperCase().replace(/[^0-9A-Z]/g, '')
@@ -1198,7 +1230,7 @@ export function InvoiceEditorPage() {
                             <input
                               type="number"
                               step="0.001"
-                              disabled={!canEdit || busy}
+                              disabled={!canEdit || busy || lockedPiece}
                               value={weightInputValue(line.netWeight ?? 0)}
                               onChange={(event) =>
                                 updateLine(line.key, { netWeight: parseNumericField(event.target.value) })
@@ -1211,7 +1243,7 @@ export function InvoiceEditorPage() {
                             <input
                               type="number"
                               step="0.001"
-                              disabled={!canEdit || busy}
+                              disabled={!canEdit || busy || lockedPiece}
                               value={weightInputValue(line.grossWeight ?? 0)}
                               onChange={(event) => {
                                 const nextGross = numericFieldToNumber(parseNumericField(event.target.value))
@@ -1228,7 +1260,7 @@ export function InvoiceEditorPage() {
                             <input
                               type="number"
                               step="0.001"
-                              disabled={!canEdit || busy}
+                              disabled={!canEdit || busy || lockedPiece}
                               value={weightInputValue(line.stoneWeight ?? 0)}
                               onChange={(event) => {
                                 const nextStone = numericFieldToNumber(parseNumericField(event.target.value))

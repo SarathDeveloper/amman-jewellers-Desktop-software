@@ -157,4 +157,43 @@ describe('bill summary', () => {
     expect(roundedUp.roundOff).toBe(0.4)
     expect(roundedUp.total).toBe(11)
   })
+
+  it('takes the discount off the taxable value before GST', () => {
+    const totals = computePurchaseTotals([10000, 5000], 0, {
+      discount: 3000,
+      gstMode: 'none',
+    })
+    expect(totals.subtotal).toBe(15000)
+    expect(totals.discount).toBe(3000)
+    expect(totals.taxable).toBe(12000)
+    expect(totals.tax).toBe(0)
+    expect(totals.total).toBe(12000)
+  })
+
+  it('splits 3% GST into CGST and SGST for an intra-state purchase', () => {
+    const totals = computePurchaseTotals([10000], 0, { discount: 1000, gstMode: 'intra' })
+    expect(totals.taxable).toBe(9000)
+    expect(totals.cgst).toBe(135)
+    expect(totals.sgst).toBe(135)
+    expect(totals.igst).toBe(0)
+    expect(totals.tax).toBe(270)
+    expect(totals.total).toBe(9270)
+  })
+
+  it('puts the whole 3% on IGST for an inter-state purchase', () => {
+    const totals = computePurchaseTotals([10000], 0, { discount: 1000, gstMode: 'inter' })
+    expect(totals.cgst).toBe(0)
+    expect(totals.sgst).toBe(0)
+    expect(totals.igst).toBe(270)
+    expect(totals.tax).toBe(270)
+    expect(totals.total).toBe(9270)
+  })
+
+  it('never discounts below zero', () => {
+    const totals = computePurchaseTotals([100], 0, { discount: 500, gstMode: 'intra' })
+    expect(totals.discount).toBe(100)
+    expect(totals.taxable).toBe(0)
+    expect(totals.tax).toBe(0)
+    expect(totals.total).toBe(0)
+  })
 })

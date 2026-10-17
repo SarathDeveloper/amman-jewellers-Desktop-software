@@ -14,6 +14,7 @@ export interface PurchaseInvoiceLine {
 
 export interface PurchaseInvoiceData {
   invoiceNo: string
+  supplierInvoiceNo: string
   invoiceDate: string
   supplierName: string
   supplierGstin: string
@@ -21,6 +22,8 @@ export interface PurchaseInvoiceData {
   supplierAddressLines: string[]
   lines: PurchaseInvoiceLine[]
   subtotal: number
+  discount: number
+  taxable: number
   cgst: number
   sgst: number
   igst: number
@@ -29,5 +32,5 @@ export interface PurchaseInvoiceData {
   amountInWords: string
   paymentMode: PurchasePaymentMode
   notes: string
-  watermark: 'DRAFT' | null
+  watermark: 'DRAFT' | 'CANCELLED' | null
 }
