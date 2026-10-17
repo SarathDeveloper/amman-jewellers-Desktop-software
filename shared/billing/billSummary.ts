@@ -58,18 +58,17 @@ export interface PurchaseTotalsResult {
 export function computePurchaseTotals(
   lineAmounts: number[],
   roundOff?: number,
-  useIgst = false,
+  _useIgst = false,
 ): PurchaseTotalsResult {
   const subtotal = roundMoney(lineAmounts.reduce((sum, value) => sum + value, 0))
-  const taxBreakdown = computeInvoiceTax(subtotal, useIgst)
-  const amountBeforeRoundOff = roundMoney(subtotal + taxBreakdown.tax)
+  const amountBeforeRoundOff = subtotal
   const appliedRoundOff = roundOff ?? suggestPurchaseRoundOff(amountBeforeRoundOff)
   return {
     subtotal,
-    cgst: taxBreakdown.cgst,
-    sgst: taxBreakdown.sgst,
-    igst: taxBreakdown.igst,
-    tax: taxBreakdown.tax,
+    cgst: 0,
+    sgst: 0,
+    igst: 0,
+    tax: 0,
     roundOff: appliedRoundOff,
     total: roundMoney(amountBeforeRoundOff + appliedRoundOff),
   }

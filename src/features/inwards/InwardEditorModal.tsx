@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import {
+  BULLION_CATEGORY,
   GOLD_PURITIES,
   newPieceHuidError,
   SILVER_PURITIES,
@@ -91,13 +92,13 @@ function blankProductLine(): LineState {
   }
 }
 
-function blankRawLine(category: string): LineState {
+function blankRawLine(category?: string): LineState {
   return {
     key: nextKey(),
     kind: 'raw',
     productId: '',
     metal: 'Gold',
-    category: category || STOCK_ITEM_NAMES[0],
+    category: category || BULLION_CATEGORY,
     purity: '22K',
     qty: 1,
     grossWeight: '',
@@ -590,7 +591,15 @@ export function InwardEditorModal({
                     <button
                       type="button"
                       className="btn secondary"
-                      onClick={() => setLines((current) => [...current, blankRawLine(categories[0] ?? '')])}
+                      onClick={() =>
+                        setLines((current) => [
+                          ...current,
+                          blankRawLine(
+                            categories.find((c) => c.toLowerCase() === BULLION_CATEGORY.toLowerCase()) ??
+                              BULLION_CATEGORY,
+                          ),
+                        ])
+                      }
                     >
                       <Plus size={14} strokeWidth={2} aria-hidden />
                       Raw metal
@@ -710,20 +719,7 @@ export function InwardEditorModal({
                             </Control>
                           ) : (
                             <Control icon={<FolderKanban size={14} strokeWidth={1.75} />}>
-                              <select
-                                className="select"
-                                aria-label="Category"
-                                value={line.category}
-                                onChange={(event) =>
-                                  updateLine(line.key, { category: event.target.value })
-                                }
-                              >
-                                {categoryOptions.map((name) => (
-                                  <option key={name} value={name}>
-                                    {name}
-                                  </option>
-                                ))}
-                              </select>
+                              <StaticValue>{line.category || BULLION_CATEGORY}</StaticValue>
                             </Control>
                           )}
                         </Field>
@@ -923,17 +919,21 @@ export function InwardEditorModal({
                 <p className="inward-line-totals">Total weight {formatWeight(displayTotals.weight)}</p>
                 <div className="purchase-totals-box">
                   <div className="purchase-totals-row">
-                    <span>Taxable</span>
+                    <span>Subtotal</span>
                     <span>{formatCurrency(displayTotals.subtotal)}</span>
                   </div>
-                  <div className="purchase-totals-row">
-                    <span>CGST 1.5%</span>
-                    <span>{formatCurrency(displayTotals.cgst)}</span>
-                  </div>
-                  <div className="purchase-totals-row">
-                    <span>SGST 1.5%</span>
-                    <span>{formatCurrency(displayTotals.sgst)}</span>
-                  </div>
+                  {displayTotals.cgst > 0 ? (
+                    <div className="purchase-totals-row">
+                      <span>CGST 1.5%</span>
+                      <span>{formatCurrency(displayTotals.cgst)}</span>
+                    </div>
+                  ) : null}
+                  {displayTotals.sgst > 0 ? (
+                    <div className="purchase-totals-row">
+                      <span>SGST 1.5%</span>
+                      <span>{formatCurrency(displayTotals.sgst)}</span>
+                    </div>
+                  ) : null}
                   <div className="purchase-totals-row">
                     <span>Round off</span>
                     {readOnly ? (

@@ -62,16 +62,32 @@ export function ensureStockCategories(database: Database.Database): void {
     .prepare('SELECT COUNT(*) AS count FROM stock_categories')
     .get() as { count: number }
 
+  const insert = database.prepare(
+    'INSERT OR IGNORE INTO stock_categories (name, sort_order) VALUES (?, ?)',
+  )
   if (existing.count === 0) {
-    const insert = database.prepare(
-      'INSERT OR IGNORE INTO stock_categories (name, sort_order) VALUES (?, ?)',
-    )
     const seed = database.transaction(() => {
       DEFAULT_STOCK_ITEM_NAMES.forEach((name, index) => {
         insert.run(name, index + 1)
       })
     })
     seed()
+  } else {
+    let maxOrder = (
+      database.prepare('SELECT COALESCE(MAX(sort_order), 0) AS max_order FROM stock_categories').get() as {
+        max_order: number
+      }
+    ).max_order
+    const seedMissingDefaults = database.transaction(() => {
+      for (const name of DEFAULT_STOCK_ITEM_NAMES) {
+        const found = database.prepare('SELECT 1 FROM stock_categories WHERE lower(name) = lower(?)').get(name)
+        if (!found) {
+          maxOrder += 1
+          insert.run(name, maxOrder)
+        }
+      }
+    })
+    seedMissingDefaults()
   }
 
   const missing = database
@@ -94,9 +110,6 @@ export function ensureStockCategories(database: Database.Database): void {
       max_order: number
     }
   ).max_order
-  const insert = database.prepare(
-    'INSERT OR IGNORE INTO stock_categories (name, sort_order) VALUES (?, ?)',
-  )
   const backfill = database.transaction(() => {
     for (const row of missing) {
       maxOrder += 1

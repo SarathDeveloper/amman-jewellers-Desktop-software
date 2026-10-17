@@ -408,9 +408,9 @@ describe('inward and metal day close', () => {
     expect(oldStyle.items[0]?.makingCharges).toBe(0)
     expect(oldStyle.items[0]?.grossWeight).toBe(0)
     expect(oldStyle.subtotal).toBe(600)
-    expect(oldStyle.cgst).toBe(9)
-    expect(oldStyle.sgst).toBe(9)
-    expect(oldStyle.total).toBe(618)
+    expect(oldStyle.cgst).toBe(0)
+    expect(oldStyle.sgst).toBe(0)
+    expect(oldStyle.total).toBe(600)
     expect(oldStyle.paymentMode).toBe('cash')
 
     const withMaking = await ipc<{
@@ -446,10 +446,10 @@ describe('inward and metal day close', () => {
     expect(withMaking.items[0]?.makingCharges).toBe(250)
     expect(withMaking.paymentMode).toBe('upi')
     expect(withMaking.subtotal).toBe(1050)
-    expect(withMaking.cgst).toBe(15.75)
-    expect(withMaking.sgst).toBe(15.75)
-    expect(withMaking.roundOff).toBe(-0.5)
-    expect(withMaking.total).toBe(1081)
+    expect(withMaking.cgst).toBe(0)
+    expect(withMaking.sgst).toBe(0)
+    expect(withMaking.roundOff).toBe(0)
+    expect(withMaking.total).toBe(1050)
 
     await ipc(IPC_CHANNELS.INWARDS_FINALIZE, withMaking.id)
     const gstPurchase = await ipc<{
@@ -462,8 +462,8 @@ describe('inward and metal day close', () => {
     const september = gstPurchase.rows.find((row) => row.month === '2026-09')
     expect(september?.bills).toBe(1)
     expect(september?.taxable).toBe(1050)
-    expect(september?.cgst).toBe(15.75)
-    expect(september?.sgst).toBe(15.75)
+    expect(september?.cgst).toBe(0)
+    expect(september?.sgst).toBe(0)
   })
 
   it('stock addition adjustment creates a finalized inward and feeds autoPurchaseIn', async () => {

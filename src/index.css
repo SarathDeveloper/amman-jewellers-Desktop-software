@@ -4184,23 +4184,32 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
 .adagu-detail-customer-meta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 1.25rem 1.75rem;
 }
 .adagu-detail-customer-meta > span {
   display: inline-flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.4rem;
   color: var(--muted);
   min-width: 0;
 }
+.adagu-detail-customer-meta span > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
 .adagu-detail-customer-meta small {
-  display: block;
-  font-size: 0.6875rem;
+  display: inline;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--muted);
 }
+.adagu-detail-customer-meta small::after {
+  content: ":";
+}
 .adagu-detail-customer-meta strong {
-  display: block;
+  display: inline;
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text);

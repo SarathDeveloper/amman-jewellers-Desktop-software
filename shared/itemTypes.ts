@@ -17,8 +17,10 @@ export const STOCK_ITEM_NAMES = [
   'Nanal',
   'Backchain',
   'D Studs',
+  'Bullion',
 ] as const
 
+export const BULLION_CATEGORY = 'Bullion'
 export const DEFAULT_STOCK_ITEM_NAMES = STOCK_ITEM_NAMES
 
 export type StockItemName = (typeof STOCK_ITEM_NAMES)[number]
