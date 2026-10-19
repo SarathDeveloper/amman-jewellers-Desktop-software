@@ -204,6 +204,7 @@ export function InvoiceEditorPage() {
   const [savingPdf, setSavingPdf] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
+  const [finalizeConfirm, setFinalizeConfirm] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [previewInvoiceNo, setPreviewInvoiceNo] = useState('')
@@ -740,8 +741,9 @@ export function InvoiceEditorPage() {
       applySavedOldGold(finalized)
       setDirty(false)
       forgetHeldBill(billFormat, targetId)
+      setFinalizeConfirm(false)
       setSuccessInvoice(finalized)
-      showToast('Bill confirmed', 'success')
+      showToast('Bill finalized', 'success')
       return finalized
     } catch (err) {
       reportCustomerFormError(err, setCustomerFieldErrors, setError, 'Failed to finalize invoice')
@@ -854,7 +856,9 @@ export function InvoiceEditorPage() {
   }
 
   return (
-    <div className="adagu-editor-container sale-bill-editor">
+    <div
+      className={`adagu-editor-container sale-bill-editor${canEdit ? '' : ' sale-bill-editor--locked'}`}
+    >
       <header className="adagu-page-header sale-bill-toolbar">
         <div className="adagu-header-left">
           <div className="adagu-header-icon">
@@ -921,7 +925,12 @@ export function InvoiceEditorPage() {
               <button type="button" className="btn secondary" disabled={busy} onClick={() => void saveDraft()}>
                 <Save size={16} strokeWidth={1.75} aria-hidden /> {savingAction === 'draft' ? 'Saving…' : 'Save draft'}
               </button>
-              <button type="button" className="btn" disabled={busy || isEstimate} onClick={() => void finalize()}>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy || isEstimate}
+                onClick={() => setFinalizeConfirm(true)}
+              >
                 <Check size={16} strokeWidth={2} aria-hidden /> {savingAction === 'finalize' ? 'Finalizing…' : 'Finalize'}
               </button>
             </>
@@ -976,7 +985,7 @@ export function InvoiceEditorPage() {
 
       <div className="sale-bill-grid">
         <div className="adagu-grid-col sale-bill-main">
-          <div className="adagu-design-card adagu-design-card--has-search">
+          <div className={`adagu-design-card${canEdit ? ' adagu-design-card--has-search' : ''}`}>
             <div className="adagu-card-header sale-bill-customer-header">
               <div className="adagu-card-title-group">
                 <div className="adagu-card-icon">
@@ -986,23 +995,25 @@ export function InvoiceEditorPage() {
                   <h2>Customer</h2>
                 </div>
               </div>
-              <div className="sale-bill-customer-search-wrap">
-                <BillCustomerSearch
-                  customers={customers}
-                  customerId={customerId}
-                  disabled={!canEdit || busy}
-                  hideLabel
-                  hideSelectedMeta
-                  keepSearchEmpty
-                  addButtonLabel="New"
-                  onSelect={(customer) => applyCustomerBorrower(customer)}
-                  onClear={clearBorrower}
-                  onCustomerCreated={(customer) => {
-                    setCustomers((current) => [customer, ...current])
-                    applyCustomerBorrower(customer)
-                  }}
-                />
-              </div>
+              {canEdit ? (
+                <div className="sale-bill-customer-search-wrap">
+                  <BillCustomerSearch
+                    customers={customers}
+                    customerId={customerId}
+                    disabled={busy}
+                    hideLabel
+                    hideSelectedMeta
+                    keepSearchEmpty
+                    addButtonLabel="New"
+                    onSelect={(customer) => applyCustomerBorrower(customer)}
+                    onClear={clearBorrower}
+                    onCustomerCreated={(customer) => {
+                      setCustomers((current) => [customer, ...current])
+                      applyCustomerBorrower(customer)
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
 
             {customerId > 0 || customerName ? (
@@ -1049,7 +1060,9 @@ export function InvoiceEditorPage() {
             ) : null}
           </div>
 
-          <div className="adagu-design-card adagu-design-card--items-panel adagu-design-card--has-search">
+          <div
+            className={`adagu-design-card adagu-design-card--items-panel${canEdit ? ' adagu-design-card--has-search' : ''}`}
+          >
             <div className="adagu-card-header sale-bill-items-header">
               <div className="adagu-card-title-group">
                 <div className="adagu-card-icon">
@@ -1059,29 +1072,33 @@ export function InvoiceEditorPage() {
                   <h2>Items</h2>
                 </div>
               </div>
-              <div className="sale-bill-items-search-wrap">
-                <BillProductSearch
-                  products={products}
-                  usedQtyByProduct={stockUsed}
-                  usedPieceIds={lines
-                    .map((line) => line.pieceId)
-                    .filter((pieceId): pieceId is number => pieceId != null)}
-                  disabled={!canEdit || busy}
-                  hideLabel
-                  hideAddButton
-                  compact
-                  placeholder="Search product by name, metal, category, SKU…"
-                  onSelect={applyProduct}
-                  onProductCreated={(product) => {
-                    setProducts((current) => [product, ...current])
-                    applyProduct(product)
-                  }}
-                  onError={(msg) => setError(msg)}
-                />
-              </div>
-              <button type="button" className="adagu-btn-add-item" disabled={!canEdit || busy} onClick={addLine}>
-                <Plus size={14} /> Add Item
-              </button>
+              {canEdit ? (
+                <>
+                  <div className="sale-bill-items-search-wrap">
+                    <BillProductSearch
+                      products={products}
+                      usedQtyByProduct={stockUsed}
+                      usedPieceIds={lines
+                        .map((line) => line.pieceId)
+                        .filter((pieceId): pieceId is number => pieceId != null)}
+                      disabled={busy}
+                      hideLabel
+                      hideAddButton
+                      compact
+                      placeholder="Search product by name, metal, category, SKU…"
+                      onSelect={applyProduct}
+                      onProductCreated={(product) => {
+                        setProducts((current) => [product, ...current])
+                        applyProduct(product)
+                      }}
+                      onError={(msg) => setError(msg)}
+                    />
+                  </div>
+                  <button type="button" className="adagu-btn-add-item" disabled={busy} onClick={addLine}>
+                    <Plus size={14} /> Add Item
+                  </button>
+                </>
+              ) : null}
             </div>
 
             <div className="adagu-jewellery-table-wrap sale-bill-items-wrap">
@@ -1099,18 +1116,21 @@ export function InvoiceEditorPage() {
                     <th className="adagu-col-stone-rate">{DEFAULT_BILL_TEMPLATE.taxColStoneRate}</th>
                     <th className="adagu-col-rate">{DEFAULT_BILL_TEMPLATE.taxColMetalRate}</th>
                     <th className="adagu-col-amount">{DEFAULT_BILL_TEMPLATE.taxColAmount}</th>
-                    <th className="adagu-col-action">Action</th>
+                    {canEdit ? <th className="adagu-col-action">Action</th> : null}
                   </tr>
                 </thead>
                 <tbody>
                   {lines.map((line, index) => {
                     const empty = isEmptyEditorLine(line)
+                    if (!canEdit && empty) return null
                     const purity = line.purity || inferSalePurity(line.metal)
                     const huidCell = huidCellState(line, products)
                     const needsHuid = lineNeedsHuid(line, products)
                     const lineHuids = availableHuidsForLine(line, products, lines)
-                    const huidError = lineHuidError(line, products, lines)
-                    const shortage = overStockLines.find((row) => row.key === line.key)
+                    const huidError = canEdit ? lineHuidError(line, products, lines) : null
+                    const shortage = canEdit
+                      ? overStockLines.find((row) => row.key === line.key)
+                      : undefined
                     const lockedPiece = line.pieceId != null
                     const pieceOwnsHuid = pieceHuidLocked(line)
                     return (
@@ -1340,17 +1360,19 @@ export function InvoiceEditorPage() {
                         <td className="adagu-col-amount" data-label={DEFAULT_BILL_TEMPLATE.taxColAmount}>
                           {formatCurrency(computeEditorLineTotal(line))}
                         </td>
-                        <td className="adagu-col-action">
-                          <button
-                            type="button"
-                            className="adagu-action-btn-red"
-                            aria-label="Remove item"
-                            disabled={!canEdit || busy}
-                            onClick={() => removeLine(line.key)}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
+                        {canEdit ? (
+                          <td className="adagu-col-action">
+                            <button
+                              type="button"
+                              className="adagu-action-btn-red"
+                              aria-label="Remove item"
+                              disabled={busy}
+                              onClick={() => removeLine(line.key)}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        ) : null}
                       </tr>
                     )
                   })}
@@ -1470,49 +1492,53 @@ export function InvoiceEditorPage() {
               </div>
             </div>
 
-            <PaymentModeSelect
-              value={paymentMode}
-              modes={BILL_PAYMENT_MODES}
-              disabled={!canEdit || busy}
-              onChange={(mode) => {
-                setPaymentMode(mode)
-                if (mode === 'mixed' && mixedPayments.length === 0 && paidDisplay > 0) {
-                  setMixedPayments([{ mode: 'cash', amount: paidDisplay }])
-                }
-                markDirty()
-              }}
-            />
-            {paymentMode === 'mixed' ? (
-              <MixedPaymentEditor
-                parts={mixedPayments}
-                amountPayable={totals.amountPayable}
-                disabled={!canEdit || busy}
-                onChange={(parts) => {
-                  setMixedPayments(parts)
-                  setAmountPaid(parts.reduce((sum, part) => sum + part.amount, 0) || '')
-                  markDirty()
-                }}
-              />
-            ) : (
-              <div className="adagu-field">
-                <label>{paymentMode === 'cash' ? 'Cash Received' : 'Amount Paid'}</label>
-                <div className="adagu-input-with-icon">
-                  <IndianRupee size={14} className="input-icon" />
-                  <input
-                    type="number"
-                    size={1}
-                    step="0.01"
-                    disabled={!canEdit || busy}
-                    value={amountPaid}
-                    onChange={(event) => {
-                      setAmountPaid(parseNumericField(event.target.value))
+            {canEdit ? (
+              <>
+                <PaymentModeSelect
+                  value={paymentMode}
+                  modes={BILL_PAYMENT_MODES}
+                  disabled={busy}
+                  onChange={(mode) => {
+                    setPaymentMode(mode)
+                    if (mode === 'mixed' && mixedPayments.length === 0 && paidDisplay > 0) {
+                      setMixedPayments([{ mode: 'cash', amount: paidDisplay }])
+                    }
+                    markDirty()
+                  }}
+                />
+                {paymentMode === 'mixed' ? (
+                  <MixedPaymentEditor
+                    parts={mixedPayments}
+                    amountPayable={totals.amountPayable}
+                    disabled={busy}
+                    onChange={(parts) => {
+                      setMixedPayments(parts)
+                      setAmountPaid(parts.reduce((sum, part) => sum + part.amount, 0) || '')
                       markDirty()
                     }}
-                    placeholder={paymentMode === 'cash' ? 'Auto full on save' : 'Partial payment'}
                   />
-                </div>
-              </div>
-            )}
+                ) : (
+                  <div className="adagu-field">
+                    <label>{paymentMode === 'cash' ? 'Cash Received' : 'Amount Paid'}</label>
+                    <div className="adagu-input-with-icon">
+                      <IndianRupee size={14} className="input-icon" />
+                      <input
+                        type="number"
+                        size={1}
+                        step="0.01"
+                        disabled={busy}
+                        value={amountPaid}
+                        onChange={(event) => {
+                          setAmountPaid(parseNumericField(event.target.value))
+                          markDirty()
+                        }}
+                        placeholder={paymentMode === 'cash' ? 'Auto full on save' : 'Partial payment'}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : null}
           </div>
 
           {!isDraft && invoice ? (
@@ -1635,6 +1661,22 @@ export function InvoiceEditorPage() {
         />
       )}
 
+      {finalizeConfirm && (
+        <ConfirmDialog
+          title="Finalize bill?"
+          message={`Finalize this bill for ${formatCurrency(totals.amountPayable)}? Stock will be deducted and the bill cannot be edited.`}
+          confirmLabel="Finalize"
+          danger={false}
+          busy={savingAction === 'finalize'}
+          error={error}
+          onCancel={() => {
+            setFinalizeConfirm(false)
+            setError(null)
+          }}
+          onConfirm={() => void finalize()}
+        />
+      )}
+
       {successInvoice && (
         <InvoiceSuccessModal
           invoice={successInvoice}
@@ -1662,7 +1704,10 @@ export function InvoiceEditorPage() {
             setSuccessInvoice(null)
             navigate(salePathForFormat(billingType))
           }}
-          onClose={() => setSuccessInvoice(null)}
+          onClose={() => {
+            setSuccessInvoice(null)
+            navigate(salePathForFormat(billingType))
+          }}
         />
       )}
 
@@ -1688,10 +1733,8 @@ export function InvoiceEditorPage() {
           invoice={invoice}
           onClose={() => setRecordPaymentOpen(false)}
           onRecorded={(updated) => {
-            setInvoice(updated)
-            setAmountPaid(updated.amountPaid)
             setRecordPaymentOpen(false)
-            showToast('Payment recorded', 'success')
+            setSuccessInvoice(updated)
           }}
         />
       )}

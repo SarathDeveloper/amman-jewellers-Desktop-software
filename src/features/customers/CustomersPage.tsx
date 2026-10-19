@@ -36,7 +36,7 @@ export function CustomersPage() {
   const [gsAccounts, setGsAccounts] = useState<GoldSavingAccount[]>([])
   const [collectAccountId, setCollectAccountId] = useState<number | null>(null)
   const [pickAccounts, setPickAccounts] = useState<GoldSavingAccount[] | null>(null)
-  const [printPaymentId, setPrintPaymentId] = useState<number | null>(null)
+  const [printAccountId, setPrintAccountId] = useState<number | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearchQuery(search.trim()), 300)
@@ -350,9 +350,10 @@ export function CustomersPage() {
         <CollectPaymentModal
           accountId={collectAccountId}
           onClose={() => setCollectAccountId(null)}
-          onCollected={(paymentId) => {
+          onCollected={(_paymentId) => {
+            const accountId = collectAccountId
             setCollectAccountId(null)
-            setPrintPaymentId(paymentId)
+            setPrintAccountId(accountId)
             void api
               .listGsAccounts()
               .then(setGsAccounts)
@@ -361,12 +362,12 @@ export function CustomersPage() {
         />
       ) : null}
 
-      {printPaymentId ? (
+      {printAccountId ? (
         <PrintPreviewModal
           title="Collection receipt"
-          path={`/print/gs-batch-receipt/${printPaymentId}`}
-          pdfFilename="gs-receipt.pdf"
-          onClose={() => setPrintPaymentId(null)}
+          path={`/print/gs-passbook/${printAccountId}`}
+          pdfFilename="gs-passbook.pdf"
+          onClose={() => setPrintAccountId(null)}
         />
       ) : null}
 

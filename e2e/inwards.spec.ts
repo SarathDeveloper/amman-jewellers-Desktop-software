@@ -234,7 +234,8 @@ test('a purchase creates a tracked product once, cancels, copies, and sells a pi
 
   await window.getByRole('button', { name: 'Save draft' }).first().click()
   await window.getByRole('button', { name: 'Finalize', exact: true }).click()
-  await expect(window.getByRole('dialog', { name: 'Bill confirmed' })).toBeVisible()
+  await window.getByRole('dialog', { name: 'Finalize bill?' }).getByRole('button', { name: 'Finalize' }).click()
+  await expect(window.getByRole('dialog', { name: 'Bill finalized' })).toBeVisible()
   await window.locator('.modal-backdrop').click({ position: { x: 8, y: 8 } })
 
   await openInventoryTab(window, 'Products')

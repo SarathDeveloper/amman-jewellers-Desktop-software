@@ -1280,6 +1280,16 @@ export interface InventoryPiece {
   invoiceNo?: string
 }
 
+/** Editable fields for an in-stock piece on the product edit form. */
+export interface InventoryPieceUpdateInput {
+  id: number
+  huid?: string
+  grossWeight: number
+  stoneWeight: number
+  netWeight: number
+  cost: number | null
+}
+
 /** One physical ornament on a tracked purchase line. */
 export interface InwardPieceInput {
   tagCode?: string

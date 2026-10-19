@@ -621,19 +621,10 @@
   }
 
   .sale-bill-items-table .adagu-col-particular,
-  .adagu-jewellery-table--pledge .adagu-item-description-cell,
+  .adagu-jewellery-table--pledge .adagu-col-particular,
   .old-gold-table:not(.old-gold-table--links) .old-gold-col-desc,
   .sale-bill-items-table .adagu-col-amount {
     grid-column: 1 / -1;
-  }
-
-  /* The pledge description row glues onto the item card above it. */
-  .adagu-jewellery-table--pledge tbody tr:has(.adagu-item-description-cell) {
-    margin-top: -0.6rem;
-    border-top: 0;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
-    box-shadow: none;
   }
 
   .sale-bill-items-table .adagu-col-action,

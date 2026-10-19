@@ -20,6 +20,7 @@ type Piece = {
   grossWeight: number
   stoneWeight: number
   netWeight: number
+  cost: number | null
   status: string
   invoiceId: number | null
 }
@@ -483,5 +484,117 @@ describe('piece-level inventory', () => {
     expect(after.find((row) => row.id === piece.id)?.status).toBe('damaged')
     const productAfter = await ipc<{ stockQty: number }>(IPC_CHANNELS.PRODUCTS_GET, product.id)
     expect(productAfter.stockQty).toBe(1)
+  })
+
+  it('updates in-stock piece HUID, weights and cost from the product edit API', async () => {
+    const supplier = await createSupplier()
+    const product = await createTrackedProduct('Edit piece ring')
+    const [firstHuid, secondHuid] = testHuids(2)
+    await buyPieces(supplier.id, product.id, [
+      { huid: firstHuid, netWeight: 2 },
+      { huid: secondHuid, netWeight: 3 },
+    ])
+    const [first, second] = await inStockPieces(product.id)
+    const [replacement] = testHuids(1)
+
+    const response = await getTestAgent()
+      .put(`/api/products/${product.id}/pieces`)
+      .send({
+        pieces: [
+          {
+            id: first.id,
+            huid: replacement,
+            grossWeight: 2.5,
+            stoneWeight: 0.2,
+            netWeight: 2.3,
+            cost: 4500,
+          },
+          {
+            id: second.id,
+            huid: secondHuid,
+            grossWeight: 3,
+            stoneWeight: 0,
+            netWeight: 3,
+            cost: null,
+          },
+        ],
+      })
+    expect(response.status).toBe(200)
+    const updated = response.body as Piece[]
+    const edited = updated.find((row) => row.id === first.id)
+    expect(edited?.huid).toBe(replacement)
+    expect(edited?.grossWeight).toBe(2.5)
+    expect(edited?.stoneWeight).toBe(0.2)
+    expect(edited?.netWeight).toBe(2.3)
+    expect(edited?.cost).toBe(4500)
+
+    const productAfter = await ipc<{ stockQty: number; huids: string[] }>(
+      IPC_CHANNELS.PRODUCTS_GET,
+      product.id,
+    )
+    expect(productAfter.stockQty).toBe(2)
+    expect(productAfter.huids).toEqual(expect.arrayContaining([replacement, secondHuid]))
+    expect(productAfter.huids).not.toContain(firstHuid)
+
+    const movement = getDatabase()
+      .prepare(
+        `SELECT weight_delta AS weight, qty_delta AS qty FROM stock_movements
+         WHERE product_id = ? AND movement_type = 'adjustment' AND reference_id = ?`,
+      )
+      .get(product.id, first.id) as { weight: number; qty: number }
+    expect(movement.qty).toBe(0)
+    expect(movement.weight).toBeCloseTo(0.3, 5)
+  })
+
+  it('rejects editing a sold piece and duplicate HUIDs', async () => {
+    const supplier = await createSupplier()
+    const customer = await createCustomer()
+    const product = await createTrackedProduct('Locked piece ring')
+    const [firstHuid, secondHuid] = testHuids(2)
+    await buyPieces(supplier.id, product.id, [
+      { huid: firstHuid, netWeight: 2 },
+      { huid: secondHuid, netWeight: 3 },
+    ])
+    const [first, second] = await inStockPieces(product.id)
+
+    const draft = await ipc<{ id: number }>(
+      IPC_CHANNELS.INVOICES_CREATE,
+      pieceBill(customer.id, product.id, first),
+    )
+    await ipc(IPC_CHANNELS.INVOICES_FINALIZE, draft.id)
+
+    const soldEdit = await getTestAgent()
+      .put(`/api/products/${product.id}/pieces`)
+      .send({
+        pieces: [
+          {
+            id: first.id,
+            huid: firstHuid,
+            grossWeight: first.grossWeight,
+            stoneWeight: first.stoneWeight,
+            netWeight: first.netWeight,
+            cost: 99,
+          },
+        ],
+      })
+    expect(soldEdit.status).toBe(400)
+    expect(soldEdit.body.error).toMatch(/sold/i)
+
+    const clash = await getTestAgent()
+      .put(`/api/products/${product.id}/pieces`)
+      .send({
+        pieces: [
+          {
+            id: second.id,
+            huid: firstHuid,
+            grossWeight: 3,
+            stoneWeight: 0,
+            netWeight: 3,
+            cost: null,
+          },
+        ],
+      })
+    expect(clash.status).toBe(400)
+    expect(clash.body.error).toMatch(/HUID/i)
   })
 })

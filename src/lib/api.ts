@@ -23,6 +23,7 @@ import type {
   InvoicePaymentInput,
   InvoiceUpdateInput,
   InventoryPiece,
+  InventoryPieceUpdateInput,
   ItemStockListInput,
   ItemStockRow,
   ItemStockUpsertInput,
@@ -211,6 +212,11 @@ export const api = {
     request<InventoryPiece[]>(
       `/api/products/${id}/pieces${onlyInStock ? '?status=in_stock' : ''}`,
     ),
+  updateProductPieces: (id: number, pieces: InventoryPieceUpdateInput[]) =>
+    request<InventoryPiece[]>(`/api/products/${id}/pieces`, {
+      method: 'PUT',
+      body: JSON.stringify({ pieces }),
+    }),
   lookupPiece: (term: string) =>
     request<InventoryPiece>(`/api/products/pieces/lookup${qs({ term })}`),
   convertProductToTracked: (id: number) =>

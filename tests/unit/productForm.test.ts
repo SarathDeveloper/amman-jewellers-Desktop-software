@@ -5,6 +5,7 @@ import {
   categoryOptions,
   defaultPurityForMetal,
   emptyProductForm,
+  existingPiecesToUpdateInput,
   formToProductInput,
   metalOptions,
   newOpeningPiece,
@@ -13,7 +14,9 @@ import {
   productMatchesListContext,
   purityOptions,
   resolvePurityForMetal,
+  validateExistingPieceEdits,
   validateProductForm,
+  type ExistingPieceEditRow,
   type ProductFormState,
 } from '../../src/features/products/productForm'
 
@@ -86,6 +89,22 @@ describe('product form options', () => {
 })
 
 describe('validateProductForm', () => {
+  it('rejects a category that is not in the stock list', () => {
+    const errors = validateProductForm(form({ category: 'Bracelet' }), [], null, ['Chain', 'Ring'])
+    expect(errors.category).toBe('Category does not exist. Create it in Stock first.')
+  })
+
+  it('allows a new category name when Other is selected', () => {
+    expect(
+      validateProductForm(form({ category: 'Bracelet' }), [], null, ['Chain'], true).category,
+    ).toBeUndefined()
+  })
+
+  it('rejects a new category name longer than 80 characters', () => {
+    const errors = validateProductForm(form({ category: 'x'.repeat(81) }), [], null, [], true)
+    expect(errors.category).toBe('Category name must be 80 characters or less')
+  })
+
   it('requires name', () => {
     const errors = validateProductForm(form({ name: '' }), [], null)
     expect(errors.name).toBe('Name is required')
@@ -208,6 +227,59 @@ describe('productInputForSource', () => {
     expect(input.trackPieces).toBe(true)
     expect(input.name).toBe('Gold chain')
     expect(input.netWeight).toBe(9)
+  })
+})
+
+describe('existing piece edits', () => {
+  function pieceRow(overrides: Partial<ExistingPieceEditRow> = {}): ExistingPieceEditRow {
+    return {
+      id: 1,
+      tagCode: 'T000001',
+      status: 'in_stock',
+      huid: 'ABC123',
+      grossWeight: 2.5,
+      stoneWeight: 0.2,
+      netWeight: 2.3,
+      cost: 1000,
+      editable: true,
+      ...overrides,
+    }
+  }
+
+  it('validates editable rows and ignores sold rows', () => {
+    expect(
+      validateExistingPieceEdits([
+        pieceRow(),
+        pieceRow({ id: 2, tagCode: 'T000002', status: 'sold', editable: false, netWeight: 0 }),
+      ]),
+    ).toBeUndefined()
+    expect(validateExistingPieceEdits([pieceRow({ netWeight: '' })])).toBe(
+      'Enter the net weight for T000001',
+    )
+    expect(
+      validateExistingPieceEdits([
+        pieceRow({ huid: 'SAME' }),
+        pieceRow({ id: 2, tagCode: 'T000002', huid: 'same' }),
+      ]),
+    ).toBe('HUID SAME is duplicated')
+  })
+
+  it('maps only editable rows for the update API', () => {
+    expect(
+      existingPiecesToUpdateInput([
+        pieceRow({ cost: '' }),
+        pieceRow({ id: 2, tagCode: 'T000002', status: 'sold', editable: false }),
+      ]),
+    ).toEqual([
+      {
+        id: 1,
+        huid: 'ABC123',
+        grossWeight: 2.5,
+        stoneWeight: 0.2,
+        netWeight: 2.3,
+        cost: null,
+      },
+    ])
   })
 })
 

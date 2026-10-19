@@ -184,7 +184,6 @@ export function CustomerDetailPage() {
   const [noticePrintTarget, setNoticePrintTarget] = useState<number | null>(null)
 
   const [collectAccountId, setCollectAccountId] = useState<number | null>(null)
-  const [printPaymentId, setPrintPaymentId] = useState<number | null>(null)
   const [printAccountId, setPrintAccountId] = useState<number | null>(null)
 
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null)
@@ -1036,20 +1035,12 @@ export function CustomerDetailPage() {
         <CollectPaymentModal
           accountId={collectAccountId}
           onClose={() => setCollectAccountId(null)}
-          onCollected={(paymentId) => {
+          onCollected={(_paymentId) => {
+            const accountId = collectAccountId
             setCollectAccountId(null)
-            setPrintPaymentId(paymentId)
+            setPrintAccountId(accountId)
             void reload().catch(() => undefined)
           }}
-        />
-      ) : null}
-
-      {printPaymentId ? (
-        <PrintPreviewModal
-          title="Collection receipt"
-          path={`/print/gs-batch-receipt/${printPaymentId}`}
-          pdfFilename="gs-receipt.pdf"
-          onClose={() => setPrintPaymentId(null)}
         />
       ) : null}
 

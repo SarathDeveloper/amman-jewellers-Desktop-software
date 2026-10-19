@@ -5,6 +5,7 @@ import type {
   InwardPieceInput,
   InventoryPiece,
   InventoryPieceStatus,
+  InventoryPieceUpdateInput,
 } from '@shared/types'
 import { assertUniqueHuids } from '../products/huids'
 import { recordPieceMovement } from './movements'
@@ -586,6 +587,142 @@ export function assertPieceCount(db: Database.Database, productId: number): void
       } but stock quantity is ${product.stock_qty}`,
     )
   }
+}
+
+/**
+ * Patches in-stock pieces from the product edit form. Tag codes stay fixed.
+ * Net-weight changes write a qty-0 adjustment movement so category weight
+ * ledgers stay aligned. HUID changes sync `product_huids`.
+ */
+export function updateInStockPieces(
+  db: Database.Database,
+  productId: number,
+  updates: InventoryPieceUpdateInput[],
+): InventoryPiece[] {
+  if (updates.length === 0) {
+    return listPiecesForProduct(db, productId)
+  }
+
+  const product = loadProduct(db, productId)
+  if (product.track_pieces !== 1) {
+    throw new Error('This product does not track pieces')
+  }
+
+  const updateIds = new Set(updates.map((row) => row.id))
+  const resolved: Array<{
+    piece: PieceRow
+    huid: string
+    gross: number
+    stone: number
+    net: number
+    cost: number | null
+  }> = []
+
+  const seenHuids = new Map<string, number>()
+  for (const input of updates) {
+    const piece = loadPiece(db, input.id)
+    if (!piece) {
+      throw new Error('Piece not found')
+    }
+    if (piece.product_id !== productId) {
+      throw new Error(`Tag ${piece.tag_code} belongs to another product`)
+    }
+    if (piece.status !== 'in_stock') {
+      throw new Error(`Tag ${piece.tag_code} is ${piece.status} and cannot be edited`)
+    }
+
+    const huid = (input.huid ?? '').trim().toUpperCase()
+    if (huid && !/^[0-9A-Z]+$/.test(huid)) {
+      throw new Error('HUID can only be letters and digits')
+    }
+    if (huid) {
+      const prior = seenHuids.get(huid)
+      if (prior !== undefined && prior !== input.id) {
+        throw new Error(`HUID ${huid} is duplicated`)
+      }
+      seenHuids.set(huid, input.id)
+    }
+
+    const enteredGross = input.grossWeight ?? 0
+    const gross = roundWeight(enteredGross > 0 ? enteredGross : input.netWeight)
+    const stone = roundWeight(Math.max(0, input.stoneWeight ?? 0))
+    const net = roundWeight(input.netWeight)
+    if (gross > 0 && net > gross) {
+      throw new Error(`Net weight cannot exceed gross weight for tag ${piece.tag_code}`)
+    }
+    if (stone > gross) {
+      throw new Error(`Stone weight cannot exceed gross weight for tag ${piece.tag_code}`)
+    }
+    if (input.cost != null && input.cost < 0) {
+      throw new Error(`Cost cannot be negative for tag ${piece.tag_code}`)
+    }
+
+    resolved.push({ piece, huid, gross, stone, net, cost: input.cost })
+  }
+
+  for (const { piece, huid } of resolved) {
+    if (!huid) continue
+    const otherPiece = db
+      .prepare('SELECT id, tag_code FROM inventory_pieces WHERE huid = ? AND id != ?')
+      .get(huid, piece.id) as { id: number; tag_code: string } | undefined
+    if (otherPiece && !updateIds.has(otherPiece.id)) {
+      throw new Error(`HUID ${huid} is already on tag ${otherPiece.tag_code}`)
+    }
+  }
+
+  const huidsForAssert = [...seenHuids.keys()]
+  assertUniqueHuids(db, huidsForAssert, productId)
+
+  const clearHuidRow = db.prepare(
+    `DELETE FROM product_huids
+     WHERE product_id = ? AND (piece_id = ? OR (piece_id IS NULL AND huid = ?))`,
+  )
+  const insertHuid = db.prepare(
+    'INSERT INTO product_huids (product_id, huid, piece_id) VALUES (?, ?, ?)',
+  )
+  const clearPieceHuid = db.prepare(
+    `UPDATE inventory_pieces SET huid = '', updated_at = datetime('now')
+     WHERE id = ? AND status = 'in_stock'`,
+  )
+  const updateRow = db.prepare(
+    `UPDATE inventory_pieces
+     SET huid = ?, gross_weight = ?, stone_weight = ?, net_weight = ?, cost = ?,
+         updated_at = datetime('now')
+     WHERE id = ? AND status = 'in_stock'`,
+  )
+
+  // Clear first so HUID swaps within the same batch do not clash mid-update.
+  for (const { piece } of resolved) {
+    const previousHuid = (piece.huid ?? '').trim().toUpperCase()
+    clearHuidRow.run(productId, piece.id, previousHuid)
+    clearPieceHuid.run(piece.id)
+  }
+
+  for (const { piece, huid, gross, stone, net, cost } of resolved) {
+    const result = updateRow.run(huid, gross, stone, net, cost, piece.id)
+    if (result.changes !== 1) {
+      throw new Error(`Tag ${piece.tag_code} is no longer in stock`)
+    }
+    if (huid) {
+      insertHuid.run(productId, huid, piece.id)
+    }
+
+    const weightDelta = roundWeight(net - piece.net_weight)
+    if (weightDelta !== 0) {
+      recordPieceMovement(db, {
+        type: 'adjustment',
+        productId,
+        qtyDelta: 0,
+        weightDelta,
+        refType: 'inventory_piece',
+        refId: piece.id,
+        reason: `Corrected tag ${piece.tag_code}`,
+      })
+    }
+  }
+
+  assertPieceCount(db, productId)
+  return listPiecesForProduct(db, productId)
 }
 
 /** In-stock pieces for the bill product picker, oldest first. */

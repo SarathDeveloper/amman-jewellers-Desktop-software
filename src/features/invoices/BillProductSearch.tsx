@@ -19,6 +19,11 @@ type BillProductSearchProps = {
   compact?: boolean
   placeholder?: string
   /**
+   * When set (purchase lines), the selected product name is shown as the input
+   * value — same pattern as BillCustomerSearch. Omit on sale so search stays empty.
+   */
+  selectedProductId?: number | ''
+  /**
    * 'sale' (default) hides products with no stock and respects pieces already on
    * the bill. 'purchase' lists every active product, because buying more of an
    * out-of-stock design is the normal case.
@@ -31,6 +36,8 @@ type BillProductSearchProps = {
   /** Pre-fills the inline product form (purchase entry passes what the line already has). */
   newProductValues?: Partial<ProductFormState>
   onSelect: (product: Product, huid?: string, piece?: InventoryPiece) => void
+  /** Clears the line selection when the user starts typing a new search. */
+  onClear?: () => void
   onProductCreated: (product: Product) => void
   onError?: (message: string) => void
 }
@@ -43,15 +50,18 @@ export function BillProductSearch({
   hideAddButton,
   compact,
   placeholder = 'Search product by name, metal or category…',
+  selectedProductId,
   mode = 'sale',
   usedQtyByProduct = {},
   usedPieceIds = [],
   newProductValues,
   onSelect,
+  onClear,
   onProductCreated,
   onError,
 }: BillProductSearchProps) {
   const isPurchase = mode === 'purchase'
+  const showSelected = selectedProductId !== undefined
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
@@ -61,6 +71,19 @@ export function BillProductSearch({
   const rootRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const panelStyle = useAnchoredPanel(rootRef, open)
+  const prevSelectedIdRef = useRef(selectedProductId)
+
+  const selected =
+    showSelected && selectedProductId !== '' && selectedProductId != null
+      ? products.find((product) => product.id === selectedProductId)
+      : undefined
+
+  useEffect(() => {
+    if (prevSelectedIdRef.current && !selectedProductId) {
+      setQuery('')
+    }
+    prevSelectedIdRef.current = selectedProductId
+  }, [selectedProductId])
 
   const sellable = useMemo(() => sellableProducts(products), [products])
 
@@ -111,7 +134,7 @@ export function BillProductSearch({
 
   function pick(product: Product) {
     onSelect(product, matchedHuid(product))
-    setQuery('')
+    setQuery(showSelected ? variantDisplayName(product) : '')
     setOpen(false)
   }
 
@@ -123,7 +146,7 @@ export function BillProductSearch({
     })
     setExpandedProductId(null)
     onSelect(product, piece.huid || undefined, piece)
-    setQuery('')
+    setQuery(showSelected ? variantDisplayName(product) : '')
     setOpen(false)
   }
 
@@ -179,7 +202,8 @@ export function BillProductSearch({
     try {
       const created = await api.createProduct(input)
       onProductCreated(created)
-      setQuery('')
+      onSelect(created)
+      setQuery(showSelected ? variantDisplayName(created) : '')
       setModalOpen(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to add product'
@@ -200,13 +224,17 @@ export function BillProductSearch({
         <input
           className="input billing-customer-input"
           disabled={disabled}
-          value={query}
+          value={showSelected && !open && selected ? variantDisplayName(selected) : query}
           placeholder={placeholder}
           onChange={(e) => {
             setQuery(e.target.value)
             setOpen(true)
+            if (showSelected && selectedProductId) onClear?.()
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            if (showSelected && selected) setQuery(variantDisplayName(selected))
+            setOpen(true)
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               event.preventDefault()

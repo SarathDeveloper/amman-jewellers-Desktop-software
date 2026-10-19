@@ -1,6 +1,11 @@
 import { Router } from 'express'
-import { idSchema, productInputSchema } from '@shared/schemas'
-import type { Product, ProductAttributes, ProductInput } from '@shared/types'
+import { idSchema, inventoryPiecesUpdateSchema, productInputSchema } from '@shared/schemas'
+import type {
+  InventoryPieceUpdateInput,
+  Product,
+  ProductAttributes,
+  ProductInput,
+} from '@shared/types'
 import { EMPTY_PRODUCT_VARIANT_FIELDS } from '@shared/types'
 import { roundWeight } from '@shared/billing/pricing'
 import { getDatabase } from '../db'
@@ -14,6 +19,7 @@ import {
   findPieceByTagOrHuid,
   listInStockPieces,
   listPiecesForProduct,
+  updateInStockPieces,
 } from '../stock/pieces'
 
 const router = Router()
@@ -295,6 +301,22 @@ router.get(
   }),
 )
 
+router.put(
+  '/:id/pieces',
+  asyncHandler((req, res) => {
+    const id = parseIdParam(req.params.id)
+    const input = parseBody(inventoryPiecesUpdateSchema, req.body) as {
+      pieces: InventoryPieceUpdateInput[]
+    }
+    const db = getDatabase()
+    const pieces = db.transaction(() => {
+      requireProductRow(db, id)
+      return updateInStockPieces(db, id, input.pieces)
+    })()
+    res.json(pieces)
+  }),
+)
+
 router.post(
   '/:id/track-pieces',
   asyncHandler((req, res) => {
@@ -511,6 +533,20 @@ router.put(
   }),
 )
 
+const PRODUCT_IN_USE_DELETE_MESSAGE =
+  'This product is used on existing bills, so it cannot be deleted. Deactivate it instead.'
+
+function isSqliteForeignKeyError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: string }).code
+  if (code === 'SQLITE_CONSTRAINT_FOREIGNKEY') return true
+  if (typeof code === 'string' && code.startsWith('SQLITE_CONSTRAINT')) {
+    const message = error instanceof Error ? error.message : String((error as { message?: string }).message ?? '')
+    return /FOREIGN KEY/i.test(message)
+  }
+  return false
+}
+
 router.delete(
   '/:id',
   asyncHandler((req, res) => {
@@ -536,7 +572,23 @@ router.delete(
         'This product has piece history from purchases or bills, so it cannot be deleted. Deactivate it instead.',
       )
     }
-    const result = db.prepare('DELETE FROM products WHERE id = ?').run(id)
+    const billLineCount = (
+      db.prepare('SELECT COUNT(*) AS count FROM invoice_items WHERE product_id = ?').get(id) as {
+        count: number
+      }
+    ).count
+    if (billLineCount > 0) {
+      throw new Error(PRODUCT_IN_USE_DELETE_MESSAGE)
+    }
+    let result
+    try {
+      result = db.prepare('DELETE FROM products WHERE id = ?').run(id)
+    } catch (error) {
+      if (isSqliteForeignKeyError(error)) {
+        throw new Error(PRODUCT_IN_USE_DELETE_MESSAGE)
+      }
+      throw error
+    }
     if (result.changes === 0) {
       throw new Error('Product not found')
     }

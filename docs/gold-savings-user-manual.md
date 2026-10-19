@@ -360,8 +360,8 @@ Two live previews change as you type:
    **Confirm**.
 
 Result: toast *Payment recorded*; receipt `GSR-2026-0002`; gold **+0.980 g**; cumulative
-**1.980 g**; a **Collection receipt** print preview opens. Installment 2 leaves the Collections
-list, which now shows **Next due 9 Dec 2026**.
+**1.980 g**; a **Collection receipt** print preview opens (same scheme passbook as enrollment).
+Installment 2 leaves the Collections list, which now shows **Next due 9 Dec 2026**.
 
 ### 5.3 Worked example - installment 3 (late, with late fee)
 

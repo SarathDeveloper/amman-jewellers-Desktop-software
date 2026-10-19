@@ -312,4 +312,36 @@ describe('products IPC', () => {
     })
     expect(reused.huids).toEqual(['D4E5F6'])
   })
+
+  it('blocks delete when the product is used on a bill', async () => {
+    const customer = await ipc(IPC_CHANNELS.CUSTOMERS_CREATE, {
+      name: 'Bill buyer',
+      phone: '9123456780',
+      address: 'Salem',
+      notes: '',
+    })
+    const product = await ipc<{ id: number }>(IPC_CHANNELS.PRODUCTS_CREATE, withHuids({
+      ...sampleProduct,
+      name: 'Billed chain',
+      stockQty: 3,
+    }))
+    await ipc(IPC_CHANNELS.INVOICES_CREATE, {
+      customerId: customer.id,
+      invoiceDate: '2026-09-24',
+      tax: 0,
+      autoTax: false,
+      items: [{ productId: product.id, qty: 1, rate: 1000, metalRate: 1000, netWeight: 2 }],
+    })
+
+    const blocked = await invokeIpcForTests(IPC_CHANNELS.PRODUCTS_DELETE, product.id)
+    expect(blocked.ok).toBe(false)
+    if (!blocked.ok) {
+      expect(blocked.error).toMatch(/used on existing bills/i)
+      expect(blocked.error).toMatch(/cannot be deleted/i)
+      expect(blocked.error).not.toMatch(/FOREIGN KEY/i)
+    }
+
+    const listed = await ipc<{ id: number }[]>(IPC_CHANNELS.PRODUCTS_LIST)
+    expect(listed.some((row) => row.id === product.id)).toBe(true)
+  })
 })

@@ -5038,6 +5038,26 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
 .opening-pieces .inward-pieces-table td:nth-child(5) {
   min-width: 5.5rem;
 }
+.existing-pieces .inward-pieces-table td:nth-child(1) {
+  width: 5.5rem;
+  min-width: 5.5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.existing-pieces .inward-pieces-table td:nth-child(2) {
+  min-width: 7.5rem;
+}
+.existing-pieces .inward-pieces-table td:nth-child(3),
+.existing-pieces .inward-pieces-table td:nth-child(4),
+.existing-pieces .inward-pieces-table td:nth-child(5),
+.existing-pieces .inward-pieces-table td:nth-child(6) {
+  min-width: 5.5rem;
+}
+.existing-pieces .inward-pieces-table td:nth-child(7) {
+  min-width: 5rem;
+  text-transform: capitalize;
+  font-weight: 600;
+}
 .purchase-review {
   display: flex;
   flex-direction: column;
@@ -5702,11 +5722,13 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
 }
 .product-detail-body {
   padding: 1.1rem 1.25rem 1.35rem;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 1rem;
   min-height: 0;
+  min-width: 0;
   background: var(--page-bg);
 }
 .product-detail-cards {
@@ -5813,13 +5835,21 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
 }
 .product-detail-pieces-card {
   margin-top: 1rem;
+  /* Keep radius clip on the head; let the table wrap own horizontal scroll. */
+  overflow: hidden;
+  max-width: 100%;
 }
 .product-detail-pieces-wrap {
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
   max-height: 22rem;
+  max-width: 100%;
+  min-width: 0;
+  overscroll-behavior-x: contain;
 }
 .product-detail-pieces {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.8125rem;
 }
@@ -8487,10 +8517,6 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
 .adagu-net-weight-input input {
   font-weight: 600;
 }
-.adagu-item-description-cell {
-  padding-top: 0;
-  padding-bottom: 0.2rem;
-}
 .adagu-item-description {
   align-items: center;
   height: 1.75rem;
@@ -8498,11 +8524,8 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   padding-top: 0;
   padding-bottom: 0;
 }
-.adagu-item-description textarea {
+.adagu-item-description input {
   font-size: 0.75rem;
-  max-height: 1.75rem;
-  resize: none;
-  overflow: hidden;
 }
 .adagu-jewellery-summary {
   display: flex;
@@ -8905,12 +8928,6 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   color: var(--danger);
   font-size: 0.8125rem;
 }
-.old-gold-cash-warning {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.35rem;
-  color: var(--warning);
-}
 .old-gold-payout-now {
   display: flex;
   align-items: center;
@@ -9114,6 +9131,7 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
 }
 .invoice-success-actions {
   flex-wrap: wrap;
+  justify-content: center;
 }
 .invoice-activity-list {
   display: flex;
@@ -9166,6 +9184,34 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   overflow: hidden;
   padding: 0;
   gap: 0.5rem;
+}
+.sale-bill-editor--locked .sale-bill-product-name:disabled,
+.sale-bill-editor--locked .adagu-jewellery-table input:disabled,
+.sale-bill-editor--locked .adagu-jewellery-table select:disabled,
+.sale-bill-editor--locked .sale-bill-meta-field input:disabled:not(.date-display-input-native),
+.sale-bill-editor--locked .adagu-field input:disabled:not(.date-display-input-native),
+.sale-bill-editor--locked .adagu-field select:disabled {
+  opacity: 1;
+  color: var(--text);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  cursor: default;
+  -webkit-text-fill-color: var(--text);
+}
+/* Keep DateInput's invisible native control hidden — the locked rule above
+   would otherwise reveal it on top of the formatted "18 Oct 2026" label. */
+.sale-bill-editor--locked .date-display-input-native:disabled {
+  opacity: 0;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.sale-bill-editor--locked .sale-bill-product-name:disabled:focus,
+.sale-bill-editor--locked .adagu-jewellery-table input:disabled:focus,
+.sale-bill-editor--locked .adagu-jewellery-table select:disabled:focus {
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
 }
 .sale-bill-editor .error-banner {
   flex-shrink: 0;
@@ -10248,6 +10294,10 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
 .sale-bill-editor .adagu-jewellery-table--pledge .adagu-col-index {
   width: 2.75rem;
   white-space: nowrap;
+}
+.sale-bill-editor .adagu-jewellery-table--pledge .adagu-col-particular {
+  width: auto;
+  min-width: 7rem;
 }
 .sale-bill-editor .adagu-jewellery-table--pledge .adagu-col-metal {
   width: 6.75rem;

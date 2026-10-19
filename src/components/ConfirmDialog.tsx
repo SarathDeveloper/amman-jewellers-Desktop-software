@@ -7,6 +7,7 @@ export function ConfirmDialog({
   confirmLabel = 'Delete',
   danger = true,
   busy = false,
+  error = null,
   onConfirm,
   onCancel,
 }: {
@@ -16,6 +17,8 @@ export function ConfirmDialog({
   danger?: boolean
   /** While true both buttons are disabled and the dialog cannot be dismissed. */
   busy?: boolean
+  /** Shown under the copy when the confirm action failed. */
+  error?: string | null
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -49,6 +52,7 @@ export function ConfirmDialog({
       }
     >
       <p className="confirm-dialog-copy">{message}</p>
+      {error ? <div className="error-banner">{error}</div> : null}
     </Modal>
   )
 }

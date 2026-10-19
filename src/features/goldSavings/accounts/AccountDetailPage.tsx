@@ -49,7 +49,6 @@ export function AccountDetailPage() {
   const [tab, setTab] = useState<DetailTab>('overview')
   const [collectOpen, setCollectOpen] = useState(false)
   const [printPassbook, setPrintPassbook] = useState(false)
-  const [printPaymentId, setPrintPaymentId] = useState<number | null>(null)
   const [reasonAction, setReasonAction] = useState<
     { kind: 'cancel' } | { kind: 'reverse'; paymentId: number } | { kind: 'waive'; installmentId: number } | null
   >(null)
@@ -431,7 +430,7 @@ export function AccountDetailPage() {
                   <td><GsStatusBadge status={payment.status} /></td>
                   <td>
                     <div className="row-actions">
-                      <button type="button" className="btn ghost" onClick={() => setPrintPaymentId(payment.id)}>
+                      <button type="button" className="btn ghost" onClick={() => setPrintPassbook(true)}>
                         <Printer size={16} />
                         Reprint
                       </button>
@@ -555,9 +554,9 @@ export function AccountDetailPage() {
         <CollectPaymentModal
           accountId={account.id}
           onClose={() => setCollectOpen(false)}
-          onCollected={(paymentId) => {
+          onCollected={(_paymentId) => {
             setCollectOpen(false)
-            setPrintPaymentId(paymentId)
+            setPrintPassbook(true)
             void reload()
           }}
         />
@@ -568,14 +567,6 @@ export function AccountDetailPage() {
           path={`/print/gs-passbook/${account.id}`}
           pdfFilename="gs-passbook.pdf"
           onClose={() => setPrintPassbook(false)}
-        />
-      ) : null}
-      {printPaymentId ? (
-        <PrintPreviewModal
-          title="Collection receipt"
-          path={`/print/gs-batch-receipt/${printPaymentId}`}
-          pdfFilename="gs-receipt.pdf"
-          onClose={() => setPrintPaymentId(null)}
         />
       ) : null}
       {printRefundId ? (

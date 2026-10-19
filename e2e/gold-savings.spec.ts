@@ -143,7 +143,7 @@ test('collect Priya next installment then reverse it', async ({ window }) => {
   await expect(window.getByText('Reversed').first()).toBeVisible()
 })
 
-test('collect two installments in one batch and reprint the batch receipt', async ({ window }) => {
+test('collect two installments in one batch and open the passbook', async ({ window }) => {
   seedGoldSavingsDemo()
 
   await openGoldSavingsTab(window, 'Collections')
@@ -163,31 +163,23 @@ test('collect two installments in one batch and reprint the batch receipt', asyn
 
   const batch = getDatabase()
     .prepare(
-      `SELECT batch_no AS batchNo, COUNT(*) AS rows
+      `SELECT batch_no AS batchNo, COUNT(*) AS rows, account_id AS accountId
        FROM gold_saving_payments
        WHERE batch_no IS NOT NULL AND status = 'posted'
        GROUP BY batch_no
        ORDER BY batch_no DESC
        LIMIT 1`,
     )
-    .get() as { batchNo: string; rows: number }
+    .get() as { batchNo: string; rows: number; accountId: number }
   expect(batch.rows).toBe(2)
   expect(batch.batchNo).toMatch(/^GSB-\d{4}-\d{4}$/)
 
-  const first = getDatabase()
-    .prepare(`SELECT id FROM gold_saving_payments WHERE batch_no = ? ORDER BY id LIMIT 1`)
-    .get(batch.batchNo) as { id: number }
-
   await seedShopName(window, 'Gold Savings Print Shop')
   const origin = new URL(window.url()).origin
-  await window.goto(`${origin}/print/gs-batch-receipt/${first.id}`)
+  await window.goto(`${origin}/print/gs-passbook/${batch.accountId}`)
   await expect(window.getByRole('heading', { name: 'Gold Savings Print Shop' })).toBeVisible({ timeout: 15_000 })
-  await expect(window.locator('.gs-receipt-note').first()).toContainText('One receipt for 2 installments')
-  await expect(window.locator('.gs-receipt-batch tbody tr')).toHaveCount(2)
-  await expect(
-    window.locator('.gs-receipt tr').filter({ hasText: 'Total amount paid to date' }),
-  ).toContainText('₹6000.00')
-  await expect(window.locator('.gs-receipt-print-error')).toHaveCount(0)
+  await expect(window.locator('.gs-passbook')).toBeVisible()
+  await expect(window.locator('.gs-passbook-print-status')).toHaveCount(0)
 })
 
 test('customer with a scheme account cannot be deleted', async ({ window }) => {

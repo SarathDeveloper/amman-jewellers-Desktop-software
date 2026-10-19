@@ -72,6 +72,8 @@ export function ProductsPage() {
   const [inwardProducts, setInwardProducts] = useState<Product[] | null>(null)
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null)
   const [pendingDelete, setPendingDelete] = useState<number[] | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
@@ -284,17 +286,36 @@ export function ProductsPage() {
     await revealAfterSave(input, isCreate)
   }
 
+  function requestDelete(ids: number[]) {
+    setDeleteError(null)
+    setPendingDelete(ids)
+  }
+
+  function cancelDelete() {
+    setPendingDelete(null)
+    setDeleteError(null)
+    setDeleting(false)
+  }
+
   async function remove(ids: number[]) {
+    setDeleting(true)
+    setDeleteError(null)
     try {
       for (const id of ids) {
         await api.deleteProduct(id)
       }
       setPendingDelete(null)
+      setDeleteError(null)
       setSelected((current) => current.filter((id) => !ids.includes(id)))
       showToast(ids.length === 1 ? 'Product deleted' : 'Products deleted', 'success')
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete product')
+      const message = err instanceof Error ? err.message : 'Failed to delete product'
+      setDeleteError(message)
+      setError(message)
+      showToast(message, 'error')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -506,7 +527,7 @@ export function ProductsPage() {
               <PackagePlus size={16} aria-hidden />
               Add inward to selected
             </button>
-            <button type="button" className="btn danger" onClick={() => setPendingDelete(selected)}>
+            <button type="button" className="btn danger" onClick={() => requestDelete(selected)}>
               Delete selected
             </button>
           </div>
@@ -784,7 +805,7 @@ export function ProductsPage() {
           onAddInward={openInward}
           onAdjust={openAdjust}
           onEdit={openEdit}
-          onDelete={(product) => setPendingDelete([product.id])}
+          onDelete={(product) => requestDelete([product.id])}
           onViewChild={setViewing}
           onConverted={(product) =>
             setProducts((current) =>
@@ -832,7 +853,9 @@ export function ProductsPage() {
                 : 'Delete this product?'
               : `Delete ${pendingDelete.length} products?`
           }
-          onCancel={() => setPendingDelete(null)}
+          busy={deleting}
+          error={deleteError}
+          onCancel={cancelDelete}
           onConfirm={() => void remove(pendingDelete)}
         />
       )}

@@ -31,7 +31,7 @@ export function CollectionsPage() {
   const [search, setSearch] = useState('')
   const [account, setAccount] = useState<GoldSavingAccount | null>(null)
   const [collectOpen, setCollectOpen] = useState(false)
-  const [printPaymentId, setPrintPaymentId] = useState<number | null>(null)
+  const [printAccountId, setPrintAccountId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const today = localTodayIso()
@@ -177,21 +177,21 @@ export function CollectionsPage() {
         <CollectPaymentModal
           accountId={account.id}
           onClose={() => setCollectOpen(false)}
-          onCollected={(paymentId) => {
+          onCollected={(_paymentId) => {
             setCollectOpen(false)
-            setPrintPaymentId(paymentId)
+            setPrintAccountId(account.id)
             void Promise.all([api.getGsAccount(account.id), loadAccounts()]).then(([next]) => {
               setAccount(next.account)
             })
           }}
         />
       ) : null}
-      {printPaymentId ? (
+      {printAccountId ? (
         <PrintPreviewModal
           title="Collection receipt"
-          path={`/print/gs-batch-receipt/${printPaymentId}`}
-          pdfFilename="gs-receipt.pdf"
-          onClose={() => setPrintPaymentId(null)}
+          path={`/print/gs-passbook/${printAccountId}`}
+          pdfFilename="gs-passbook.pdf"
+          onClose={() => setPrintAccountId(null)}
         />
       ) : null}
     </div>

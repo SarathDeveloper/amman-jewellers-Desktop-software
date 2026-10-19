@@ -138,17 +138,27 @@ export async function setPaymentMode(page: Page, mode: 'Cash' | 'UPI' | 'Card') 
 
 export async function finalizeBill(page: Page) {
   await page.getByRole('button', { name: 'Finalize', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'Bill confirmed' })
+  const confirm = page.getByRole('dialog', { name: 'Finalize bill?' })
+  await confirm.getByRole('button', { name: 'Finalize' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Bill finalized' })
   await expect(dialog).toBeVisible()
   return dialog
 }
 
 export async function closeFinalizedBill(page: Page) {
-  const dialog = page.getByRole('dialog', { name: 'Bill confirmed' })
+  const dialog = page.getByRole('dialog', { name: 'Bill finalized' })
   if (await dialog.isVisible()) {
     await dialog.getByRole('button', { name: 'View Invoice' }).click()
     await expect(dialog).toBeHidden()
   }
+}
+
+/** Dismiss the success modal and land on a blank new bill. */
+export async function dismissSuccessModalToNewBill(page: Page) {
+  const dialog = page.getByRole('dialog', { name: 'Bill finalized' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'New Bill' }).click()
+  await expect(dialog).toBeHidden()
 }
 
 export function localTodayIso(): string {
@@ -282,14 +292,23 @@ export async function dismissDialogs(page: Page) {
   await recoverFromFatalError(page)
 }
 
-export async function sanctionAdaguLoan(page: Page) {
+export async function sanctionAdaguLoan(
+  page: Page,
+  options: { stayOnBill?: boolean } = {},
+) {
   await page.getByRole('button', { name: 'Sanction loan', exact: true }).click()
   const confirm = page.getByRole('dialog', { name: 'Sanction loan' })
   await expect(confirm).toBeVisible()
   await confirm.getByRole('button', { name: 'Sanction loan' }).click()
-  const toast = page.getByText('Loan sanctioned')
+  const success = page.getByRole('dialog', { name: 'Loan sanctioned' })
   const crashed = page.getByRole('heading', { name: 'Something went wrong.' })
-  await toast.or(crashed).waitFor({ state: 'visible', timeout: 15_000 })
+  await success.or(crashed).waitFor({ state: 'visible', timeout: 15_000 })
+  if (await success.isVisible()) {
+    await success
+      .getByRole('button', { name: options.stayOnBill ? 'View Bill' : 'New Bill' })
+      .click()
+    await expect(success).toBeHidden()
+  }
   await dismissDialogs(page)
 }
 

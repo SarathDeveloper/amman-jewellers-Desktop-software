@@ -15,7 +15,6 @@ import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
 import { formatCurrency, formatDisplayDate } from '../../lib/format'
 import { BillCustomerSearch } from '../invoices/BillCustomerSearch'
-import { CustomerRecordPanel } from '../customers/CustomerRecordPanel'
 import {
   newOldGoldRow,
   toOldGoldInputs,
@@ -320,36 +319,41 @@ export function OldGoldPurchaseEditorModal({
                     />
                   </Control>
                 </Field>
-                <Field label="Customer name" htmlFor="ogp-name" error={nameError}>
-                  <Control icon={<User size={14} strokeWidth={1.75} />}>
-                    <input
-                      id="ogp-name"
-                      className="input"
-                      value={customerName}
-                      disabled={readOnly || Boolean(selectedCustomer)}
-                      aria-invalid={Boolean(nameError)}
-                      onChange={(event) => {
-                        setCustomerName(event.target.value)
-                        if (nameError) setNameError(null)
-                      }}
-                      placeholder="Name"
-                    />
-                  </Control>
-                </Field>
-                <Field label="Phone" htmlFor="ogp-phone">
-                  <Control icon={<Phone size={14} strokeWidth={1.75} />}>
-                    <input
-                      id="ogp-phone"
-                      className="input"
-                      value={customerPhone}
-                      disabled={readOnly || Boolean(selectedCustomer)}
-                      onChange={(event) => setCustomerPhone(event.target.value.replace(/\D/g, '').slice(0, 10))}
-                      placeholder="Phone"
-                    />
-                  </Control>
-                </Field>
+                {selectedCustomer ? null : (
+                  <>
+                    <Field label="Customer name" htmlFor="ogp-name" error={nameError}>
+                      <Control icon={<User size={14} strokeWidth={1.75} />}>
+                        <input
+                          id="ogp-name"
+                          className="input"
+                          value={customerName}
+                          disabled={readOnly}
+                          aria-invalid={Boolean(nameError)}
+                          onChange={(event) => {
+                            setCustomerName(event.target.value)
+                            if (nameError) setNameError(null)
+                          }}
+                          placeholder="Name"
+                        />
+                      </Control>
+                    </Field>
+                    <Field label="Phone" htmlFor="ogp-phone">
+                      <Control icon={<Phone size={14} strokeWidth={1.75} />}>
+                        <input
+                          id="ogp-phone"
+                          className="input"
+                          value={customerPhone}
+                          disabled={readOnly}
+                          onChange={(event) =>
+                            setCustomerPhone(event.target.value.replace(/\D/g, '').slice(0, 10))
+                          }
+                          placeholder="Phone"
+                        />
+                      </Control>
+                    </Field>
+                  </>
+                )}
               </div>
-              {selectedCustomer ? <CustomerRecordPanel customer={selectedCustomer} /> : null}
               <Field label="Notes" htmlFor="ogp-notes">
                 <Control icon={<StickyNote size={14} strokeWidth={1.75} />}>
                   <input

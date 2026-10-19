@@ -31,9 +31,9 @@ export const InvoiceEditorRoute = lazy(() =>
 export const OldBillPage = lazy(() =>
   import('../features/invoices/OldBillPage').then((module) => ({ default: module.OldBillPage })),
 )
-export const PledgeEditorPage = lazy(() =>
+export const PledgeEditorRoute = lazy(() =>
   import('../features/pledges/PledgeEditorPage').then((module) => ({
-    default: module.PledgeEditorPage,
+    default: module.PledgeEditorRoute,
   })),
 )
 export const ProductsPage = lazy(() =>

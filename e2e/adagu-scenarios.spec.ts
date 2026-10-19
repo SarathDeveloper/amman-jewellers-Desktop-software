@@ -170,9 +170,15 @@ test.describe('Adagu billing — live Tauri scenarios', () => {
     await expect(sanction).toBeVisible()
     await expect(sanction.getByText(`for ${inr(99_000)} net paid`, { exact: false })).toBeVisible()
     await sanction.getByRole('button', { name: 'Sanction loan' }).click()
-    const sanctioned = window.getByText('Loan sanctioned')
+    const sanctioned = window.getByRole('dialog', { name: 'Loan sanctioned' })
     const crashed = window.getByRole('heading', { name: 'Something went wrong.' })
     await sanctioned.or(crashed).waitFor({ state: 'visible', timeout: 15_000 })
+    if (await sanctioned.isVisible()) {
+      await sanctioned.getByRole('button', { name: 'New Bill' }).click()
+      await expect(sanctioned).toBeHidden()
+      await expect(window.getByRole('heading', { name: 'Adagu Bill' })).toBeVisible()
+      await expect(window.getByRole('button', { name: 'Sanction loan', exact: true })).toBeVisible()
+    }
     await closePrintPreview(window)
 
     await openDuesTab(window, 'Adagu Dues')
@@ -389,7 +395,7 @@ test.describe('Adagu billing — live Tauri scenarios', () => {
       gross: '9',
       stone: '0',
     })
-    await sanctionAdaguLoan(window)
+    await sanctionAdaguLoan(window, { stayOnBill: true })
 
     await expect(window.locator('.sale-bill-meta-status')).toHaveText('Active')
     await expect(window.getByRole('button', { name: 'Sanction loan', exact: true })).toHaveCount(0)

@@ -4,7 +4,13 @@ import {
   STOCK_ITEM_NAMES,
   STOCK_METALS,
 } from '@shared/itemTypes'
-import { type Product, type ProductInput } from '@shared/types'
+import {
+  type InventoryPiece,
+  type InventoryPieceStatus,
+  type InventoryPieceUpdateInput,
+  type Product,
+  type ProductInput,
+} from '@shared/types'
 import { numericFieldToNumber, type NumericField } from '../../lib/numericField'
 import { resizeHuidRows } from './HuidEntryList'
 import { isGold, isSilver, stockTone, type StockTone } from './productDisplay'
@@ -108,6 +114,82 @@ export type ProductFormErrors = Partial<
     string
   >
 >
+
+/** One existing inventory piece shown on the product edit form. */
+export type ExistingPieceEditRow = {
+  id: number
+  tagCode: string
+  status: InventoryPieceStatus
+  huid: string
+  grossWeight: NumericField
+  stoneWeight: NumericField
+  netWeight: NumericField
+  cost: NumericField
+  editable: boolean
+}
+
+export function inventoryPieceToEditRow(piece: InventoryPiece): ExistingPieceEditRow {
+  return {
+    id: piece.id,
+    tagCode: piece.tagCode,
+    status: piece.status,
+    huid: piece.huid ?? '',
+    grossWeight: piece.grossWeight,
+    stoneWeight: piece.stoneWeight,
+    netWeight: piece.netWeight,
+    cost: piece.cost == null ? '' : piece.cost,
+    editable: piece.status === 'in_stock',
+  }
+}
+
+export function validateExistingPieceEdits(rows: ExistingPieceEditRow[]): string | undefined {
+  const editable = rows.filter((row) => row.editable)
+  const seenHuids = new Set<string>()
+  for (const [index, piece] of editable.entries()) {
+    const label = piece.tagCode || `piece ${index + 1}`
+    const huid = piece.huid.trim().toUpperCase()
+    const pieceGross = numericFieldToNumber(piece.grossWeight)
+    const pieceNet = numericFieldToNumber(piece.netWeight)
+    const pieceStone = numericFieldToNumber(piece.stoneWeight)
+    const pieceCost = piece.cost === '' ? null : numericFieldToNumber(piece.cost)
+    if (pieceNet <= 0) {
+      return `Enter the net weight for ${label}`
+    }
+    if (pieceGross > 0 && pieceNet > pieceGross) {
+      return `${label}: net weight cannot exceed gross weight`
+    }
+    if (pieceGross > 0 && pieceStone > pieceGross) {
+      return `${label}: stone weight cannot exceed gross weight`
+    }
+    if (pieceCost != null && pieceCost < 0) {
+      return `${label}: cost cannot be negative`
+    }
+    if (!huid) continue
+    if (!/^[0-9A-Z]+$/.test(huid)) {
+      return 'HUID can only be letters and digits'
+    }
+    if (seenHuids.has(huid)) {
+      return `HUID ${huid} is duplicated`
+    }
+    seenHuids.add(huid)
+  }
+  return undefined
+}
+
+export function existingPiecesToUpdateInput(
+  rows: ExistingPieceEditRow[],
+): InventoryPieceUpdateInput[] {
+  return rows
+    .filter((row) => row.editable)
+    .map((row) => ({
+      id: row.id,
+      huid: row.huid.trim().toUpperCase(),
+      grossWeight: numericFieldToNumber(row.grossWeight),
+      stoneWeight: numericFieldToNumber(row.stoneWeight),
+      netWeight: numericFieldToNumber(row.netWeight),
+      cost: row.cost === '' ? null : numericFieldToNumber(row.cost),
+    }))
+}
 
 export const emptyProductForm: ProductFormState = {
   name: '',
@@ -288,6 +370,7 @@ export function validateProductForm(
   _products: Product[],
   _editingId: number | null,
   allowedCategories: string[] = [],
+  allowNewCategory = false,
 ): ProductFormErrors {
   const errors: ProductFormErrors = {}
   const name = form.name.trim()
@@ -296,11 +379,16 @@ export function validateProductForm(
     errors.name = 'Name is required'
   }
 
-  if (!form.category.trim()) {
+  const category = form.category.trim()
+  if (!category) {
     errors.category = 'Category is required'
+  } else if (allowNewCategory) {
+    if (category.length > 80) {
+      errors.category = 'Category name must be 80 characters or less'
+    }
   } else if (
     allowedCategories.length > 0 &&
-    !allowedCategories.some((value) => value.toLowerCase() === form.category.trim().toLowerCase())
+    !allowedCategories.some((value) => value.toLowerCase() === category.toLowerCase())
   ) {
     errors.category = 'Category does not exist. Create it in Stock first.'
   }

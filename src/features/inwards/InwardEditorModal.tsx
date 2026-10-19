@@ -45,7 +45,7 @@ import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
 import { formatCurrency, formatDisplayDate, formatWeight } from '../../lib/format'
 import { numericFieldToNumber, parseNumericField, type NumericField } from '../../lib/numericField'
-import { isSilver, variantDisplayName } from '../products/productDisplay'
+import { isSilver } from '../products/productDisplay'
 import { HuidEntryList, resizeHuidRows } from '../products/HuidEntryList'
 import { SupplierFormModal } from '../suppliers/SupplierFormModal'
 import { BillProductSearch } from '../invoices/BillProductSearch'
@@ -1038,13 +1038,11 @@ export function InwardEditorModal({
                                   compact
                                   hideLabel
                                   mode="purchase"
-                                  placeholder={
-                                    product
-                                      ? variantDisplayName(product)
-                                      : 'Search product by name, HUID or category…'
-                                  }
+                                  selectedProductId={line.productId}
+                                  placeholder="Search product by name, HUID or category…"
                                   newProductValues={newProductDefaultsForLine(line)}
                                   onSelect={(picked) => applyProduct(line.key, picked)}
+                                  onClear={() => applyProduct(line.key, undefined)}
                                   onProductCreated={(created) => {
                                     setProducts((current) => [created, ...current])
                                     applyProduct(line.key, created)

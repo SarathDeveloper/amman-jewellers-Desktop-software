@@ -709,6 +709,36 @@ export const inwardPieceInputSchema = z.object({
   netWeight: z.number().positive(),
 })
 
+/** Patch one in-stock inventory piece from the product edit form. */
+export const inventoryPieceUpdateSchema = z
+  .object({
+    id: idSchema,
+    huid: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[0-9A-Z]*$/, 'HUID can only be letters and digits')
+      .max(20)
+      .optional()
+      .default(''),
+    grossWeight: z.number().nonnegative(),
+    stoneWeight: z.number().nonnegative(),
+    netWeight: z.number().positive({ message: 'Enter the net weight for each piece' }),
+    cost: z.number().nonnegative().nullable(),
+  })
+  .refine((data) => data.netWeight <= data.grossWeight || data.grossWeight === 0, {
+    message: 'Net weight cannot exceed gross weight',
+    path: ['netWeight'],
+  })
+  .refine((data) => data.stoneWeight <= data.grossWeight || data.grossWeight === 0, {
+    message: 'Stone weight cannot exceed gross weight',
+    path: ['stoneWeight'],
+  })
+
+export const inventoryPiecesUpdateSchema = z.object({
+  pieces: z.array(inventoryPieceUpdateSchema).max(500),
+})
+
 export const inwardItemInputSchema = z
   .object({
     productId: z.number().int().positive().nullable().optional(),

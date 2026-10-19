@@ -1,14 +1,10 @@
 import { useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
 import { localTodayIso } from '@shared/localDate'
 import type { OldGoldPayoutMode, OldGoldPurchase } from '@shared/types'
 import { DateInput } from '../../components/DateInput'
 import { Modal } from '../../components/Modal'
 import { api } from '../../lib/api'
 import { formatCurrency } from '../../lib/format'
-
-/** Cash above this in a day needs care (Income Tax section 40A(3)). */
-const CASH_WARNING_LIMIT = 10_000
 
 export function OldGoldPayoutModal({
   purchase,
@@ -27,7 +23,6 @@ export function OldGoldPayoutModal({
   const [saving, setSaving] = useState(false)
 
   const numericAmount = Number.parseFloat(amount)
-  const cashWarning = mode === 'cash' && Number.isFinite(numericAmount) && numericAmount >= CASH_WARNING_LIMIT
 
   async function submit() {
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
@@ -75,12 +70,6 @@ export function OldGoldPayoutModal({
         {purchase.customerName || 'Customer'} sold this old gold. Balance available{' '}
         {formatCurrency(purchase.balance)} of {formatCurrency(purchase.totalAmount)}.
       </p>
-      {cashWarning ? (
-        <p className="old-gold-link-error old-gold-cash-warning">
-          <AlertTriangle size={14} aria-hidden /> A cash payout of {formatCurrency(numericAmount)} may
-          need the customer's PAN, and cash above Rs 10,000 a day is restricted under section 40A(3).
-        </p>
-      ) : null}
       <div className="adagu-form-fields">
         <div className="adagu-field">
           <label>Date</label>

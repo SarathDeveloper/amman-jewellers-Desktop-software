@@ -83,11 +83,13 @@ test.describe('Manual QA: New bill generation', () => {
 
     // --- Finalize ---
     await window.getByRole('button', { name: 'Finalize', exact: true }).click()
-    const finalized = window.getByRole('dialog', { name: 'Bill confirmed' })
+    await window.getByRole('dialog', { name: 'Finalize bill?' }).getByRole('button', { name: 'Finalize' }).click()
+    const finalized = window.getByRole('dialog', { name: 'Bill finalized' })
     await expect(finalized).toBeVisible()
     await expect(window.locator('.sale-bill-meta-status')).not.toHaveText('Draft')
     await window.locator('.modal-backdrop').click({ position: { x: 8, y: 8 } })
     await expect(finalized).toBeHidden()
+    await expect(window.getByRole('heading', { name: 'New Quotation' })).toBeVisible()
 
     // --- Stock deducted ---
     await openInventoryTab(window, 'Products')

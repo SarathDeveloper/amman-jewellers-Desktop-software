@@ -27,6 +27,8 @@ import { HuidEntryList, resizeHuidRows } from './HuidEntryList'
 import { ProductThumb } from './productDisplay'
 import {
   categoryOptions,
+  existingPiecesToUpdateInput,
+  inventoryPieceToEditRow,
   metalOptions,
   newAttributeRow,
   newOpeningPiece,
@@ -36,11 +38,16 @@ import {
   resizeOpeningPieces,
   resolvePurityForMetal,
   syncFollowingPieces,
+  validateExistingPieceEdits,
   validateProductForm,
+  type ExistingPieceEditRow,
   type OpeningPieceRow,
   type ProductFormErrors,
   type ProductFormState,
 } from './productForm'
+
+/** Sentinel value for the Category select "Other" option (not a real category name). */
+const OTHER_CATEGORY = '__other__'
 
 function RequiredMark() {
   return (
@@ -265,10 +272,13 @@ export function ProductFormModal({
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [categoryNames, setCategoryNames] = useState<string[]>([])
+  const [useOtherCategory, setUseOtherCategory] = useState(false)
+  const [existingPieces, setExistingPieces] = useState<ExistingPieceEditRow[]>([])
+  const [existingPiecesLoading, setExistingPiecesLoading] = useState(false)
   const metals = useMemo(() => metalOptions(form.metal), [form.metal])
   const categories = useMemo(
-    () => categoryOptions(categoryNames, form.category),
-    [categoryNames, form.category],
+    () => categoryOptions(categoryNames, useOtherCategory ? '' : form.category),
+    [categoryNames, form.category, useOtherCategory],
   )
 
   useEffect(() => {
@@ -285,6 +295,30 @@ export function ProductFormModal({
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!product?.trackPieces) {
+      setExistingPieces([])
+      setExistingPiecesLoading(false)
+      return
+    }
+    let active = true
+    setExistingPiecesLoading(true)
+    void api
+      .listProductPieces(product.id)
+      .then((rows) => {
+        if (active) setExistingPieces(rows.map(inventoryPieceToEditRow))
+      })
+      .catch(() => {
+        if (active) setExistingPieces([])
+      })
+      .finally(() => {
+        if (active) setExistingPiecesLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [product?.id, product?.trackPieces])
   const purities = useMemo(
     () => purityOptions(form.metal, products, form.purity),
     [form.metal, products, form.purity],
@@ -356,6 +390,28 @@ export function ProductFormModal({
         return next
       }),
     }))
+    setErrors((current) => ({ ...current, pieces: undefined }))
+    setFormError(null)
+  }
+
+  function updateExistingPiece(id: number, patch: Partial<ExistingPieceEditRow>) {
+    setExistingPieces((current) =>
+      current.map((piece) => {
+        if (piece.id !== id || !piece.editable) return piece
+        const next = { ...piece, ...patch }
+        const gross = numericFieldToNumber(
+          patch.grossWeight !== undefined ? patch.grossWeight : piece.grossWeight,
+        )
+        const stone = numericFieldToNumber(
+          patch.stoneWeight !== undefined ? patch.stoneWeight : piece.stoneWeight,
+        )
+        if (patch.grossWeight !== undefined || patch.stoneWeight !== undefined) {
+          next.netWeight =
+            gross > 0 ? Math.max(0, Math.round((gross - stone) * 1000) / 1000) : piece.netWeight
+        }
+        return next
+      }),
+    )
     setErrors((current) => ({ ...current, pieces: undefined }))
     setFormError(null)
   }
@@ -434,7 +490,17 @@ export function ProductFormModal({
     const effectiveForm: ProductFormState = isPurchase
       ? { ...form, stockQty: 0, huids: [], trackPieces: true, openingPieces: [] }
       : form
-    const nextErrors = validateProductForm(effectiveForm, products, product?.id ?? null, categoryNames)
+    const nextErrors = validateProductForm(
+      effectiveForm,
+      products,
+      product?.id ?? null,
+      categoryNames,
+      useOtherCategory,
+    )
+    if (product?.trackPieces) {
+      const pieceError = validateExistingPieceEdits(existingPieces)
+      if (pieceError) nextErrors.pieces = pieceError
+    }
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
       return
@@ -443,7 +509,40 @@ export function ProductFormModal({
     try {
       setSaving(true)
       setFormError(null)
-      await onSave(productInputForSource(form, isPurchase ? 'purchase' : 'products'))
+      let categoryName = form.category.trim()
+      if (useOtherCategory) {
+        const existing = categoryNames.find(
+          (name) => name.toLowerCase() === categoryName.toLowerCase(),
+        )
+        if (existing) {
+          categoryName = existing
+        } else {
+          try {
+            await api.createStockCategory({ name: categoryName })
+            setCategoryNames((prev) =>
+              prev.some((name) => name.toLowerCase() === categoryName.toLowerCase())
+                ? prev
+                : [...prev, categoryName],
+            )
+          } catch (err) {
+            const message = err instanceof Error ? err.message : ''
+            if (!/already exists/i.test(message)) throw err
+          }
+        }
+      }
+      if (product?.trackPieces) {
+        const pieceUpdates = existingPiecesToUpdateInput(existingPieces)
+        if (pieceUpdates.length > 0) {
+          const saved = await api.updateProductPieces(product.id, pieceUpdates)
+          setExistingPieces(saved.map(inventoryPieceToEditRow))
+        }
+      }
+      await onSave(
+        productInputForSource(
+          { ...form, category: categoryName },
+          isPurchase ? 'purchase' : 'products',
+        ),
+      )
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to save product')
     } finally {
@@ -553,26 +652,33 @@ export function ProductFormModal({
               <Field
                 label="Category"
                 required
-                error={errors.category}
-                hint={
-                  categoryNames.length === 0
-                    ? 'Manage categories in Stock first, then add products.'
-                    : undefined
-                }
+                error={useOtherCategory ? undefined : errors.category}
               >
                 <Control icon={<FolderKanban size={14} strokeWidth={1.75} />}>
                   <select
-                    className={`select${errors.category ? ' is-invalid' : ''}`}
-                    value={form.category}
+                    className={`select${errors.category && !useOtherCategory ? ' is-invalid' : ''}`}
+                    value={useOtherCategory ? OTHER_CATEGORY : form.category}
                     disabled={isVariant}
-                    onChange={(event) => updateField('category', event.target.value)}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      if (value === OTHER_CATEGORY) {
+                        setUseOtherCategory(true)
+                        updateField('category', '')
+                        return
+                      }
+                      setUseOtherCategory(false)
+                      updateField('category', value)
+                    }}
                   >
-                    {categories.length === 0 ? <option value="">Select category</option> : null}
+                    {categories.length === 0 && !useOtherCategory ? (
+                      <option value="">Select category</option>
+                    ) : null}
                     {categories.map((item) => (
                       <option key={item} value={item}>
                         {item}
                       </option>
                     ))}
+                    {isVariant ? null : <option value={OTHER_CATEGORY}>Other</option>}
                   </select>
                 </Control>
               </Field>
@@ -592,6 +698,22 @@ export function ProductFormModal({
                 </Control>
               </Field>
             </div>
+            {useOtherCategory && !isVariant ? (
+              <div className="product-form-grid-3">
+                <Field label="New category" required error={errors.category}>
+                  <Control icon={<FolderKanban size={14} strokeWidth={1.75} />}>
+                    <input
+                      className={`input${errors.category ? ' is-invalid' : ''}`}
+                      value={form.category}
+                      placeholder="e.g. Bracelet, Pendant..."
+                      maxLength={80}
+                      autoFocus
+                      onChange={(event) => updateField('category', event.target.value)}
+                    />
+                  </Control>
+                </Field>
+              </div>
+            ) : null}
           </section>
 
           <section className="product-section">
@@ -722,14 +844,145 @@ export function ProductFormModal({
                 entered here.
               </p>
             ) : form.trackPieces && product?.trackPieces ? (
-              <div className="product-attr-editor">
-                <div className="product-attr-head">
-                  <span>Pieces</span>
+              <div className="inward-pieces opening-pieces existing-pieces">
+                <div className="inward-pieces-head">
+                  <strong>Pieces ({existingPieces.length})</strong>
                 </div>
                 <p className="muted">
-                  Every ornament gets its own tag, weight, HUID and cost. New pieces are created by
-                  a purchase or by Adjust stock.
+                  Edit HUID, weights and cost for in-stock pieces. Add or remove pieces with Adjust
+                  stock or a purchase.
                 </p>
+                {errors.pieces ? <span className="product-form-error">{errors.pieces}</span> : null}
+                {existingPiecesLoading ? (
+                  <p className="muted">Loading pieces…</p>
+                ) : existingPieces.length === 0 ? (
+                  <p className="muted">No pieces yet. Add stock with Adjust stock or a purchase.</p>
+                ) : (
+                  <div className="inward-pieces-wrap">
+                    <table className="inward-pieces-table">
+                      <thead>
+                        <tr>
+                          <th>Tag</th>
+                          <th>HUID</th>
+                          <th>Gross</th>
+                          <th>Stone</th>
+                          <th>Net</th>
+                          <th>Cost</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {existingPieces.map((piece) => {
+                          const editable = piece.editable
+                          return (
+                            <tr key={piece.id}>
+                              <td className="num">{piece.tagCode}</td>
+                              <td>
+                                {editable ? (
+                                  <input
+                                    className="input"
+                                    aria-label={`${piece.tagCode} HUID`}
+                                    placeholder="Optional"
+                                    value={piece.huid}
+                                    onChange={(event) =>
+                                      updateExistingPiece(piece.id, {
+                                        huid: event.target.value
+                                          .toUpperCase()
+                                          .replace(/[^0-9A-Z]/g, ''),
+                                      })
+                                    }
+                                  />
+                                ) : (
+                                  piece.huid || '—'
+                                )}
+                              </td>
+                              <td>
+                                {editable ? (
+                                  <input
+                                    className="input"
+                                    type="number"
+                                    step="0.001"
+                                    min={0}
+                                    aria-label={`${piece.tagCode} gross weight`}
+                                    value={piece.grossWeight}
+                                    onChange={(event) =>
+                                      updateExistingPiece(piece.id, {
+                                        grossWeight: parseNumericField(event.target.value),
+                                      })
+                                    }
+                                  />
+                                ) : (
+                                  piece.grossWeight
+                                )}
+                              </td>
+                              <td>
+                                {editable ? (
+                                  <input
+                                    className="input"
+                                    type="number"
+                                    step="0.001"
+                                    min={0}
+                                    aria-label={`${piece.tagCode} stone weight`}
+                                    value={piece.stoneWeight}
+                                    onChange={(event) =>
+                                      updateExistingPiece(piece.id, {
+                                        stoneWeight: parseNumericField(event.target.value),
+                                      })
+                                    }
+                                  />
+                                ) : (
+                                  piece.stoneWeight
+                                )}
+                              </td>
+                              <td>
+                                {editable ? (
+                                  <input
+                                    className="input"
+                                    type="number"
+                                    step="0.001"
+                                    min={0}
+                                    aria-label={`${piece.tagCode} net weight`}
+                                    value={piece.netWeight}
+                                    onChange={(event) =>
+                                      updateExistingPiece(piece.id, {
+                                        netWeight: parseNumericField(event.target.value),
+                                      })
+                                    }
+                                  />
+                                ) : (
+                                  piece.netWeight
+                                )}
+                              </td>
+                              <td>
+                                {editable ? (
+                                  <input
+                                    className="input"
+                                    type="number"
+                                    step="0.01"
+                                    min={0}
+                                    aria-label={`${piece.tagCode} cost`}
+                                    value={piece.cost}
+                                    placeholder="—"
+                                    onChange={(event) =>
+                                      updateExistingPiece(piece.id, {
+                                        cost: parseNumericField(event.target.value),
+                                      })
+                                    }
+                                  />
+                                ) : piece.cost === '' ? (
+                                  '—'
+                                ) : (
+                                  piece.cost
+                                )}
+                              </td>
+                              <td className="product-detail-piece-status">{piece.status}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             ) : form.trackPieces ? (
               <div className="inward-pieces opening-pieces">

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -67,6 +67,7 @@ import {
 import { BillCustomerSearch } from "../invoices/BillCustomerSearch";
 import { setBillingType } from "../invoices/billingType";
 import { PledgePreviewModal } from "./PledgePreviewModal";
+import { PledgeSuccessModal } from "./PledgeSuccessModal";
 import { printPreviewPaths } from "../print/printPreviewPaths";
 import { downloadPrintPdf } from "../print/downloadPrintPdf";
 import { PLEDGE_PAYMENT_MODES } from "../dues/pledgePaymentModes";
@@ -150,6 +151,7 @@ export function PledgeEditorPage() {
   const [auctionOpen, setAuctionOpen] = useState(false);
   const [auctionMode, setAuctionMode] = useState<"notice" | "auction">("notice");
   const [sanctionOpen, setSanctionOpen] = useState(false);
+  const [successPledge, setSuccessPledge] = useState<Pledge | null>(null);
   const [afterSanction, setAfterSanction] = useState<"preview" | "pdf" | null>(
     null,
   );
@@ -657,7 +659,7 @@ export function PledgeEditorPage() {
           allowAboveLtv: aboveLtv ? allowAboveLtv : false,
         });
         setPledge(result);
-        showToast("Loan sanctioned", "success");
+        setSuccessPledge(result);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to sanction loan");
         return;
@@ -674,17 +676,16 @@ export function PledgeEditorPage() {
     if (pending === "pdf") {
       try {
         setSavingPdf(true);
-        const saved = await downloadPrintPdf(
+        const exported = await downloadPrintPdf(
           printPreviewPaths.pledge(result.id),
           `${result.receiptNo}.pdf`,
         );
-        if (!saved.canceled) showToast("PDF saved", "success");
+        if (!exported.canceled) showToast("PDF saved", "success");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to download PDF");
       } finally {
         setSavingPdf(false);
       }
-      return;
     }
   }
 
@@ -1203,6 +1204,7 @@ export function PledgeEditorPage() {
               <thead>
                 <tr>
                   <th className="adagu-col-index">#</th>
+                  <th className="adagu-col-particular">Description</th>
                   <th className="adagu-col-metal">Metal</th>
                   <th className="adagu-col-purity">Purity</th>
                   <th className="adagu-col-weight">Gross Wt. (gms)</th>
@@ -1221,131 +1223,127 @@ export function PledgeEditorPage() {
                   const rowPurityOptions =
                     rowMetal === "Silver" ? SILVER_PURITIES : GOLD_PURITIES;
                   return (
-                    <Fragment key={item.key}>
-                      <tr data-item={index + 1}>
-                        <td className="adagu-col-index">{index + 1}</td>
-                        <td className="adagu-col-metal" data-label="Metal">
-                          <div className="adagu-metal-switch">
-                            <button
-                              type="button"
-                              className={`adagu-metal-btn${rowMetal === "Gold" ? " active gold" : ""}`}
-                              disabled={!canEdit || busy}
-                              onClick={() => selectMetal(item, "Gold")}
-                            >
-                              Gold
-                            </button>
-                            <button
-                              type="button"
-                              className={`adagu-metal-btn${rowMetal === "Silver" ? " active silver" : ""}`}
-                              disabled={!canEdit || busy}
-                              onClick={() => selectMetal(item, "Silver")}
-                            >
-                              Silver
-                            </button>
-                          </div>
-                        </td>
-                        <td className="adagu-col-purity" data-label="Purity">
-                          <div className="adagu-input-with-icon adagu-purity-wrap">
-                            <select
-                              className="adagu-purity-select"
-                              disabled={!canEdit || busy}
-                              value={item.purity}
-                              onChange={(e) =>
-                                updateItem(item.key, { purity: e.target.value })
-                              }
-                            >
-                              {rowPurityOptions.map((opt) => (
-                                <option key={opt} value={opt}>
-                                  {opt}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </td>
-                        <td className="adagu-col-weight" data-label="Gross Wt. (gms)">
-                          <div className="adagu-input-with-icon">
-                            <input
-                              type="number"
-                              step="0.001"
-                              disabled={!canEdit || busy}
-                              value={weightInputValue(item.grossWeight)}
-                              onChange={(event) =>
-                                updateItem(item.key, {
-                                  grossWeight: Number(event.target.value) || 0,
-                                })
-                              }
-                            />
-                          </div>
-                        </td>
-                        <td className="adagu-col-weight" data-label="Deductions (gms)">
-                          <div className="adagu-input-with-icon">
-                            <input
-                              type="number"
-                              step="0.001"
-                              disabled={!canEdit || busy}
-                              value={weightInputValue(item.stoneWeight ?? 0)}
-                              onChange={(event) =>
-                                updateItem(item.key, {
-                                  stoneWeight: Number(event.target.value) || 0,
-                                })
-                              }
-                            />
-                          </div>
-                        </td>
-                        <td className="adagu-col-weight" data-label="Net Wt. (gms)">
-                          <div className="adagu-input-with-icon adagu-net-weight-input">
-                            <input
-                              type="number"
-                              step="0.001"
-                              disabled={!canEdit || busy}
-                              value={weightInputValue(item.netWeight)}
-                              onChange={(event) =>
-                                updateItem(item.key, {
-                                  netWeight: Number(event.target.value) || 0,
-                                })
-                              }
-                            />
-                          </div>
-                        </td>
-                        <td className="adagu-col-value" data-label="Rate / gm">
-                          <span className="adagu-item-rate">
-                            {formatCurrency(itemValuations[index]?.rate ?? 0)}
-                          </span>
-                        </td>
-                        <td className="adagu-col-value" data-label="Value">
-                          <span className="adagu-item-value">
-                            {formatCurrency(itemValuations[index]?.value ?? 0)}
-                          </span>
-                        </td>
-                        <td className="adagu-col-action">
+                    <tr key={item.key} data-item={index + 1}>
+                      <td className="adagu-col-index">{index + 1}</td>
+                      <td className="adagu-col-particular" data-label="Description">
+                        <div className="adagu-input-with-icon adagu-item-description">
+                          <input
+                            type="text"
+                            disabled={!canEdit || busy}
+                            value={item.description}
+                            onChange={(event) =>
+                              updateItem(item.key, {
+                                description: event.target.value,
+                              })
+                            }
+                            placeholder="Description of jewels"
+                          />
+                        </div>
+                      </td>
+                      <td className="adagu-col-metal" data-label="Metal">
+                        <div className="adagu-metal-switch">
                           <button
                             type="button"
-                            className="adagu-action-btn-red"
+                            className={`adagu-metal-btn${rowMetal === "Gold" ? " active gold" : ""}`}
                             disabled={!canEdit || busy}
-                            onClick={() => removeItem(item.key)}
+                            onClick={() => selectMetal(item, "Gold")}
                           >
-                            <Trash2 size={14} />
+                            Gold
                           </button>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td colSpan={9} className="adagu-item-description-cell">
-                          <div className="adagu-input-with-icon adagu-item-description">
-                            <textarea
-                              rows={1}
-                              disabled={!canEdit || busy}
-                              value={item.description}
-                              onChange={(event) =>
-                                updateItem(item.key, {
-                                  description: event.target.value,
-                                })
-                              }
-                              placeholder="Description of jewels"
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    </Fragment>
+                          <button
+                            type="button"
+                            className={`adagu-metal-btn${rowMetal === "Silver" ? " active silver" : ""}`}
+                            disabled={!canEdit || busy}
+                            onClick={() => selectMetal(item, "Silver")}
+                          >
+                            Silver
+                          </button>
+                        </div>
+                      </td>
+                      <td className="adagu-col-purity" data-label="Purity">
+                        <div className="adagu-input-with-icon adagu-purity-wrap">
+                          <select
+                            className="adagu-purity-select"
+                            disabled={!canEdit || busy}
+                            value={item.purity}
+                            onChange={(e) =>
+                              updateItem(item.key, { purity: e.target.value })
+                            }
+                          >
+                            {rowPurityOptions.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </td>
+                      <td className="adagu-col-weight" data-label="Gross Wt. (gms)">
+                        <div className="adagu-input-with-icon">
+                          <input
+                            type="number"
+                            step="0.001"
+                            disabled={!canEdit || busy}
+                            value={weightInputValue(item.grossWeight)}
+                            onChange={(event) =>
+                              updateItem(item.key, {
+                                grossWeight: Number(event.target.value) || 0,
+                              })
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td className="adagu-col-weight" data-label="Deductions (gms)">
+                        <div className="adagu-input-with-icon">
+                          <input
+                            type="number"
+                            step="0.001"
+                            disabled={!canEdit || busy}
+                            value={weightInputValue(item.stoneWeight ?? 0)}
+                            onChange={(event) =>
+                              updateItem(item.key, {
+                                stoneWeight: Number(event.target.value) || 0,
+                              })
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td className="adagu-col-weight" data-label="Net Wt. (gms)">
+                        <div className="adagu-input-with-icon adagu-net-weight-input">
+                          <input
+                            type="number"
+                            step="0.001"
+                            disabled={!canEdit || busy}
+                            value={weightInputValue(item.netWeight)}
+                            onChange={(event) =>
+                              updateItem(item.key, {
+                                netWeight: Number(event.target.value) || 0,
+                              })
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td className="adagu-col-value" data-label="Rate / gm">
+                        <span className="adagu-item-rate">
+                          {formatCurrency(itemValuations[index]?.rate ?? 0)}
+                        </span>
+                      </td>
+                      <td className="adagu-col-value" data-label="Value">
+                        <span className="adagu-item-value">
+                          {formatCurrency(itemValuations[index]?.value ?? 0)}
+                        </span>
+                      </td>
+                      <td className="adagu-col-action">
+                        <button
+                          type="button"
+                          className="adagu-action-btn-red"
+                          disabled={!canEdit || busy}
+                          onClick={() => removeItem(item.key)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
@@ -1802,13 +1800,59 @@ export function PledgeEditorPage() {
       {previewOpen && previewTargetId > 0 ? (
         <PledgePreviewModal
           pledgeId={previewTargetId}
-          pdfFilename={pledge?.receiptNo ? `${pledge.receiptNo}.pdf` : "pledge.pdf"}
+          pdfFilename={
+            successPledge?.receiptNo
+              ? `${successPledge.receiptNo}.pdf`
+              : pledge?.receiptNo
+                ? `${pledge.receiptNo}.pdf`
+                : "pledge.pdf"
+          }
           onClose={() => {
             setPreviewOpen(false);
             setPreviewTargetId(0);
           }}
         />
       ) : null}
+
+      {successPledge ? (
+        <PledgeSuccessModal
+          pledge={successPledge}
+          onPrint={() => {
+            setPreviewTargetId(successPledge.id);
+            setPreviewOpen(true);
+          }}
+          onPdf={() => {
+            void downloadPrintPdf(
+              printPreviewPaths.pledge(successPledge.id),
+              `${successPledge.receiptNo}.pdf`,
+            )
+              .then((exported) => {
+                if (!exported.canceled) showToast("PDF saved", "success");
+              })
+              .catch((err) => {
+                setError(err instanceof Error ? err.message : "Failed to download PDF");
+              });
+          }}
+          onView={() => {
+            setSuccessPledge(null);
+            navigate(`/billing/adagu/${successPledge.id}`);
+          }}
+          onNewBill={() => {
+            setSuccessPledge(null);
+            navigate("/billing/adagu/new");
+          }}
+          onClose={() => {
+            setSuccessPledge(null);
+            navigate("/billing/adagu/new");
+          }}
+        />
+      ) : null}
     </div>
   );
+}
+
+/** Remounts the editor when id changes so New Bill always starts blank. */
+export function PledgeEditorRoute() {
+  const { id } = useParams();
+  return <PledgeEditorPage key={id ?? "new"} />;
 }

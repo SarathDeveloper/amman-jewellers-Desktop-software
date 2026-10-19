@@ -28,6 +28,8 @@ describe('diagnostic classification', () => {
     expect(isExpectedError(new Error('Export cancelled'))).toBe(true)
     expect(isExpectedError(new Error('Invoice not found'))).toBe(true)
     expect(isExpectedError(new Error('Insufficient stock for Ring'))).toBe(true)
+    expect(isExpectedError(new Error('HUID ABC123 is already on tag T000001'))).toBe(true)
+    expect(isExpectedError(new Error('Tag T000001 is sold and cannot be edited'))).toBe(true)
     expect(isExpectedError(new ZodError([]))).toBe(true)
     expect(isExpectedError({ name: 'SqliteError', code: 'SQLITE_CONSTRAINT', message: 'UNIQUE' })).toBe(
       true,

@@ -39,7 +39,7 @@ export function InvoiceSuccessModal({
   const statusLabel = status === 'paid' ? 'PAID' : status === 'partial' ? 'PARTIAL' : 'UNPAID'
 
   return (
-    <Modal title="Bill confirmed" className="invoice-success-modal" onClose={onClose} footer={null}>
+    <Modal title="Bill finalized" className="invoice-success-modal" onClose={onClose} footer={null}>
       <div className="invoice-success-body">
         <div className="invoice-success-icon" aria-hidden>
           <Check size={22} strokeWidth={2.25} />
