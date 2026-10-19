@@ -269,7 +269,7 @@ export function postStocktake(db: Database.Database, input: StocktakePostInput):
           .get(line.product_id) as { track_pieces: number } | undefined
         if (tracked?.track_pieces === 1) {
           throw new Error(
-            'This product tracks each piece, so a stocktake cannot change its quantity. Use Adjust stock to mark a specific piece damaged or lost.',
+            'This product tracks each piece, so a stocktake cannot change its quantity. Add or sell pieces through purchase and billing instead.',
           )
         }
         recordPieceMovement(db, {

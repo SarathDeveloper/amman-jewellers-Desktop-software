@@ -452,7 +452,7 @@ router.put(
       }
       if (tracksPieces && input.stockQty !== existing.stock_qty) {
         throw new Error(
-          'This product tracks each piece. Change its stock in Adjust stock, one piece at a time.',
+          'This product tracks each piece. Change its stock with Add stock (purchase) or by selling pieces.',
         )
       }
       db.prepare(

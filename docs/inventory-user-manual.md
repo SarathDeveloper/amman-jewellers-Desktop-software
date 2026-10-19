@@ -3,8 +3,8 @@
 This manual walks you through the whole **Inventory** module in JewelTrackerPro, one screen at a
 time: set today's metal and old-gold buying rates, set up Gold & Silver categories, add a
 supplier, add standalone products and variant designs with hallmark IDs (HUID), record and
-finalize a purchase (inward), adjust stock manually, reconcile and close the daily Gold & Silver
-ledger, buy old gold from a customer, and settle unclaimed old gold through a refiner batch.
+finalize a purchase (inward), reconcile and close the daily Gold & Silver ledger, buy old gold
+from a customer, and settle unclaimed old gold through a refiner batch.
 
 Every step uses the **same sample shop, date, supplier, products, purchase, stock ledger, and
 old-gold records**, so the numbers you see here match what the software shows. You can copy these
@@ -78,17 +78,8 @@ Document `IN-2026-0001` from `Lakshmi Bullion & Co` on `9 Oct 2026`, payment mod
 | Round off | Rs. 0.00 |
 | **Grand total** | **Rs. 1,90,756.00** |
 
-**Manual stock adjustment (`Inventory > Products > Adjust stock`):**
-
-| Field | Sample value |
-| --- | --- |
-| Product | `Rope Chain` |
-| Date | 9 Oct 2026 |
-| Direction | `Reduce (-)` |
-| Adjust quantity | `1` pc (`-8.000 g` net weight) |
-| HUID removed | `AB12C5` |
-| Remarks | `Damaged clasp sent for repair` |
-| Result | `Rope Chain` stock moves from `3 pcs` back to `2 pcs` (`AB12C3`, `AB12C4`) |
+Piece stock increases only through **Purchase** or **Add stock** on a product (same purchase
+flow). There is no separate Adjust stock screen.
 
 **Gold & Silver ledger on 9 Oct 2026 (after sample sale bill `TI-2026-0001`):**
 
@@ -97,10 +88,10 @@ HUID `AB12C3`) and `1 pc` of `Lakshmi Ring / 4g / Size 14` (`4.000 g`, HUID `RG4
 
 | Category | Opening (g) | Inward (g) | Adjustment net (g) | Sales (g) | Closing (g) | Piece implied (g) | Raw inward (g) | Unexplained (g) |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `Chain` | 16.000 | 8.000 | -8.000 | 8.000 | **8.000** | 8.000 (1 pc) | 0.000 | 0.000 (OK) |
+| `Chain` | 16.000 | 8.000 | 0.000 | 8.000 | **16.000** | 16.000 (2 pcs) | 0.000 | 0.000 (OK) |
 | `Ring` | 6.500 | 0.000 | 0.000 | 4.000 | **2.500** | 2.500 (1 pc) | 0.000 | 0.000 (OK) |
 | `Bangle` | 0.000 | 20.000 | 0.000 | 0.000 | **20.000** | 0.000 (0 pcs) | 20.000 | 0.000 (OK) |
-| **Total Gold** | **22.500** | **28.000** | **-8.000** | **12.000** | **30.500** | **10.500** | **20.000** | **0.000** |
+| **Total Gold** | **22.500** | **28.000** | **0.000** | **12.000** | **38.500** | **18.500** | **20.000** | **0.000** |
 
 **Old Gold Purchase (`Inventory > Old Gold Purchase`):**
 
@@ -139,8 +130,7 @@ flowchart LR
   categories --> supplier["Add supplier"]
   supplier --> products["Add products & variants with HUIDs"]
   products --> purchase["Create & finalize Purchase (IN-2026-0001)"]
-  purchase --> adjust["Adjust Stock (+ / - pieces & HUIDs)"]
-  adjust --> stockLedger["Verify Gold & Silver ledger & Reconcile"]
+  purchase --> stockLedger["Verify Gold & Silver ledger & Reconcile"]
   stockLedger --> closeDay["Close Metal Day"]
   rates --> oldGold["Record Old Gold Purchase (OGP-2026-0001)"]
   oldGold --> payout["Apply to bill or Pay out balance"]
@@ -245,9 +235,8 @@ Menu: **Inventory > Suppliers**
 Suppliers are used both when buying new stock (**Purchase**) and when sending old gold to a
 refiner (**Old Gold Lot**).
 
-> You will notice a built-in row named **Stock addition** with a `System` badge and `Protected`
-> in the Action column. The software uses this system supplier automatically when you add stock
-> through **Adjust Stock Quantity**. It cannot be edited or deleted.
+> You may notice a built-in row named **Stock addition** with a `System` badge and `Protected`
+> in the Action column. It is a protected system supplier and cannot be edited or deleted.
 
 1. Click **Add supplier** in the top right.
 2. Fill in the **Add supplier** modal:
@@ -491,55 +480,13 @@ Click **Save & finalize**, then confirm **Finalize**.
 
 ---
 
-## Step 6 - Manual stock adjustment (`Adjust Stock Quantity`)
+## Step 6 - Add stock (purchase only)
 
-Menu: **Inventory > Products**, click a product row, then click **Adjust stock**.
+Menu: **Inventory > Products**, open a product, then click **Add stock** — or use
+**Inventory > Purchase**.
 
-Use **Adjust Stock Quantity** when you need to add or reduce pieces outside a regular supplier
-invoice (for example, a damaged piece sent out for repair, a stock correction, or bringing an
-extra piece into stock without a supplier bill).
-
-> **Note:** The **Adjust stock** button appears only on standalone products and child variants.
-> It is hidden on a parent design that has variants, because stock lives on the variants.
-
-### Worked example: Reduce 1 damaged piece of `Rope Chain`
-
-Suppose the newly received `Rope Chain` piece (`AB12C5`) has a damaged clasp and is removed from
-display stock for repair on `9 Oct 2026`:
-
-1. Go to **Inventory > Products** and click the **Rope Chain** row (`3 pcs` in stock).
-2. In the **Product Detail** modal, click **Adjust stock**.
-3. Fill in the **Adjust Stock Quantity** modal:
-
-   | Field | Sample value |
-   | --- | --- |
-   | Date | `9 Oct 2026` |
-   | Add or Reduce Stock | `Reduce (-)` |
-   | Adjust quantity | `1` pcs |
-   | Remarks (Optional) | `Damaged clasp sent for repair` |
-   | Select HUIDs to remove | Tick `AB12C5` (leave `AB12C3` and `AB12C4` unticked) |
-
-4. Check the **Stock Calculation** panel on the right:
-   - **Current Stock:** `3 pcs`
-   - **Adjustment:** `-1 pcs`
-   - **New Stock:** `2 pcs`
-5. Click **Save**. A toast confirms *"Reduced 1 pcs from Rope Chain"*.
-
-### How HUIDs and stock behave on Add vs Reduce
-
-- **When reducing (`Reduce (-)`):**
-  - If all pieces in stock are tagged with HUIDs (as with our `3` chains and `3` HUIDs), you
-    **must** tick the exact number of HUIDs being removed (`Select 1 HUID to remove`).
-  - If only some pieces are tagged, the app calculates the minimum and maximum HUIDs you must
-    tick so that remaining HUID tags never exceed remaining stock.
-  - The reduction records an `adjustment` movement of `-1 pc` and `-8.000 g` (`qtyDelta x
-    netWeight`), which automatically reduces the category's **Closing (g)** weight on that date.
-- **When adding (`Add (+)`):**
-  - You can optionally enter HUIDs for the new pieces.
-  - Behind the scenes, a positive product adjustment automatically creates and finalizes a
-     zero-price purchase (`IN-2026-...`) under the protected **Stock addition** system supplier
-    (badged `Stock add` in the Purchase and Inward Stock lists). That keeps the `Inward (g)`
-    column and the `Reconciliation` report balanced to the milligram.
+Piece stock is added only through a purchase. There is no separate Adjust stock screen for
+adding or reducing quantity outside purchase and sales.
 
 ---
 
@@ -562,7 +509,7 @@ At the top of **Gold & Silver Stock**, two summary cards show the day's totals f
 - **Opening:** `22.500 g` (`16.000 g` Chain + `6.500 g` Ring)
 - **Inward:** `28.000 g` (`8.000 g` Chain + `20.000 g` Bangle)
 - **Sales:** `12.000 g` (`8.000 g` Chain + `4.000 g` Ring)
-- **Closing:** `30.500 g` (`22.500 + 28.000 - 8.000 adjustment - 12.000 sales`)
+- **Closing:** `38.500 g` (`22.500 + 28.000 - 12.000 sales`)
 
 ### 7.2 Tab 1 - Stock by Category
 
@@ -570,7 +517,7 @@ This is the main daily ledger table. For **Gold** on `9 Oct 2026`, it shows:
 
 | # | CATEGORY | OPENING (G) | INWARD (G) | SALES (G) | CLOSING (G) |
 | --- | --- | --- | --- | --- | --- |
-| 01 | `Chain` | 16.00 | 8.00 | 8.00 | 8.00 |
+| 01 | `Chain` | 16.00 | 8.00 | 8.00 | 16.00 |
 | 02 | `Ring` | 6.50 | 0.00 | 4.00 | 2.50 |
 | 03 | `Bangle` | 0.00 | 20.00 | 0.00 | 20.00 |
 
@@ -891,11 +838,9 @@ is marked **Cancelled**. Once a batch is **Settled**, it is permanent and cannot
 | *A product with this variant code already exists* | Another product or variant already uses that SKU / Variant code | Enter a unique SKU / Variant code or leave it blank |
 | *A product cannot have more HUIDs than pieces in stock* | More HUIDs are filled in than the `Stock quantity` | Increase the quantity or remove the extra HUID rows |
 | *HUID &lt;code&gt; is duplicated* / *already used by &lt;product&gt;* | Every HUID must be unique across the entire shop | Check the hallmark code stamped on the piece and fix the duplicate |
-| *Select 1 HUID to remove* (or *Select at least N HUIDs to remove*) | You are reducing stock on a product with tagged HUIDs | Tick the HUID checkbox(es) for the specific piece(s) leaving stock |
-| *Cannot reduce below 0 pcs (current stock is N)* | The reduction quantity is larger than current stock | Enter a quantity up to `N` |
 | *Sales override requires a reason* | You entered a manual **Sales Override (g)** on a category without a reason | Fill in the **Override reason** field or clear **Sales Override (g)** |
 | *Cannot close: X open draft bills and Y open inwards for Gold on this date. Finalize or delete them first.* | Open drafts exist for that metal and date | Go to **Billing** or **Inventory > Purchase**, finalize or delete the drafts, then close the day |
-| *This metal day is closed. Reopen it before editing.* | You tried to edit stock, finalize a purchase, or adjust stock on a closed date | Ask an **Admin** to click **Reopen day** on **Inventory > Gold & Silver**, or use today's open date |
+| *This metal day is closed. Reopen it before editing.* | You tried to edit stock or finalize a purchase on a closed date | Ask an **Admin** to click **Reopen day** on **Inventory > Gold & Silver**, or use today's open date |
 | *A cash payout of Rs. ... may need the customer's PAN, and cash above Rs 10,000 a day is restricted under section 40A(3).* | Cash payout on an Old Gold Purchase is Rs. 10,000 or more | Pay via `UPI` or `Bank / cheque`, or verify PAN compliance before paying cash |
 | *Only Rs. ... is left on this purchase* | Payout amount is larger than the remaining balance on `OGP-...` | Enter an amount up to the available balance |
 | *This purchase is applied to a sale bill. Cancel that bill first.* | You tried to cancel an Old Gold Purchase that is linked to a bill | Cancel the sale bill (or remove the link on a draft bill) first |
@@ -910,7 +855,6 @@ is marked **Cancelled**. Once a batch is **Settled**, it is permanent and cannot
 | Document | Format | Example | When assigned |
 | --- | --- | --- | --- |
 | Supplier Purchase (Inward) | `IN-<year>-<seq>` | `IN-2026-0001` | When saved as draft or finalized |
-| Stock Addition (from Adjust Stock `+`) | `IN-<year>-<seq>` (badged `Stock add`) | `IN-2026-0002` | Automatically created and finalized on save |
 | Old Gold Purchase | `OGP-<year>-<seq>` | `OGP-2026-0001` | When saved as draft or finalized |
 | Refiner Batch | `OGB-<year>-<seq>` | `OGB-2026-0001` | When the batch is created |
 

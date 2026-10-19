@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, FileText, Layers, PackagePlus, Pencil, Scale, SlidersHorizontal, Tag, Trash2 } from 'lucide-react'
+import { ArrowLeft, FileText, Layers, PackagePlus, Pencil, Scale, Tag, Trash2 } from 'lucide-react'
 import type { InventoryPiece, Product } from '@shared/types'
 import { Modal } from '../../components/Modal'
 import { api } from '../../lib/api'
@@ -39,7 +39,6 @@ export function ProductDetailModal({
   products,
   onClose,
   onAddInward,
-  onAdjust,
   onEdit,
   onDelete,
   onViewChild,
@@ -49,7 +48,6 @@ export function ProductDetailModal({
   products: Product[]
   onClose: () => void
   onAddInward: (product: Product) => void
-  onAdjust: (product: Product) => void
   onEdit: (product: Product) => void
   onDelete: (product: Product) => void
   onViewChild: (product: Product) => void
@@ -129,12 +127,6 @@ export function ProductDetailModal({
               <button type="button" className="btn secondary" onClick={() => onAddInward(product)}>
                 <PackagePlus size={16} strokeWidth={2} aria-hidden />
                 Add stock
-              </button>
-            ) : null}
-            {!hasVariants ? (
-              <button type="button" className="btn secondary" onClick={() => onAdjust(product)}>
-                <SlidersHorizontal size={16} strokeWidth={2} aria-hidden />
-                Adjust stock
               </button>
             ) : null}
             <button type="button" className="btn secondary" onClick={() => onEdit(product)}>
@@ -231,7 +223,7 @@ export function ProductDetailModal({
               {piecesLoading ? (
                 <p className="muted">Loading pieces…</p>
               ) : pieces.length === 0 ? (
-                <p className="muted">No pieces yet. They are created by a purchase or Adjust stock.</p>
+                <p className="muted">No pieces yet. They are created when you add stock from a purchase.</p>
               ) : (
                 <div className="product-detail-pieces-wrap">
                   <table className="product-detail-pieces">

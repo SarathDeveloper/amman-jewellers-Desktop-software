@@ -21,7 +21,6 @@ import { useToast } from '../../components/toastContext'
 import { formatCurrency, formatWeight, paginate } from '../../lib/format'
 import { api } from '../../lib/api'
 import { InwardEditorModal } from '../inwards/InwardEditorModal'
-import { AdjustStockModal } from './AdjustStockModal'
 import { ProductDetailModal } from './ProductDetailModal'
 import { ProductFormModal } from './ProductFormModal'
 import {
@@ -70,7 +69,6 @@ export function ProductsPage() {
   const [viewing, setViewing] = useState<Product | null>(null)
   const [open, setOpen] = useState(false)
   const [inwardProducts, setInwardProducts] = useState<Product[] | null>(null)
-  const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null)
   const [pendingDelete, setPendingDelete] = useState<number[] | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -242,10 +240,6 @@ export function ProductsPage() {
     setInwardProducts([product])
   }
 
-  function openAdjust(product: Product) {
-    setAdjustingProduct(product)
-  }
-
   function openInwardSelected() {
     const rows = products.filter((product) => selected.includes(product.id))
     if (rows.length === 0) return
@@ -264,11 +258,6 @@ export function ProductsPage() {
   async function handleInwardSaved() {
     setInwardProducts(null)
     setSelected([])
-    await load()
-  }
-
-  async function handleAdjustSaved() {
-    setAdjustingProduct(null)
     await load()
   }
 
@@ -803,7 +792,6 @@ export function ProductsPage() {
           products={products}
           onClose={() => setViewing(null)}
           onAddInward={openInward}
-          onAdjust={openAdjust}
           onEdit={openEdit}
           onDelete={(product) => requestDelete([product.id])}
           onViewChild={setViewing}
@@ -831,15 +819,6 @@ export function ProductsPage() {
           initialProducts={inwardProducts}
           onClose={() => setInwardProducts(null)}
           onSaved={handleInwardSaved}
-        />
-      ) : null}
-
-      {adjustingProduct ? (
-        <AdjustStockModal
-          product={adjustingProduct}
-          allProducts={products}
-          onClose={() => setAdjustingProduct(null)}
-          onSaved={handleAdjustSaved}
         />
       ) : null}
 

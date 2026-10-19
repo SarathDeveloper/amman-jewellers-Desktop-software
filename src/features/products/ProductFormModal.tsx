@@ -791,7 +791,7 @@ export function ProductFormModal({
                   required
                   hint={
                     product?.trackPieces
-                      ? 'Counted from pieces. Change stock in Adjust stock or on a purchase.'
+                      ? 'Counted from pieces. Change stock with Add stock (purchase) or by selling.'
                       : form.trackPieces
                         ? 'One row below for each piece.'
                         : undefined
@@ -856,7 +856,7 @@ export function ProductFormModal({
                 {existingPiecesLoading ? (
                   <p className="muted">Loading pieces…</p>
                 ) : existingPieces.length === 0 ? (
-                  <p className="muted">No pieces yet. Add stock with Adjust stock or a purchase.</p>
+                  <p className="muted">No pieces yet. Add stock from a purchase.</p>
                 ) : (
                   <div className="inward-pieces-wrap">
                     <table className="inward-pieces-table">
