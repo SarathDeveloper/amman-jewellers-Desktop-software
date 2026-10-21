@@ -148,7 +148,7 @@ export async function finalizeBill(page: Page) {
 export async function closeFinalizedBill(page: Page) {
   const dialog = page.getByRole('dialog', { name: 'Bill finalized' })
   if (await dialog.isVisible()) {
-    await dialog.getByRole('button', { name: 'View Invoice' }).click()
+    await dialog.getByRole('button', { name: 'View Bill' }).click()
     await expect(dialog).toBeHidden()
   }
 }

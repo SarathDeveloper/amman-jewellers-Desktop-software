@@ -8332,6 +8332,10 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   text-align: center;
   padding: 0 0.15rem;
 }
+.adagu-grid-container--wide-items .adagu-jewellery-table--pledge .adagu-col-particular {
+  width: 11rem;
+  max-width: 11rem;
+}
 .adagu-grid-container--wide-items .adagu-jewellery-table--pledge .adagu-col-metal {
   width: 6.75rem;
 }
@@ -10142,8 +10146,12 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   white-space: nowrap;
 }
 .sale-bill-editor .adagu-jewellery-table--pledge .adagu-col-particular {
-  width: auto;
-  min-width: 7rem;
+  width: 11rem;
+  max-width: 11rem;
+}
+.sale-bill-editor .adagu-jewellery-table--pledge .adagu-item-description {
+  width: 11rem;
+  max-width: 11rem;
 }
 .sale-bill-editor .adagu-jewellery-table--pledge .adagu-col-metal {
   width: 6.75rem;

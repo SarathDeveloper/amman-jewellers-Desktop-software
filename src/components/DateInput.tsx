@@ -204,6 +204,7 @@ export function DateInput({
   return (
     <span
       ref={rootRef}
+      data-form-nav-own="enter"
       className={`date-display-input${open ? ' is-open' : ''}${disabled ? ' is-disabled' : ''}${className ? ` ${className}` : ''}`}
     >
       {showIcon ? <Calendar size={14} strokeWidth={1.75} className="date-display-input-icon" aria-hidden /> : null}

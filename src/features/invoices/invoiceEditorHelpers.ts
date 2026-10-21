@@ -18,7 +18,15 @@ import type {
 import { numericFieldToNumber, type NumericField } from '../../lib/numericField'
 import { sellableProducts, variantDisplayName } from '../products/productDisplay'
 
-type EditorLineNumericKey = 'qty' | 'rate' | 'netWeight' | 'metalRate' | 'makingCharges' | 'otherCharges'
+type EditorLineNumericKey =
+  | 'qty'
+  | 'rate'
+  | 'grossWeight'
+  | 'stoneWeight'
+  | 'netWeight'
+  | 'metalRate'
+  | 'makingCharges'
+  | 'otherCharges'
 
 export type VamcMode = 'pct' | 'amount'
 
@@ -26,6 +34,8 @@ export type EditorLine = Omit<InvoiceItemInput, EditorLineNumericKey> & {
   key: string
   qty: NumericField
   rate: NumericField
+  grossWeight?: NumericField
+  stoneWeight?: NumericField
   netWeight?: NumericField
   metalRate?: NumericField
   makingCharges?: NumericField
@@ -122,7 +132,7 @@ export function isEmptyEditorLine(line: EditorLine): boolean {
 export function isOccupiedEditorLine(line: EditorLine): boolean {
   if ((line.productId ?? 0) > 0 || line.description.trim() || line.huid.trim()) return true
   if (numericFieldToNumber(line.netWeight) > 0) return true
-  if ((line.grossWeight ?? 0) > 0 || (line.stoneWeight ?? 0) > 0) return true
+  if (numericFieldToNumber(line.grossWeight) > 0 || numericFieldToNumber(line.stoneWeight) > 0) return true
   if (numericFieldToNumber(line.wastagePct) > 0 || numericFieldToNumber(line.makingCharges) > 0) return true
   return false
 }
@@ -299,9 +309,9 @@ export function computeEditorLineTotal(line: EditorLine): number {
   const priced = computeLinePricing({
     qty,
     metalRate,
-    grossWeight: line.grossWeight ?? 0,
+    grossWeight: numericFieldToNumber(line.grossWeight),
     netWeight,
-    stoneWeight: line.stoneWeight ?? 0,
+    stoneWeight: numericFieldToNumber(line.stoneWeight),
     makingCharges,
     wastagePct,
     stoneRate: line.stoneRate ?? 0,
@@ -371,9 +381,9 @@ export function computeSaleBreakdown(lines: EditorLine[]) {
     jewelleryValue += metalValue
     wastageAmount += metalValue * (wastagePct / 100)
     makingCharges += making * qty
-    stoneValue += (line.stoneWeight ?? 0) * qty * (line.stoneRate ?? 0)
+    stoneValue += numericFieldToNumber(line.stoneWeight) * qty * (line.stoneRate ?? 0)
     otherCharges += numericFieldToNumber(line.otherCharges) * qty
-    totalGrossWeight += (line.grossWeight ?? 0) * qty
+    totalGrossWeight += numericFieldToNumber(line.grossWeight) * qty
     if (mode === 'amount') hasMc = true
     else hasVa = true
   }
@@ -404,7 +414,8 @@ export function toInvoiceItems(lines: EditorLine[]): InvoiceItemInput[] {
           productId: null,
           qty: numericFieldToNumber(line.qty, 1),
           rate: numericFieldToNumber(line.metalRate ?? line.rate),
-          grossWeight: line.grossWeight ?? numericFieldToNumber(line.netWeight),
+          grossWeight:
+            numericFieldToNumber(line.grossWeight) || numericFieldToNumber(line.netWeight),
           netWeight: numericFieldToNumber(line.netWeight),
           stoneWeight: 0,
           metalRate: numericFieldToNumber(line.metalRate ?? line.rate),
@@ -424,9 +435,9 @@ export function toInvoiceItems(lines: EditorLine[]): InvoiceItemInput[] {
         productId: (line.productId ?? 0) > 0 ? line.productId : null,
         qty: numericFieldToNumber(line.qty, 1),
         rate: numericFieldToNumber(line.metalRate ?? line.rate),
-        grossWeight: line.grossWeight,
+        grossWeight: numericFieldToNumber(line.grossWeight),
         netWeight: numericFieldToNumber(line.netWeight),
-        stoneWeight: line.stoneWeight,
+        stoneWeight: numericFieldToNumber(line.stoneWeight),
         metalRate: numericFieldToNumber(line.metalRate ?? line.rate),
         makingCharges: vamc.makingCharges,
         wastagePct: vamc.wastagePct,

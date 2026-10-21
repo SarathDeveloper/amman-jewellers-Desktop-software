@@ -88,8 +88,21 @@ export function BillCustomerSearch({
     setOpen(false)
   }
 
+  /** Enter picks the only filtered match, or opens Add when there is no match. */
+  function handleEnter() {
+    const term = query.trim()
+    if (!term) return
+    if (filtered.length === 1) {
+      pick(filtered[0])
+      return
+    }
+    if (showNoMatch) {
+      openAddModal()
+    }
+  }
+
   return (
-    <div className="billing-customer-search" ref={rootRef}>
+    <div className="billing-customer-search" ref={rootRef} data-form-nav-own="enter">
       {hideLabel ? null : <label className="billing-card-label">{label}</label>}
       <div className="billing-customer-input-row">
         <span className="billing-customer-search-icon" aria-hidden>
@@ -108,6 +121,12 @@ export function BillCustomerSearch({
           onFocus={() => {
             if (selected && !keepSearchEmpty) setQuery(selected.name)
             setOpen(true)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              handleEnter()
+            }
           }}
         />
         {customerId > 0 && !disabled && !keepSearchEmpty ? (

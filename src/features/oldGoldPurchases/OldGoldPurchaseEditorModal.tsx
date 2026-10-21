@@ -13,6 +13,7 @@ import { DateInput } from '../../components/DateInput'
 import { Modal } from '../../components/Modal'
 import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
+import { onEnterAdvanceFields } from '../../lib/formKeyboard'
 import { formatCurrency, formatDisplayDate } from '../../lib/format'
 import { BillCustomerSearch } from '../invoices/BillCustomerSearch'
 import {
@@ -260,7 +261,7 @@ export function OldGoldPurchaseEditorModal({
   return (
     <>
       <Modal className="modal-wide product-form-modal" title={title} hideTitle footer={null} onClose={onClose}>
-        <div className="product-form-shell">
+        <div className="product-form-shell" data-form-nav onKeyDown={onEnterAdvanceFields}>
           <header className="product-form-header">
             <div className="product-form-header-copy">
               <span className="product-form-header-icon" aria-hidden>

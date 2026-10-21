@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -63,6 +63,7 @@ import { RecordPaymentModal } from './RecordPaymentModal'
 import { OldGoldBillLinker } from './OldGoldBillLinker'
 import { GoldSavingBillLinker } from './GoldSavingBillLinker'
 import { useAuth } from '../auth/authContext'
+import { onEnterAdvanceFields } from '../../lib/formKeyboard'
 import { numericFieldToNumber, parseNumericField, type NumericField } from '../../lib/numericField'
 import {
   billingTypeFromPath,
@@ -123,8 +124,8 @@ function setDirtyFlag(dirty: boolean) {
   window.dispatchEvent(new CustomEvent('billing-editor-dirty', { detail: { dirty } }))
 }
 
-function weightInputValue(weight: number | NumericField): number | '' {
-  return weight === 0 ? '' : weight
+function weightInputValue(weight: number | NumericField): number | string {
+  return weight === '' ? '' : weight
 }
 
 function customerCode(id: number): string {
@@ -157,6 +158,10 @@ function LineProductIcon({ name, category, metal }: { name: string; category?: s
   return <Gem size={size} strokeWidth={1.75} />
 }
 
+type InvoiceEditorLocationState = {
+  invoiceSuccess?: Invoice
+}
+
 export function InvoiceEditorPage() {
   const { id } = useParams()
   const location = useLocation()
@@ -168,6 +173,7 @@ export function InvoiceEditorPage() {
   const listPath = '/billing'
   const { showToast } = useToast()
   const { isAdmin } = useAuth()
+  const locationState = (location.state as InvoiceEditorLocationState | null) ?? null
 
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -195,7 +201,12 @@ export function InvoiceEditorPage() {
   const [roundOffTouched, setRoundOffTouched] = useState(false)
   const [isEstimate, setIsEstimate] = useState(false)
   const [lines, setLines] = useState<EditorLine[]>([])
-  const [successInvoice, setSuccessInvoice] = useState<Invoice | null>(null)
+  // Survive cash/new → cash/:id remount after finalize (route key + separate routes).
+  const [successInvoice, setSuccessInvoice] = useState<Invoice | null>(
+    () => locationState?.invoiceSuccess ?? null,
+  )
+  const successInvoiceRef = useRef(successInvoice)
+  successInvoiceRef.current = successInvoice
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -330,6 +341,11 @@ export function InvoiceEditorPage() {
   }, [metalRates, canEdit])
 
   useEffect(() => {
+    if (!locationState?.invoiceSuccess) return
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.pathname, locationState, navigate])
+
+  useEffect(() => {
     let active = true
     void (async () => {
       try {
@@ -386,9 +402,12 @@ export function InvoiceEditorPage() {
           )
           return
         }
+        // Stay on the editor URL while the post-finalize success modal is open.
         if (!isDetailView && (data.status === 'final' || data.status === 'cancelled')) {
-          navigate(saleDetailPathForFormat(data.billFormat, data.id), { replace: true })
-          return
+          if (successInvoiceRef.current?.id !== data.id) {
+            navigate(saleDetailPathForFormat(data.billFormat, data.id), { replace: true })
+            return
+          }
         }
 
         const customer = customers.find(c => c.id === data.customerId)
@@ -516,19 +535,21 @@ export function InvoiceEditorPage() {
 
   function weightPatch(
     line: EditorLine,
-    next: { grossWeight?: number; stoneWeight?: number },
+    next: { grossWeight?: NumericField; stoneWeight?: NumericField },
   ): Partial<EditorLine> {
-    const nextGross = next.grossWeight ?? line.grossWeight ?? 0
-    const nextStone = next.stoneWeight ?? line.stoneWeight ?? 0
+    const nextGross = next.grossWeight !== undefined ? next.grossWeight : (line.grossWeight ?? 0)
+    const nextStone = next.stoneWeight !== undefined ? next.stoneWeight : (line.stoneWeight ?? 0)
+    const nextGrossNum = numericFieldToNumber(nextGross)
+    const nextStoneNum = numericFieldToNumber(nextStone)
     const currentNet = numericFieldToNumber(line.netWeight)
-    const currentGross = line.grossWeight ?? 0
-    const currentStone = line.stoneWeight ?? 0
+    const currentGross = numericFieldToNumber(line.grossWeight)
+    const currentStone = numericFieldToNumber(line.stoneWeight)
     const derived = Math.max(0, currentGross - currentStone)
     const followNet = currentNet === 0 || currentNet === derived
     return {
       ...(next.grossWeight !== undefined ? { grossWeight: nextGross } : {}),
       ...(next.stoneWeight !== undefined ? { stoneWeight: nextStone } : {}),
-      ...(followNet ? { netWeight: Math.max(0, nextGross - nextStone) || '' } : {}),
+      ...(followNet ? { netWeight: Math.max(0, nextGrossNum - nextStoneNum) || '' } : {}),
     }
   }
 
@@ -727,11 +748,12 @@ export function InvoiceEditorPage() {
       const payload = await validatePayload()
 
       let targetId = invoice?.id ?? (id ? Number(id) : 0)
+      // Create without navigating: cash/new → cash/:id remounts this editor
+      // (separate routes + route key) and would drop in-flight state.
       if (!targetId) {
         const created = await api.createInvoice(payload)
         targetId = created.id
         applySavedOldGold(created)
-        navigate(salePathForFormat(billingType, created.id))
       } else if (isDraft) {
         const updated = await api.updateInvoice({ id: targetId, ...payload })
         applySavedOldGold(updated)
@@ -744,6 +766,13 @@ export function InvoiceEditorPage() {
       setFinalizeConfirm(false)
       setSuccessInvoice(finalized)
       showToast('Bill finalized', 'success')
+      // Remount onto the saved id URL, carrying the modal via location state.
+      if (isNew || Number(id) !== finalized.id) {
+        navigate(salePathForFormat(billingType, finalized.id), {
+          replace: true,
+          state: { invoiceSuccess: finalized } satisfies InvoiceEditorLocationState,
+        })
+      }
       return finalized
     } catch (err) {
       reportCustomerFormError(err, setCustomerFieldErrors, setError, 'Failed to finalize invoice')
@@ -858,6 +887,8 @@ export function InvoiceEditorPage() {
   return (
     <div
       className={`adagu-editor-container sale-bill-editor${canEdit ? '' : ' sale-bill-editor--locked'}`}
+      data-form-nav
+      onKeyDown={onEnterAdvanceFields}
     >
       <header className="adagu-page-header sale-bill-toolbar">
         <div className="adagu-header-left">
@@ -1266,8 +1297,12 @@ export function InvoiceEditorPage() {
                               disabled={!canEdit || busy || lockedPiece}
                               value={weightInputValue(line.grossWeight ?? 0)}
                               onChange={(event) => {
-                                const nextGross = numericFieldToNumber(parseNumericField(event.target.value))
-                                updateLine(line.key, weightPatch(line, { grossWeight: nextGross }))
+                                updateLine(
+                                  line.key,
+                                  weightPatch(line, {
+                                    grossWeight: parseNumericField(event.target.value),
+                                  }),
+                                )
                               }}
                             />
                           </div>
@@ -1283,8 +1318,12 @@ export function InvoiceEditorPage() {
                               disabled={!canEdit || busy || lockedPiece}
                               value={weightInputValue(line.stoneWeight ?? 0)}
                               onChange={(event) => {
-                                const nextStone = numericFieldToNumber(parseNumericField(event.target.value))
-                                updateLine(line.key, weightPatch(line, { stoneWeight: nextStone }))
+                                updateLine(
+                                  line.key,
+                                  weightPatch(line, {
+                                    stoneWeight: parseNumericField(event.target.value),
+                                  }),
+                                )
                               }}
                             />
                           </div>

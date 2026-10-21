@@ -58,6 +58,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { Modal } from "../../components/Modal";
 import { useToast } from "../../components/toastContext";
 import { api } from "../../lib/api";
+import { onEnterAdvanceFields } from "../../lib/formKeyboard";
 import { formatCurrency, formatDisplayDate, formatWeight } from "../../lib/format";
 import {
   numericFieldToNumber,
@@ -75,7 +76,12 @@ import { RenewModal } from "../dues/RenewModal";
 import { AuctionModal } from "../dues/AuctionModal";
 import { PledgePhotosStrip } from "./PledgePhotosStrip";
 
-type EditorItem = PledgeItemInput & { key: string };
+type EditorItem = Omit<PledgeItemInput, "grossWeight" | "stoneWeight" | "netWeight"> & {
+  key: string;
+  grossWeight: NumericField;
+  stoneWeight: NumericField;
+  netWeight: NumericField;
+};
 
 const DEFAULT_PLEDGE_TYPE = "GOLD JEWELLERY";
 const DEFAULT_INTEREST_PCT = 2.1;
@@ -90,8 +96,8 @@ function roundWeight(value: number): number {
   return Math.round(Math.max(0, value) * 1000) / 1000;
 }
 
-function weightInputValue(weight: number | NumericField): number | "" {
-  return weight === 0 ? "" : weight;
+function weightInputValue(weight: number | NumericField): number | string {
+  return weight === "" ? "" : weight;
 }
 
 function newItem(): EditorItem {
@@ -179,15 +185,15 @@ export function PledgeEditorPage() {
   );
   const selectedCustomer = customers.find((c) => c.id === customerId);
   const totalGrossWeight = jewelleryItems.reduce(
-    (sum, item) => sum + Number(item.grossWeight || 0),
+    (sum, item) => sum + numericFieldToNumber(item.grossWeight),
     0,
   );
   const totalStoneWeight = jewelleryItems.reduce(
-    (sum, item) => sum + Number(item.stoneWeight || 0),
+    (sum, item) => sum + numericFieldToNumber(item.stoneWeight),
     0,
   );
   const totalNetWeight = jewelleryItems.reduce(
-    (sum, item) => sum + Number(item.netWeight || 0),
+    (sum, item) => sum + numericFieldToNumber(item.netWeight),
     0,
   );
   const repaymentDueDate = useMemo(
@@ -464,7 +470,8 @@ export function PledgeEditorPage() {
         if ("grossWeight" in patch || "stoneWeight" in patch) {
           if (!("netWeight" in patch)) {
             next.netWeight = roundWeight(
-              Number(next.grossWeight) - Number(next.stoneWeight || 0),
+              numericFieldToNumber(next.grossWeight) -
+                numericFieldToNumber(next.stoneWeight),
             );
           }
         }
@@ -557,16 +564,16 @@ export function PledgeEditorPage() {
         identification: item.identification ?? "",
         metal: item.metal || "Gold",
         purity: item.purity,
-        grossWeight: Number(item.grossWeight) || 0,
-        stoneWeight: Number(item.stoneWeight) || 0,
-        netWeight: Number(item.netWeight) || 0,
+        grossWeight: numericFieldToNumber(item.grossWeight),
+        stoneWeight: numericFieldToNumber(item.stoneWeight),
+        netWeight: numericFieldToNumber(item.netWeight),
         pieces: Number(item.pieces) || 1,
         ratePerGram: ratePerGram(metalRates, item.metal, item.purity),
         itemValue: itemValue(
           metalRates,
           item.metal,
           item.purity,
-          Number(item.netWeight) || 0,
+          numericFieldToNumber(item.netWeight),
         ),
       })),
     };
@@ -880,7 +887,11 @@ export function PledgeEditorPage() {
   }
 
   return (
-    <div className="adagu-editor-container sale-bill-editor">
+    <div
+      className="adagu-editor-container sale-bill-editor"
+      data-form-nav
+      onKeyDown={onEnterAdvanceFields}
+    >
       <header className="adagu-page-header sale-bill-toolbar">
         <div className="adagu-header-left">
           <div className="adagu-header-icon">
@@ -1287,7 +1298,7 @@ export function PledgeEditorPage() {
                             value={weightInputValue(item.grossWeight)}
                             onChange={(event) =>
                               updateItem(item.key, {
-                                grossWeight: Number(event.target.value) || 0,
+                                grossWeight: parseNumericField(event.target.value),
                               })
                             }
                           />
@@ -1302,7 +1313,7 @@ export function PledgeEditorPage() {
                             value={weightInputValue(item.stoneWeight ?? 0)}
                             onChange={(event) =>
                               updateItem(item.key, {
-                                stoneWeight: Number(event.target.value) || 0,
+                                stoneWeight: parseNumericField(event.target.value),
                               })
                             }
                           />
@@ -1317,7 +1328,7 @@ export function PledgeEditorPage() {
                             value={weightInputValue(item.netWeight)}
                             onChange={(event) =>
                               updateItem(item.key, {
-                                netWeight: Number(event.target.value) || 0,
+                                netWeight: parseNumericField(event.target.value),
                               })
                             }
                           />

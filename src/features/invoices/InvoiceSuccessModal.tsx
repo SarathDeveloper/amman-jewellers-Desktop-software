@@ -63,7 +63,13 @@ export function InvoiceSuccessModal({
         <span className={`bill-status-chip bill-status-chip--${status}`}>{statusLabel}</span>
       </div>
       <div className="modal-actions invoice-success-actions">
-        <button type="button" className="btn" onClick={onPrint}>
+        <button type="button" className="btn" onClick={onNewBill}>
+          <Plus size={16} /> New Bill
+        </button>
+        <button type="button" className="btn secondary" onClick={onView}>
+          <Eye size={16} /> View Bill
+        </button>
+        <button type="button" className="btn secondary" onClick={onPrint}>
           <Printer size={16} /> Print
         </button>
         <a className="btn secondary" href={whatsappHref(invoice)} target="_blank" rel="noreferrer">
@@ -71,12 +77,6 @@ export function InvoiceSuccessModal({
         </a>
         <button type="button" className="btn secondary" onClick={onPdf}>
           <FileDown size={16} /> Download PDF
-        </button>
-        <button type="button" className="btn secondary" onClick={onView}>
-          <Eye size={16} /> View Invoice
-        </button>
-        <button type="button" className="btn secondary" onClick={onNewBill}>
-          <Plus size={16} /> New Bill
         </button>
       </div>
     </Modal>

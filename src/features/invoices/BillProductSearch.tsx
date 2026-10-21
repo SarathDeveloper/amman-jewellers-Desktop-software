@@ -215,6 +215,7 @@ export function BillProductSearch({
     <div
       className={`billing-customer-search${compact ? ' billing-product-search--compact' : ' adagu-items-product-search'}`}
       ref={rootRef}
+      data-form-nav-own="enter"
     >
       {hideLabel ? null : <label className="billing-card-label">{label}</label>}
       <div className="billing-customer-input-row">

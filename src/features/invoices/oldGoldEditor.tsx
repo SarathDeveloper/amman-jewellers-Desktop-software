@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { computeOldGoldValue } from '@shared/billing/billSummary'
 import type { MetalRates } from '@shared/types'
+import { onEnterAdvanceFields } from '../../lib/formKeyboard'
 import { formatCurrency } from '../../lib/format'
 import { numericFieldToNumber, parseNumericField } from '../../lib/numericField'
 import {
@@ -65,7 +66,11 @@ export function OldGoldEditor({
   const oldGoldTotal = rows.reduce((sum, row) => sum + rowValues(row).finalValue, 0)
 
   return (
-    <div className={`adagu-design-card${compact ? ' sale-bill-old-gold' : ''}`}>
+    <div
+      className={`adagu-design-card${compact ? ' sale-bill-old-gold' : ''}`}
+      data-form-nav
+      onKeyDown={onEnterAdvanceFields}
+    >
       <div className="adagu-card-header">
         <div className="adagu-card-title-group">
           <div className="adagu-card-icon" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>

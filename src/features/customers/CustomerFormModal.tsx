@@ -144,9 +144,9 @@ export function CustomerFormModal({
             Cancel
           </button>
           <button
-            type="button"
+            type="submit"
+            form="customer-form"
             className="btn"
-            onClick={() => void save()}
             disabled={saving || !isCompletePan(form.pan ?? '')}
           >
             {saving ? 'Saving…' : 'Save'}
@@ -154,113 +154,121 @@ export function CustomerFormModal({
         </div>
       }
     >
-      {formError ? <div className="error-banner" role="alert">{formError}</div> : null}
-      <div className="form-grid">
-        <label>
-          <span className="field-label">
-            Name <span className="req" aria-hidden="true">*</span>
-          </span>
-          <input
-            className="input"
-            value={form.name}
-            onChange={(e) => updateField('name', e.target.value)}
-            autoComplete="name"
-            aria-label="Name"
-            aria-invalid={Boolean(fieldErrors.name)}
-          />
-          {fieldErrors.name ? (
-            <span className="adagu-field-error" role="alert">{fieldErrors.name}</span>
-          ) : null}
-        </label>
-        <label>
-          <span className="field-label">
-            Mobile <span className="req" aria-hidden="true">*</span>
-          </span>
-          <input
-            className="input"
-            inputMode="numeric"
-            maxLength={10}
-            value={form.phone}
-            onChange={(e) => updateField('phone', digitsOnly(e.target.value, 10))}
-            autoComplete="tel"
-            aria-label="Mobile"
-            aria-invalid={Boolean(fieldErrors.phone)}
-          />
-          {fieldErrors.phone ? (
-            <span className="adagu-field-error" role="alert">{fieldErrors.phone}</span>
-          ) : null}
-        </label>
-        <label>
-          <span className="field-label">F / M / H Name</span>
-          <input
-            className="input"
-            value={form.guardianName ?? ''}
-            onChange={(e) => updateField('guardianName', e.target.value)}
-            placeholder="Father / Mother / Husband"
-            aria-label="F / M / H Name"
-          />
-        </label>
-        <label>
-          <span className="field-label">Aadhaar</span>
-          <input
-            className="input"
-            inputMode="numeric"
-            maxLength={12}
-            value={form.aadhaar ?? ''}
-            onChange={(e) => updateField('aadhaar', digitsOnly(e.target.value, 12))}
-            placeholder="Optional"
-            aria-label="Aadhaar"
-            aria-invalid={Boolean(fieldErrors.aadhaar)}
-          />
-          {fieldErrors.aadhaar ? (
-            <span className="adagu-field-error" role="alert">{fieldErrors.aadhaar}</span>
-          ) : null}
-        </label>
-        <label>
-          <span className="field-label">PAN</span>
-          <input
-            className="input"
-            maxLength={10}
-            value={form.pan ?? ''}
-            onChange={(e) => updateField('pan', formatPanInput(e.target.value))}
-            placeholder="AAAAA9999A"
-            aria-label="PAN"
-            aria-invalid={(form.pan ?? '').trim() !== '' && !isCompletePan(form.pan ?? '')}
-          />
-          {(form.pan ?? '').trim() !== '' && !isCompletePan(form.pan ?? '') ? (
-            <span className="adagu-field-error" role="alert">
-              {PAN_FORMAT_MESSAGE}
+      <form
+        id="customer-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void save()
+        }}
+      >
+        {formError ? <div className="error-banner" role="alert">{formError}</div> : null}
+        <div className="form-grid">
+          <label>
+            <span className="field-label">
+              Name <span className="req" aria-hidden="true">*</span>
             </span>
-          ) : null}
-        </label>
-        <label className="full">
-          <span className="field-label">
-            Address <span className="req" aria-hidden="true">*</span>
-          </span>
-          <textarea
-            className="textarea"
-            value={form.address}
-            onChange={(e) => updateField('address', e.target.value)}
-            rows={2}
-            aria-label="Address"
-            aria-invalid={Boolean(fieldErrors.address)}
-          />
-          {fieldErrors.address ? (
-            <span className="adagu-field-error" role="alert">{fieldErrors.address}</span>
-          ) : null}
-        </label>
-        <label className="full">
-          <span className="field-label">Notes</span>
-          <textarea
-            className="textarea"
-            value={form.notes ?? ''}
-            onChange={(e) => updateField('notes', e.target.value)}
-            rows={2}
-            placeholder="Optional"
-            aria-label="Notes"
-          />
-        </label>
-      </div>
+            <input
+              className="input"
+              value={form.name}
+              onChange={(e) => updateField('name', e.target.value)}
+              autoComplete="name"
+              aria-label="Name"
+              aria-invalid={Boolean(fieldErrors.name)}
+            />
+            {fieldErrors.name ? (
+              <span className="adagu-field-error" role="alert">{fieldErrors.name}</span>
+            ) : null}
+          </label>
+          <label>
+            <span className="field-label">
+              Mobile <span className="req" aria-hidden="true">*</span>
+            </span>
+            <input
+              className="input"
+              inputMode="numeric"
+              maxLength={10}
+              value={form.phone}
+              onChange={(e) => updateField('phone', digitsOnly(e.target.value, 10))}
+              autoComplete="tel"
+              aria-label="Mobile"
+              aria-invalid={Boolean(fieldErrors.phone)}
+            />
+            {fieldErrors.phone ? (
+              <span className="adagu-field-error" role="alert">{fieldErrors.phone}</span>
+            ) : null}
+          </label>
+          <label>
+            <span className="field-label">F / M / H Name</span>
+            <input
+              className="input"
+              value={form.guardianName ?? ''}
+              onChange={(e) => updateField('guardianName', e.target.value)}
+              placeholder="Father / Mother / Husband"
+              aria-label="F / M / H Name"
+            />
+          </label>
+          <label>
+            <span className="field-label">Aadhaar</span>
+            <input
+              className="input"
+              inputMode="numeric"
+              maxLength={12}
+              value={form.aadhaar ?? ''}
+              onChange={(e) => updateField('aadhaar', digitsOnly(e.target.value, 12))}
+              placeholder="Optional"
+              aria-label="Aadhaar"
+              aria-invalid={Boolean(fieldErrors.aadhaar)}
+            />
+            {fieldErrors.aadhaar ? (
+              <span className="adagu-field-error" role="alert">{fieldErrors.aadhaar}</span>
+            ) : null}
+          </label>
+          <label>
+            <span className="field-label">PAN</span>
+            <input
+              className="input"
+              maxLength={10}
+              value={form.pan ?? ''}
+              onChange={(e) => updateField('pan', formatPanInput(e.target.value))}
+              placeholder="AAAAA9999A"
+              aria-label="PAN"
+              aria-invalid={(form.pan ?? '').trim() !== '' && !isCompletePan(form.pan ?? '')}
+            />
+            {(form.pan ?? '').trim() !== '' && !isCompletePan(form.pan ?? '') ? (
+              <span className="adagu-field-error" role="alert">
+                {PAN_FORMAT_MESSAGE}
+              </span>
+            ) : null}
+          </label>
+          <label className="full">
+            <span className="field-label">
+              Address <span className="req" aria-hidden="true">*</span>
+            </span>
+            <textarea
+              className="textarea"
+              value={form.address}
+              onChange={(e) => updateField('address', e.target.value)}
+              rows={2}
+              aria-label="Address"
+              aria-invalid={Boolean(fieldErrors.address)}
+            />
+            {fieldErrors.address ? (
+              <span className="adagu-field-error" role="alert">{fieldErrors.address}</span>
+            ) : null}
+          </label>
+          <label className="full">
+            <span className="field-label">Notes</span>
+            <textarea
+              className="textarea"
+              value={form.notes ?? ''}
+              onChange={(e) => updateField('notes', e.target.value)}
+              rows={2}
+              placeholder="Optional"
+              aria-label="Notes"
+            />
+          </label>
+        </div>
+      </form>
     </Modal>
   )
 }

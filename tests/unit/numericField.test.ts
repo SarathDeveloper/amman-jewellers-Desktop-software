@@ -11,6 +11,19 @@ describe('parseNumericField', () => {
     expect(parseNumericField('0')).toBe(0)
   })
 
+  it('keeps in-progress decimal drafts', () => {
+    expect(parseNumericField('0.')).toBe('0.')
+    expect(parseNumericField('0.0')).toBe('0.0')
+    expect(parseNumericField('0.00')).toBe('0.00')
+    expect(parseNumericField('.')).toBe('.')
+    expect(parseNumericField('-')).toBe('-')
+  })
+
+  it('accepts milligram stone weights', () => {
+    expect(parseNumericField('0.02')).toBe(0.02)
+    expect(parseNumericField('0.003')).toBe(0.003)
+  })
+
   it('rejects non-numeric input', () => {
     expect(parseNumericField('abc')).toBe('')
   })
@@ -25,5 +38,12 @@ describe('numericFieldToNumber', () => {
 
   it('returns numbers unchanged', () => {
     expect(numericFieldToNumber(88)).toBe(88)
+  })
+
+  it('coerces draft strings', () => {
+    expect(numericFieldToNumber('0.')).toBe(0)
+    expect(numericFieldToNumber('0.00')).toBe(0)
+    expect(numericFieldToNumber('0.02')).toBe(0.02)
+    expect(numericFieldToNumber('0.003')).toBe(0.003)
   })
 })

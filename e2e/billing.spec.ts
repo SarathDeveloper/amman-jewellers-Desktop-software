@@ -58,7 +58,7 @@ test('billing create, finalize, and stock deduction', async ({ window }) => {
   await expect(window.locator('.sale-bill-meta-status')).toHaveText('Paid')
   const finalized = window.getByRole('dialog', { name: 'Bill finalized' })
   await expect(finalized).toBeVisible()
-  await finalized.getByRole('button', { name: 'View Invoice' }).click()
+  await finalized.getByRole('button', { name: 'View Bill' }).click()
   await expect(finalized).toBeHidden()
   await expect(window.locator('.sale-bill-meta-status')).toHaveText('Paid')
   await expect(window.locator('.sale-bill-editor--locked')).toBeVisible()
@@ -108,6 +108,21 @@ test('typing a tagged HUID on the empty bill row adds that piece', async ({ wind
   })
   await expect(itemRow).toBeVisible()
   await expect(itemRow.locator('.sale-bill-huid-input')).toHaveValue(huid)
+})
+
+test('Enter advances focus to the next line field', async ({ window }) => {
+  await sidebarLink(window, 'Billing').click()
+  await window.getByRole('tab', { name: /Quotation/ }).click()
+  await expect(window.getByRole('heading', { name: 'New Quotation' })).toBeVisible()
+
+  await window.getByRole('button', { name: 'Add Item' }).click()
+  const row = window.locator('.sale-bill-items-table tbody tr').first()
+  const netWeight = row.locator('.adagu-col-net-weight input')
+  const grossWeight = row.locator('.adagu-col-weight input')
+
+  await netWeight.fill('8')
+  await netWeight.press('Enter')
+  await expect(grossWeight).toBeFocused()
 })
 
 test('manual item add opens a second row and autofills the metal rate', async ({ window }) => {

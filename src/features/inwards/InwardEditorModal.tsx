@@ -43,6 +43,7 @@ import { Modal } from '../../components/Modal'
 import { DateInput } from '../../components/DateInput'
 import { useToast } from '../../components/toastContext'
 import { api } from '../../lib/api'
+import { onEnterAdvanceFields } from '../../lib/formKeyboard'
 import { formatCurrency, formatDisplayDate, formatWeight } from '../../lib/format'
 import { numericFieldToNumber, parseNumericField, type NumericField } from '../../lib/numericField'
 import { isSilver } from '../products/productDisplay'
@@ -788,7 +789,7 @@ export function InwardEditorModal({
   return (
     <>
       <Modal className="modal-wide product-form-modal purchase-form-modal" title={title} hideTitle footer={null} onClose={onClose}>
-        <div className="product-form-shell">
+        <div className="product-form-shell" data-form-nav onKeyDown={onEnterAdvanceFields}>
           <header className="product-form-header">
             <div className="product-form-header-copy">
               <span className="product-form-header-icon" aria-hidden>

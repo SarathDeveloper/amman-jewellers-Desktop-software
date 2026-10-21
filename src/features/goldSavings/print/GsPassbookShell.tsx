@@ -7,7 +7,7 @@ import {
 } from '../../invoices/mapShopDisplay'
 import './GsPassbookPrint.css'
 
-export const DEFAULT_PROMO = 'தங்கம் மற்றும் வெள்ளி நகைகள் ஆர்டரின் போரில் செய்து தரப்படும்.'
+export const DEFAULT_PROMO = 'தங்கம் மற்றும் வெள்ளி நகைகள் ஆர்டரின் பேரில் செய்து தரப்படும்.'
 
 export const DEFAULT_RULES = [
   'முதல் மாதம் 1 முதல் 10ம் தேதிக்குள் தவறாமல் பணம் செலுத்த வேண்டும்.',
@@ -93,11 +93,11 @@ export function GsPassbookShell({
                         src={localImageSrc(shopInfo.bisLogoPath, '')}
                         alt="BIS"
                       />
-                      <span>BIS HALL MARK SHOW ROOM</span>
+                      <span>HUID BIS HALL MARK SHOW ROOM</span>
                     </div>
                   ) : vis.showBisLogo ? (
                     <div className="gs-passbook-bis-wrap gs-passbook-bis-wrap--text">
-                      <span>BIS HALL MARK SHOW ROOM</span>
+                      <span>HUID BIS HALL MARK SHOW ROOM</span>
                     </div>
                   ) : null}
                 </div>

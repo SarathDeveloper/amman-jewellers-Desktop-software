@@ -438,6 +438,8 @@
     padding: 0 !important;
     margin: 0 !important;
     background: #fff !important;
+    overflow: hidden !important;
+    max-height: 297mm !important;
   }
 
   .pledge-print-status {

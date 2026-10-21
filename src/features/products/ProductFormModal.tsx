@@ -22,6 +22,7 @@ import type { Product, ProductInput } from '@shared/types'
 import { Modal } from '../../components/Modal'
 import { localImageSrc } from '../invoices/mapShopDisplay'
 import { api } from '../../lib/api'
+import { onEnterAdvanceFields } from '../../lib/formKeyboard'
 import { numericFieldToNumber, parseNumericField } from '../../lib/numericField'
 import { HuidEntryList, resizeHuidRows } from './HuidEntryList'
 import { ProductThumb } from './productDisplay'
@@ -558,7 +559,7 @@ export function ProductFormModal({
       footer={null}
       onClose={onClose}
     >
-      <div className="product-form-shell">
+      <div className="product-form-shell" data-form-nav onKeyDown={onEnterAdvanceFields}>
         <header className="product-form-header">
           <div className="product-form-header-copy">
             <span className="product-form-header-icon" aria-hidden>

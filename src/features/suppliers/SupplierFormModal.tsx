@@ -80,72 +80,85 @@ export function SupplierFormModal({
           <button type="button" className="btn secondary" onClick={onClose} disabled={saving}>
             Cancel
           </button>
-          <button type="button" className="btn" onClick={() => void save()} disabled={saving || !canSave}>
+          <button
+            type="submit"
+            form="supplier-form"
+            className="btn"
+            disabled={saving || !canSave}
+          >
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       }
     >
-      <div className="form-grid">
-        <label>
-          <span className="field-label">
-            Name <span className="req" aria-hidden="true">*</span>
-          </span>
-          <input
-            className="input"
-            value={form.name}
-            required
-            aria-required="true"
-            autoComplete="organization"
-            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-          />
-        </label>
-        <label>
-          <span className="field-label">
-            Phone <span className="req" aria-hidden="true">*</span>
-          </span>
-          <input
-            className="input"
-            value={form.phone}
-            required
-            aria-required="true"
-            autoComplete="tel"
-            onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-          />
-        </label>
-        <label>
-          GSTIN
-          <input
-            className="input"
-            value={form.gstin ?? ''}
-            maxLength={20}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                gstin: event.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 20),
-              }))
-            }
-          />
-        </label>
-        <label className="span-2">
-          Address
-          <textarea
-            className="input"
-            rows={2}
-            value={form.address}
-            onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
-          />
-        </label>
-        <label className="span-2">
-          Notes
-          <textarea
-            className="input"
-            rows={2}
-            value={form.notes}
-            onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-          />
-        </label>
-      </div>
+      <form
+        id="supplier-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void save()
+        }}
+      >
+        <div className="form-grid">
+          <label>
+            <span className="field-label">
+              Name <span className="req" aria-hidden="true">*</span>
+            </span>
+            <input
+              className="input"
+              value={form.name}
+              required
+              aria-required="true"
+              autoComplete="organization"
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            />
+          </label>
+          <label>
+            <span className="field-label">
+              Phone <span className="req" aria-hidden="true">*</span>
+            </span>
+            <input
+              className="input"
+              value={form.phone}
+              required
+              aria-required="true"
+              autoComplete="tel"
+              onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+            />
+          </label>
+          <label>
+            GSTIN
+            <input
+              className="input"
+              value={form.gstin ?? ''}
+              maxLength={20}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  gstin: event.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 20),
+                }))
+              }
+            />
+          </label>
+          <label className="span-2">
+            Address
+            <textarea
+              className="input"
+              rows={2}
+              value={form.address}
+              onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
+            />
+          </label>
+          <label className="span-2">
+            Notes
+            <textarea
+              className="input"
+              rows={2}
+              value={form.notes}
+              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
+            />
+          </label>
+        </div>
+      </form>
     </Modal>
   )
 }

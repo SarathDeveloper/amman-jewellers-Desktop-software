@@ -92,11 +92,6 @@ export function AdaguPrintHeader({
               <div className="adagu-receipt-lic-no">{license}</div>
             </>
           ) : null}
-          {shop.gstin ? (
-            <div className="tax-invoice-gstin">
-              {labels.taxGstinLabel} {shop.gstin}
-            </div>
-          ) : null}
           {vis.showQrCode && shop.qrCodePath ? (
             <img className="tax-invoice-qr" src={localImageSrc(shop.qrCodePath, '')} alt="" />
           ) : null}
@@ -110,11 +105,6 @@ export function AdaguPrintHeader({
       <header className="tax-invoice-header">
         <div className="tax-invoice-brand-row">
           <div className="adagu-print-ids">
-            {shop.gstin ? (
-              <div className="tax-invoice-gstin">
-                {labels.taxGstinLabel} {shop.gstin}
-              </div>
-            ) : null}
             {license ? (
               <div className="adagu-print-license">Pawnbroker Lic. No: {license}</div>
             ) : null}

@@ -32,6 +32,8 @@ async function decodeImage(img: HTMLImageElement): Promise<void> {
 
 const PAGE_HEIGHT_MM = { a4: 297, a5: 210 } as const
 const MAX_FIT_ATTEMPTS = 3
+/** Sub-pixel / printer-margin slack so WebView2 does not open a blank second sheet. */
+const FIT_SLACK_PX = 4
 
 function pageHeightPx(paper: keyof typeof PAGE_HEIGHT_MM): number {
   const probe = document.createElement('div')
@@ -48,6 +50,18 @@ function pageHeightPx(paper: keyof typeof PAGE_HEIGHT_MM): number {
 
 function setImportant(element: HTMLElement, property: string, value: string): void {
   element.style.setProperty(property, value, 'important')
+}
+
+function clampRootToPage(root: HTMLElement, targetHeight: number, scale: number): void {
+  // min-height must be cleared too: screen CSS uses min-height: 210mm/297mm, and
+  // when that beats max-height the sheet is exactly one page tall → blank page 2.
+  setImportant(root, 'min-height', '0')
+  setImportant(root, 'height', `${targetHeight}px`)
+  setImportant(root, 'max-height', `${targetHeight}px`)
+  setImportant(root, 'overflow', 'hidden')
+  // Mark fitted even at scale 1 so PDF capture uses the clamped box, not scrollHeight.
+  root.dataset.printFitted = '1'
+  root.dataset.printFitScale = String(scale)
 }
 
 const FIT_SHEET_PROPERTIES = [
@@ -79,10 +93,15 @@ export function fitPrintSheetToPage(): void {
 
   const pageHeight = pageHeightPx(paper)
   if (pageHeight <= 0) return
+  const targetHeight = Math.max(1, pageHeight - FIT_SLACK_PX)
 
   for (const property of FIT_SHEET_PROPERTIES) {
     sheet.style.removeProperty(property)
   }
+  root.style.removeProperty('min-height')
+  root.style.removeProperty('height')
+  root.style.removeProperty('max-height')
+  root.style.removeProperty('overflow')
   delete root.dataset.printFitted
   delete root.dataset.printFitScale
 
@@ -91,9 +110,12 @@ export function fitPrintSheetToPage(): void {
     // Zoom changes scrollHeight, so each pass measures the unscaled sheet.
     setImportant(sheet, 'zoom', '1')
     const layoutHeight = sheet.scrollHeight
-    if (layoutHeight <= pageHeight + 1) {
+    if (layoutHeight <= targetHeight) {
       if (scale === 1) {
         sheet.style.removeProperty('zoom')
+        // Still clamp: CSS min-heights / signature margins can sit a few px past
+        // the page box and that alone ejects a blank second sheet.
+        clampRootToPage(root, targetHeight, 1)
         return
       }
       break
@@ -101,19 +123,16 @@ export function fitPrintSheetToPage(): void {
     const rootWidth = root.clientWidth
     if (rootWidth <= 0) {
       sheet.style.removeProperty('zoom')
+      clampRootToPage(root, targetHeight, 1)
       return
     }
-    scale = pageHeight / layoutHeight
+    scale = targetHeight / layoutHeight
     setImportant(sheet, 'width', `${rootWidth / scale}px`)
     setImportant(sheet, 'height', 'auto')
     setImportant(sheet, 'max-height', 'none')
-    setImportant(sheet, 'min-height', `${pageHeight / scale}px`)
+    setImportant(sheet, 'min-height', `${targetHeight / scale}px`)
     setImportant(sheet, 'overflow', 'visible')
-    setImportant(root, 'height', `${pageHeight}px`)
-    setImportant(root, 'max-height', `${pageHeight}px`)
-    setImportant(root, 'overflow', 'hidden')
-    root.dataset.printFitted = '1'
-    root.dataset.printFitScale = String(scale)
+    clampRootToPage(root, targetHeight, scale)
   }
 
   if (scale < 1) {
@@ -124,16 +143,14 @@ export function fitPrintSheetToPage(): void {
     setImportant(root, 'max-height', 'none')
     setImportant(root, 'overflow', 'visible')
     const laidOut = root.offsetHeight
-    if (laidOut > pageHeight) {
-      scale *= pageHeight / laidOut
+    if (laidOut > targetHeight) {
+      scale *= targetHeight / laidOut
       setImportant(sheet, 'zoom', String(scale))
-      root.dataset.printFitScale = String(scale)
     }
-    setImportant(root, 'height', `${pageHeight}px`)
-    setImportant(root, 'max-height', `${pageHeight}px`)
-    setImportant(root, 'overflow', 'hidden')
+    clampRootToPage(root, targetHeight, scale)
   } else {
     sheet.style.removeProperty('zoom')
+    clampRootToPage(root, targetHeight, 1)
   }
 }
 

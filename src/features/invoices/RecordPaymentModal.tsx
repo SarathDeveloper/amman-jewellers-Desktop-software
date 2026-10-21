@@ -62,44 +62,57 @@ export function RecordPaymentModal({
           <button type="button" className="btn secondary" disabled={saving} onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn" disabled={saving || remaining <= 0} onClick={() => void submit()}>
+          <button
+            type="submit"
+            form="record-payment-form"
+            className="btn"
+            disabled={saving || remaining <= 0}
+          >
             {saving ? 'Saving…' : 'Save payment'}
           </button>
         </div>
       }
     >
-      {error ? <div className="error-banner">{error}</div> : null}
-      <p className="bill-empty-hint">
-        Balance due {formatCurrency(remaining)} on {invoice.invoiceNo}
-      </p>
-      <div className="adagu-form-fields two-col">
-        <div className="adagu-field">
-          <label>Amount</label>
-          <input
-            className="input"
-            type="number"
-            step="0.01"
-            value={amount}
-            onChange={(event) => setAmount(parseNumericField(event.target.value))}
-          />
+      <form
+        id="record-payment-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void submit()
+        }}
+      >
+        {error ? <div className="error-banner">{error}</div> : null}
+        <p className="bill-empty-hint">
+          Balance due {formatCurrency(remaining)} on {invoice.invoiceNo}
+        </p>
+        <div className="adagu-form-fields two-col">
+          <div className="adagu-field">
+            <label>Amount</label>
+            <input
+              className="input"
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={(event) => setAmount(parseNumericField(event.target.value))}
+            />
+          </div>
+          <div className="adagu-field">
+            <label>Date</label>
+            <DateInput className="input" value={entryDate} onChange={setEntryDate} />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <PaymentModeSelect
+              value={mode}
+              modes={SINGLE_PAYMENT_MODES}
+              disabled={saving}
+              onChange={setMode}
+            />
+          </div>
+          <div className="adagu-field" style={{ gridColumn: '1 / -1' }}>
+            <label>Note</label>
+            <input className="input" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional" />
+          </div>
         </div>
-        <div className="adagu-field">
-          <label>Date</label>
-          <DateInput className="input" value={entryDate} onChange={setEntryDate} />
-        </div>
-        <div style={{ gridColumn: '1 / -1' }}>
-          <PaymentModeSelect
-            value={mode}
-            modes={SINGLE_PAYMENT_MODES}
-            disabled={saving}
-            onChange={setMode}
-          />
-        </div>
-        <div className="adagu-field" style={{ gridColumn: '1 / -1' }}>
-          <label>Note</label>
-          <input className="input" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional" />
-        </div>
-      </div>
+      </form>
     </Modal>
   )
 }
