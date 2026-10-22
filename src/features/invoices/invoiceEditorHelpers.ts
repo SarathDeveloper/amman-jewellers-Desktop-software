@@ -673,11 +673,54 @@ export type OldGoldEditorRow = {
   touchPct: NumericField
 }
 
+function roundOldGoldRate(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+function compactPurity(purity: string): string {
+  return purity.trim().replace(/\s+/g, '')
+}
+
+/**
+ * A finished purity that should fill the rate: a preset, a percent such as
+ * `80%`, or a karat such as `14K`. A partial entry like `22` does not.
+ */
+export function oldGoldPuritySetsRate(purity: string): boolean {
+  const compact = compactPurity(purity)
+  if (!compact) return false
+  if (/^\d+(?:\.\d+)?%$/.test(compact)) return false
+  if (/^\d+(?:\.\d+)?k$/i.test(compact)) return true
+  const preset = compact.toUpperCase()
+  if ((OLD_GOLD_PURITIES as readonly string[]).includes(preset)) return true
+  return compact.toLowerCase().includes('silver')
+}
+
 /** Old gold buying rate for a purity, falling back to the selling rate when unset. */
 export function rateForOldGoldPurity(purity: string, rates: MetalRates | null): number {
   if (!rates) return 0
-  const value = purity.toLowerCase()
   const sell = (buy: number | undefined, selling: number) => ((buy ?? 0) > 0 ? buy! : selling)
+  const compact = compactPurity(purity)
+  const preset = compact.toUpperCase()
+  if (preset === '925') return sell(rates.silver925Buy, rates.silver925)
+  if (preset === '999' || compact.toLowerCase() === 'silver') return sell(rates.silverFineBuy, rates.silverFine)
+  if (preset === '24K') return sell(rates.gold24kBuy, rates.gold24k)
+  if (preset === '22K') return sell(rates.gold22kBuy, rates.gold22k)
+  if (preset === '20K') return sell(rates.gold20kBuy, rates.gold20k)
+  if (preset === '18K') return sell(rates.gold18kBuy, rates.gold18k)
+
+  const percent = /^(\d+(?:\.\d+)?)%$/.exec(compact)
+  if (percent) {
+    const pct = Math.min(100, Math.max(0, Number(percent[1])))
+    return roundOldGoldRate(sell(rates.gold24kBuy, rates.gold24k) * (pct / 100))
+  }
+
+  const karat = /^(\d+(?:\.\d+)?)k$/i.exec(compact)
+  if (karat) {
+    const value = Math.max(0, Number(karat[1]))
+    return roundOldGoldRate(sell(rates.gold24kBuy, rates.gold24k) * (value / 24))
+  }
+
+  const value = compact.toLowerCase()
   if (value.includes('925')) return sell(rates.silver925Buy, rates.silver925)
   if (value.includes('999') || value.includes('silver')) return sell(rates.silverFineBuy, rates.silverFine)
   if (value.includes('24')) return sell(rates.gold24kBuy, rates.gold24k)

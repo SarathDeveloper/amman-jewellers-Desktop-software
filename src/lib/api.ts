@@ -116,6 +116,17 @@ import type { ReportDefinition, ReportId, ReportLookups, ReportResult } from '@s
 import { localBackupStamp } from '@shared/localDate'
 import { downscaleImageFile } from './downscaleImage'
 
+let onUnauthorized: (() => void) | null = null
+
+/** Called when a signed-in request comes back unauthenticated. Login failures do not call it. */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler
+}
+
+function isLoginRequest(path: string): boolean {
+  return path.startsWith('/api/auth/login')
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
@@ -142,6 +153,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const payload = isJson ? await response.json() : await response.text()
 
   if (!response.ok) {
+    if (response.status === 401 && !isLoginRequest(path)) {
+      onUnauthorized?.()
+    }
     const message =
       typeof payload === 'object' && payload && 'error' in payload
         ? String((payload as { error: string }).error)

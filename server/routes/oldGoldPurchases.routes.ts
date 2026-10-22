@@ -328,6 +328,7 @@ function replaceItems(db: Db, purchaseId: number, items: OldGoldPurchaseItemInpu
       ratePerGram: item.ratePerGram,
       deductionPct: item.deductionPct,
       touchPct,
+      purity: item.purity,
     })
     const metal = item.metal ?? metalForPurity(item.purity ?? '')
     insert.run(

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AuthUser, User } from '@shared/types'
 import { getTestAgent, loginAsAdmin, useIntegrationEnv } from './helpers/testEnv'
 import { getDatabase } from '../../server/db'
+import { forgetCachedSessionsForTests } from '../../server/auth/session'
 import { hashPasswordToHex } from '../../server/auth/password'
 import { replaceStaffPermissions } from '../../server/auth/users'
 
@@ -13,6 +14,20 @@ describe('auth and permissions', () => {
     expect(me.status).toBe(200)
     expect(me.body.username).toBe('admin')
     expect(me.body.role).toBe('admin')
+  })
+
+  it('keeps the session when the API process memory is cleared', async () => {
+    forgetCachedSessionsForTests()
+    const me = await getTestAgent().get('/api/auth/me')
+    expect(me.status).toBe(200)
+    expect(me.body.username).toBe('admin')
+  })
+
+  it('rejects a session that has expired', async () => {
+    getDatabase().prepare('UPDATE sessions SET expires_at = ?').run(Date.now() - 1000)
+    forgetCachedSessionsForTests()
+    const me = await getTestAgent().get('/api/auth/me')
+    expect(me.status).toBe(401)
   })
 
   it('rejects bad credentials', async () => {

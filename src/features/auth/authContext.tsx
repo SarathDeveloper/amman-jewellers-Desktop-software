@@ -4,15 +4,17 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import type { AuthUser, FeatureKey, LoginInput } from '@shared/types'
-import { api } from '../../lib/api'
+import { api, setUnauthorizedHandler } from '../../lib/api'
 
 interface AuthContextValue {
   user: AuthUser | null
   loading: boolean
+  sessionEnded: boolean
   login: (input: LoginInput) => Promise<AuthUser>
   logout: () => Promise<void>
   refresh: () => Promise<void>
@@ -25,6 +27,19 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [sessionEnded, setSessionEnded] = useState(false)
+  const userRef = useRef(user)
+  userRef.current = user
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      if (!userRef.current) return
+      userRef.current = null
+      setSessionEnded(true)
+      setUser(null)
+    })
+    return () => setUnauthorizedHandler(null)
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -43,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (input: LoginInput) => {
     const next = await api.login(input)
+    setSessionEnded(false)
     setUser(next)
     return next
   }, [])
@@ -51,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await api.logout()
     } finally {
+      setSessionEnded(false)
       setUser(null)
     }
   }, [])
@@ -59,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       loading,
+      sessionEnded,
       login,
       logout,
       refresh,
@@ -69,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return user.features.includes(feature)
       },
     }),
-    [user, loading, login, logout, refresh],
+    [user, loading, sessionEnded, login, logout, refresh],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

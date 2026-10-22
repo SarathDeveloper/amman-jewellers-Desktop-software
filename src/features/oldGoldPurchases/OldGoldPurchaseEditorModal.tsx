@@ -172,6 +172,8 @@ export function OldGoldPurchaseEditorModal({
             netWeight: item.netWeight,
             ratePerGram: item.ratePerGram,
             deductionPct: item.deductionPct,
+            touchPct: item.touchPct,
+            purity: item.purity,
           }).finalValue,
         0,
       ),
@@ -260,7 +262,7 @@ export function OldGoldPurchaseEditorModal({
 
   return (
     <>
-      <Modal className="modal-wide product-form-modal" title={title} hideTitle footer={null} onClose={onClose}>
+      <Modal className="modal-wide product-form-modal purchase-form-modal" title={title} hideTitle footer={null} onClose={onClose}>
         <div className="product-form-shell" data-form-nav onKeyDown={onEnterAdvanceFields}>
           <header className="product-form-header">
             <div className="product-form-header-copy">

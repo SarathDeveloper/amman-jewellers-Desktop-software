@@ -58,3 +58,36 @@ test('a print route loads the print document, not the application', async ({ win
   // And it must not run the auth provider, which the application shell mounts.
   expect(requested).not.toContain('/api/auth/me')
 })
+
+test('cash bill and tax invoice print as one A5 page', async ({ window }) => {
+  const shopName = 'Print Shop'
+  await seedShopName(window, shopName)
+  const invoiceId = await seedFinalInvoice(window)
+  const origin = new URL(window.url()).origin
+
+  for (const path of [`/print/cash-bill/${invoiceId}`, `/print/tax-invoice/${invoiceId}`]) {
+    await window.goto(`${origin}${path}`)
+    await expect(window.getByRole('heading', { name: shopName })).toBeVisible({ timeout: 15_000 })
+    await window.waitForFunction(
+      () =>
+        (window as unknown as { __PRINT_SIGNAL__?: { type?: string } }).__PRINT_SIGNAL__?.type ===
+        'print-ready',
+    )
+    await expect(window.locator('[data-print-root]')).toHaveClass(/paper-a5/)
+
+    const pdf = await window.pdf({ preferCSSPageSize: true, printBackground: true })
+    const text = pdf.toString('latin1')
+    const pageCount = text.match(/\/Type\s*\/Page(?!s)/g)?.length ?? 0
+    expect(pageCount).toBe(1)
+
+    const box = text.match(/\/MediaBox\s*\[\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)\s*\]/)
+    expect(box).not.toBeNull()
+    const width = Number(box?.[1])
+    const height = Number(box?.[2])
+    // A5 portrait is 148mm × 210mm (about 420 × 595 pt).
+    expect(width).toBeGreaterThan(400)
+    expect(width).toBeLessThan(440)
+    expect(height).toBeGreaterThan(570)
+    expect(height).toBeLessThan(620)
+  }
+})

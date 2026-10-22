@@ -31,25 +31,34 @@ async function decodeImage(img: HTMLImageElement): Promise<void> {
 }
 
 const PAGE_HEIGHT_MM = { a4: 297, a5: 210 } as const
-const MAX_FIT_ATTEMPTS = 3
-/** Sub-pixel / printer-margin slack so WebView2 does not open a blank second sheet. */
-const FIT_SLACK_PX = 4
+const MAX_FIT_ATTEMPTS = 4
+/** Kept clear at the top and bottom so a full item list still lands inside the printable area. */
+const FIT_MARGIN_MM = 8
 
-function pageHeightPx(paper: keyof typeof PAGE_HEIGHT_MM): number {
+function measureMm(mm: number, axis: 'height' | 'width'): number {
   const probe = document.createElement('div')
   probe.style.position = 'absolute'
   probe.style.visibility = 'hidden'
   probe.style.pointerEvents = 'none'
-  probe.style.height = `${PAGE_HEIGHT_MM[paper]}mm`
-  probe.style.width = '0'
+  probe.style.height = axis === 'height' ? `${mm}mm` : '0'
+  probe.style.width = axis === 'width' ? `${mm}mm` : '0'
   document.body.appendChild(probe)
-  const height = probe.getBoundingClientRect().height
+  const size = axis === 'height' ? probe.getBoundingClientRect().height : probe.getBoundingClientRect().width
   probe.remove()
-  return height
+  return size
+}
+
+function pageHeightPx(paper: keyof typeof PAGE_HEIGHT_MM): number {
+  return measureMm(PAGE_HEIGHT_MM[paper], 'height')
 }
 
 function setImportant(element: HTMLElement, property: string, value: string): void {
   element.style.setProperty(property, value, 'important')
+}
+
+function avoidPageBreak(element: HTMLElement): void {
+  setImportant(element, 'break-inside', 'avoid-page')
+  setImportant(element, 'page-break-inside', 'avoid')
 }
 
 function clampRootToPage(root: HTMLElement, targetHeight: number, scale: number): void {
@@ -59,6 +68,12 @@ function clampRootToPage(root: HTMLElement, targetHeight: number, scale: number)
   setImportant(root, 'height', `${targetHeight}px`)
   setImportant(root, 'max-height', `${targetHeight}px`)
   setImportant(root, 'overflow', 'hidden')
+  avoidPageBreak(root)
+  // A table is allowed to split by default. On a fitted bill that split is the
+  // second sheet, so the rows stay with the totals.
+  for (const node of root.querySelectorAll('article, table, thead, tbody, tfoot, tr')) {
+    if (node instanceof HTMLElement) avoidPageBreak(node)
+  }
   // Mark fitted even at scale 1 so PDF capture uses the clamped box, not scrollHeight.
   root.dataset.printFitted = '1'
   root.dataset.printFitScale = String(scale)
@@ -93,7 +108,8 @@ export function fitPrintSheetToPage(): void {
 
   const pageHeight = pageHeightPx(paper)
   if (pageHeight <= 0) return
-  const targetHeight = Math.max(1, pageHeight - FIT_SLACK_PX)
+  const marginPx = measureMm(FIT_MARGIN_MM, 'height')
+  const targetHeight = Math.max(1, pageHeight - marginPx * 2)
 
   for (const property of FIT_SHEET_PROPERTIES) {
     sheet.style.removeProperty(property)
@@ -154,6 +170,18 @@ export function fitPrintSheetToPage(): void {
   }
 }
 
+let printRefitHooked = false
+
+function ensurePrintRefit(): void {
+  if (printRefitHooked) return
+  printRefitHooked = true
+  // Print styles (row padding, dense type) are active here, so the scale has to
+  // be measured again or a long table still crosses the page edge.
+  window.addEventListener('beforeprint', () => {
+    fitPrintSheetToPage()
+  })
+}
+
 export async function waitForPrintLayout(): Promise<void> {
   await waitForDocumentImages()
   await new Promise<void>((resolve) => {
@@ -161,6 +189,7 @@ export async function waitForPrintLayout(): Promise<void> {
       window.requestAnimationFrame(() => resolve())
     })
   })
+  ensurePrintRefit()
   fitPrintSheetToPage()
 }
 

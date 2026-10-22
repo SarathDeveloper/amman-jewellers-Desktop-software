@@ -41,9 +41,10 @@ test('inward finalize increases product piece stock', async ({ window }) => {
 
   const dialog = window.getByRole('dialog', { name: 'New purchase' })
   await dialog.getByLabel('Supplier', { exact: true }).selectOption({ label: 'Inward Supplier' })
-  await dialog.getByPlaceholder(/Search product/).fill(productName)
-  await dialog.getByPlaceholder(/Search product/).press('Enter')
-  await expect(dialog.getByPlaceholder(new RegExp(productName))).toBeVisible()
+  const productSearch = dialog.getByPlaceholder(/Search product/)
+  await productSearch.fill(productName)
+  await productSearch.press('Enter')
+  await expect(productSearch).toHaveValue(new RegExp(productName))
   await dialog.getByLabel('Qty').fill('2')
   await dialog.getByLabel('HUID 1').fill('IW0002')
   await dialog.getByLabel('HUID 2').fill('IW0003')

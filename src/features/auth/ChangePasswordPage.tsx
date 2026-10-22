@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
+import { onAuthFieldKeys } from '../../lib/formKeyboard'
 import { useAuth } from './authContext'
 
 export function ChangePasswordPage() {
@@ -37,7 +38,11 @@ export function ChangePasswordPage() {
 
   return (
     <div className="auth-screen">
-      <form className="card padded auth-card" onSubmit={(event) => void onSubmit(event)}>
+      <form
+        className="card padded auth-card"
+        onSubmit={(event) => void onSubmit(event)}
+        onKeyDown={onAuthFieldKeys}
+      >
         <h1>Change password</h1>
         <p className="muted">
           {user?.mustChangePassword
@@ -49,6 +54,7 @@ export function ChangePasswordPage() {
           <input
             className="input"
             type="password"
+            autoFocus
             autoComplete="current-password"
             value={currentPassword}
             onChange={(event) => setCurrentPassword(event.target.value)}

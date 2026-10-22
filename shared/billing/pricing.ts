@@ -138,7 +138,8 @@ export function computeInvoiceTotals(
 } {
   const subtotal = roundMoney(lineSubtotals.reduce((sum, value) => sum + value, 0))
   // Discount is recorded here but applied after tax in computeBillSummary.
-  const discountApplied = roundMoney(Math.min(discount, Math.max(0, subtotal)))
+  // A typed minus is still a reduction: -690 discounts by 690, it does not add.
+  const discountApplied = roundMoney(Math.min(Math.abs(discount), Math.max(0, subtotal)))
   const taxBreakdown = autoTax
     ? computeInvoiceTax(subtotal, useIgst)
     : { cgst: 0, sgst: 0, igst: 0, tax: roundMoney(manualTax) }

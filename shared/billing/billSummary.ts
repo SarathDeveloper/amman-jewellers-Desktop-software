@@ -1,19 +1,31 @@
 import type { OldGoldItemInput, PurchaseGstMode } from '../types'
 import { computeInvoiceTotals, INTRA_STATE_GST_RATE, roundMoney, roundWeight } from './pricing'
 
+/** `80%` is a purity factor. Presets such as `22K` are not. */
+export function purityPercent(purity: string | undefined): number | null {
+  if (!purity) return null
+  const match = /^(\d+(?:\.\d+)?)%$/.exec(purity.trim().replace(/\s+/g, ''))
+  if (!match) return null
+  const value = Number(match[1])
+  if (!Number.isFinite(value)) return null
+  return Math.min(100, Math.max(0, value))
+}
+
 export interface OldGoldValueInput {
   netWeight: number
   ratePerGram: number
   deductionPct?: number
   /** Touch / assay percentage. When above 0 the value uses the fine weight. */
   touchPct?: number
+  /** When this is a percent, such as `80%`, it scales the fine weight. The rate stays as entered. */
+  purity?: string
 }
 
 export interface OldGoldValueResult {
   grossValue: number
   deductionAmount: number
   finalValue: number
-  /** Weight the value is based on: `netWeight * touch / 100` when touch is set. */
+  /** Weight the value is based on. A purity percent and a touch percent both scale it. */
   fineWeight: number
 }
 
@@ -22,7 +34,10 @@ export function computeOldGoldValue(input: OldGoldValueInput): OldGoldValueResul
   const ratePerGram = Math.max(0, input.ratePerGram)
   const deductionPct = Math.min(100, Math.max(0, input.deductionPct ?? 0))
   const touchPct = input.touchPct != null && input.touchPct > 0 ? Math.min(100, input.touchPct) : 0
-  const valuedWeight = touchPct > 0 ? (netWeight * touchPct) / 100 : netWeight
+  const metalPct = purityPercent(input.purity)
+  const purityFactor = metalPct == null ? 1 : metalPct / 100
+  const touchFactor = touchPct > 0 ? touchPct / 100 : 1
+  const valuedWeight = netWeight * purityFactor * touchFactor
   const grossValue = roundMoney(valuedWeight * ratePerGram)
   const deductionAmount = roundMoney((grossValue * deductionPct) / 100)
   const finalValue = roundMoney(Math.max(0, grossValue - deductionAmount))
@@ -118,7 +133,12 @@ export interface BillSummaryInput {
   autoTax: boolean
   useIgst?: boolean
   manualTax?: number
-  oldGold?: Array<Pick<OldGoldItemInput, 'netWeight' | 'ratePerGram' | 'deductionPct'> & { finalValue?: number }>
+  oldGold?: Array<
+    Pick<OldGoldItemInput, 'netWeight' | 'ratePerGram' | 'deductionPct' | 'purity'> & {
+      finalValue?: number
+      touchPct?: number
+    }
+  >
   extraOldGoldCredit?: number
   /** Gold savings scheme credit, valued in rupees. Kept separate from old gold. */
   schemeCredit?: number
@@ -158,13 +178,15 @@ export function computeBillSummary(input: BillSummaryInput): BillSummary {
       netWeight: item.netWeight,
       ratePerGram: item.ratePerGram,
       deductionPct: item.deductionPct,
+      touchPct: item.touchPct,
+      purity: item.purity,
     }).finalValue
   }, 0)
   const oldGoldTotal = roundMoney(oldGoldFromItems + Math.max(0, input.extraOldGoldCredit ?? 0))
   const schemeCreditTotal = roundMoney(Math.max(0, input.schemeCredit ?? 0))
   // Discount comes after GST and credits — it must not change the tax base.
   const maxDiscount = roundMoney(Math.max(0, totals.total - oldGoldTotal - schemeCreditTotal))
-  const discount = roundMoney(Math.min(totals.discount, maxDiscount))
+  const discount = roundMoney(Math.min(Math.max(0, totals.discount), maxDiscount))
   const amountBeforeRoundOff = roundMoney(totals.total - oldGoldTotal - schemeCreditTotal - discount)
   const roundOff = roundMoney(input.roundOff ?? 0)
   const amountPayable = roundMoney(amountBeforeRoundOff + roundOff)

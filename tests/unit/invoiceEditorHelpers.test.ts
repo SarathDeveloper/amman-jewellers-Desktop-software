@@ -19,6 +19,8 @@ import {
   newEditorLine,
   OLD_GOLD_PURITIES,
   oldGoldPurityOptions,
+  metalForOldGoldPurity,
+  oldGoldPuritySetsRate,
   productForHuid,
   huidCellState,
   pieceHuidLocked,
@@ -481,6 +483,18 @@ describe('old gold purities', () => {
     expect(rateForOldGoldPurity('925', withBuyRates)).toBe(220)
     expect(rateForOldGoldPurity('999', withBuyRates)).toBe(250)
     expect(rateForOldGoldPurity('22K', null)).toBe(0)
+  })
+
+  it('prices a typed percent or karat from the 24K rate and keeps preset 22K', () => {
+    expect(rateForOldGoldPurity('80%', rates)).toBe(13200)
+    expect(rateForOldGoldPurity('14K', rates)).toBe(9625)
+    expect(rateForOldGoldPurity('22K', rates)).toBe(15125)
+    expect(oldGoldPuritySetsRate('22')).toBe(false)
+    expect(oldGoldPuritySetsRate('80%')).toBe(false)
+    expect(metalForOldGoldPurity('80%')).toBe('Gold')
+    expect(metalForOldGoldPurity('14K')).toBe('Gold')
+    expect(metalForOldGoldPurity('925')).toBe('Silver')
+    expect(metalForOldGoldPurity('22K')).toBe('Gold')
   })
 })
 

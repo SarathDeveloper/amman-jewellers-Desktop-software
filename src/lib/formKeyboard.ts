@@ -62,3 +62,78 @@ export function onEnterAdvanceFields(
   event.preventDefault()
   focusNextField(target, root)
 }
+
+export type AuthFieldKeyDecision = { type: 'move'; to: number } | { type: 'submit' } | { type: 'ignore' }
+
+/**
+ * What an auth form should do for a key pressed on one of its controls.
+ * `count` is the number of enabled controls (text fields, then the submit button).
+ * `lastFieldIndex` is the last text field; Enter there submits, Enter before it advances.
+ * Arrow keys stop at the ends. Tab, Shift+Enter, and IME composition are left to the browser.
+ */
+export function authFieldKeyDecision(input: {
+  key: string
+  index: number
+  count: number
+  lastFieldIndex: number
+  shiftKey?: boolean
+  isComposing?: boolean
+}): AuthFieldKeyDecision {
+  const { key, index, count, lastFieldIndex, shiftKey = false, isComposing = false } = input
+  if (isComposing || shiftKey || index < 0 || index >= count || count <= 0) return { type: 'ignore' }
+
+  if (key === 'ArrowDown') {
+    return index + 1 < count ? { type: 'move', to: index + 1 } : { type: 'ignore' }
+  }
+  if (key === 'ArrowUp') {
+    return index > 0 ? { type: 'move', to: index - 1 } : { type: 'ignore' }
+  }
+  if (key === 'Enter') {
+    if (index === lastFieldIndex) return { type: 'submit' }
+    if (index < lastFieldIndex) return { type: 'move', to: index + 1 }
+  }
+  return { type: 'ignore' }
+}
+
+const AUTH_CONTROLS =
+  'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([disabled]), button[type="submit"]:not([disabled])'
+
+/**
+ * Login and change-password forms. Enter advances until the last field, which submits.
+ * ArrowUp / ArrowDown move between the fields and the submit button. Tab stays native.
+ */
+export function onAuthFieldKeys(event: ReactKeyboardEvent<HTMLElement> | KeyboardEvent): void {
+  if (event.defaultPrevented || event.isComposing) return
+  if (event.key !== 'Enter' && event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+
+  const target = event.target
+  if (!(target instanceof HTMLElement)) return
+
+  const form = target.closest('form')
+  if (!form) return
+
+  const controls = Array.from(form.querySelectorAll<HTMLElement>(AUTH_CONTROLS)).filter(isVisible)
+  const index = controls.indexOf(target)
+  if (index < 0) return
+
+  const lastField = [...controls].reverse().find(isFieldElement)
+  const lastFieldIndex = lastField ? controls.indexOf(lastField) : -1
+  const decision = authFieldKeyDecision({
+    key: event.key,
+    index,
+    count: controls.length,
+    lastFieldIndex,
+    shiftKey: event.shiftKey,
+    isComposing: event.isComposing,
+  })
+
+  if (decision.type !== 'move') return
+
+  event.preventDefault()
+  const next = controls[decision.to]
+  if (!next) return
+  next.focus()
+  if (next instanceof HTMLInputElement && next.type !== 'date') {
+    next.select?.()
+  }
+}

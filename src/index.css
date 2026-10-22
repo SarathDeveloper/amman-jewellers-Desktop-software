@@ -6270,6 +6270,27 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
     overflow: visible;
   }
 }
+
+/* 100vh / 100% on the print document equals exactly one sheet, so any rounding
+   opens a blank second page. Templates that clamp their own sheet keep their
+   overflow rules; this only clears the heights that leak in from the app CSS. */
+@media print {
+  html,
+  body,
+  #root {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  .print-page,
+  .cash-bill-print-page,
+  .tax-invoice-print-page,
+  .pledge-print-page,
+  .purchase-invoice-print-page {
+    min-height: 0 !important;
+  }
+}
 .settings-layout {
   display: flex;
   flex-direction: column;
@@ -8674,8 +8695,12 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
 .old-gold-table:has(.old-gold-col-desc) {
   min-width: 52rem;
 }
+.old-gold-table-wrap:has(.old-gold-table--purchase) {
+  overflow-x: hidden;
+}
 .old-gold-table--purchase:has(.old-gold-col-desc) {
-  min-width: 41rem;
+  width: 100%;
+  min-width: 0;
 }
 .old-gold-table .old-gold-col-desc {
   width: 8.5rem;
@@ -8687,10 +8712,16 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   width: 4.25rem;
 }
 .old-gold-table .old-gold-col-purity {
-  width: 4.5rem;
+  width: 5.5rem;
 }
 .old-gold-table .old-gold-col-amount {
   width: 5.25rem;
+  text-align: right;
+}
+.old-gold-table--purchase .old-gold-col-amount {
+  width: 6.75rem;
+}
+.old-gold-table .old-gold-col-amount input {
   text-align: right;
 }
 .old-gold-table--links {
@@ -9754,6 +9785,42 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   width: 100%;
   gap: 0.22rem;
 }
+.sale-bill-summary-card .adagu-calculated-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.75rem;
+}
+.sale-bill-summary-card .adagu-calculated-row .label {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.sale-bill-summary-card .adagu-calculated-row .value {
+  justify-self: end;
+  min-width: 6.75rem;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-align: right;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.sale-bill-summary-card .bill-summary-roundoff-input {
+  justify-content: flex-end;
+  width: 6.75rem;
+}
+.sale-bill-summary-card .bill-summary-roundoff-input input {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.sale-bill-summary-card .bill-summary-roundoff-input input::-webkit-outer-spin-button,
+.sale-bill-summary-card .bill-summary-roundoff-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 .sale-bill-summary-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -9855,29 +9922,37 @@ button.dashboard-rate-ticker[aria-expanded="true"] {
   text-overflow: ellipsis;
 }
 .sale-bill-grand-total strong {
-  min-width: 0;
   flex: 0 0 auto;
+  flex-shrink: 0;
   font-size: 1.125rem;
   font-weight: 800;
   white-space: nowrap;
 }
 .sale-bill-editor .payment-highlights {
+  grid-template-columns: 1fr;
   gap: 0.35rem;
   margin-bottom: 0.35rem;
 }
 .sale-bill-editor .payment-highlight {
-  padding: 0.35rem 0.45rem;
-  gap: 0.25rem;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.55rem;
+  gap: 0.5rem;
 }
 .sale-bill-editor .payment-highlight span {
-  font-size: 0.6rem;
+  min-width: 0;
+  font-size: 0.625rem;
   line-height: 1.15;
   letter-spacing: 0.02em;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 .sale-bill-editor .payment-highlight strong {
-  min-width: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
   font-size: var(--billing-font-body, 0.8125rem);
   font-weight: 700;
 }

@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -65,6 +65,28 @@ const args = process.argv.slice(2)
 const isBuild = args[0] === 'build'
 const target = argValue(args, '--target')
 const isWindowsMsvc = target === 'x86_64-pc-windows-msvc'
+
+const sidecarName =
+  process.platform === 'darwin'
+    ? 'jeweltrackerpro-api-aarch64-apple-darwin'
+    : 'jeweltrackerpro-api-x86_64-pc-windows-msvc.exe'
+const sidecarPath = join(root, 'src-tauri', 'binaries', sidecarName)
+if (!existsSync(sidecarPath)) {
+  fail(
+    `The API sidecar is missing at src-tauri/binaries/${sidecarName}.\nRun: npm run sidecar:package\nThen run npm run tauri:dev again.`,
+  )
+}
+
+// tauri.conf.json lists packaged resource paths. cargo requires them to exist
+// even for `tauri dev`, which serves Vite and never reads these copies.
+const resourceDist = join(root, 'src-tauri', 'resources', 'dist')
+const resourceMigrations = join(root, 'src-tauri', 'resources', 'migrations')
+if (!isBuild) {
+  mkdirSync(resourceDist, { recursive: true })
+  mkdirSync(resourceMigrations, { recursive: true })
+} else if (!existsSync(resourceDist)) {
+  fail('src-tauri/resources/dist is missing. Run: npm run desktop:prepare')
+}
 
 if (isBuild && isWindowsMsvc && process.platform !== 'win32') {
   const cargoXwin = join(cargoBin, 'cargo-xwin')

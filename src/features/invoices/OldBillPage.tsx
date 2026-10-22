@@ -61,12 +61,16 @@ export function OldBillPage() {
     if (billFormat === 'tax_invoice' && autoTax) {
       const gst = computeInvoiceTax(amount, useIgst)
       const invoiceTotal = roundMoney(amount + gst.tax)
-      const discountAmount = roundMoney(Math.min(numericFieldToNumber(discount), invoiceTotal))
+      const discountAmount = roundMoney(
+        Math.min(Math.abs(numericFieldToNumber(discount)), Math.max(0, invoiceTotal)),
+      )
       return { total: roundMoney(invoiceTotal - discountAmount), tax: gst.tax }
     }
     const manualTax = billFormat === 'tax_invoice' ? roundMoney(numericFieldToNumber(tax)) : 0
     const invoiceTotal = roundMoney(amount + manualTax)
-    const discountAmount = roundMoney(Math.min(numericFieldToNumber(discount), invoiceTotal))
+    const discountAmount = roundMoney(
+      Math.min(Math.abs(numericFieldToNumber(discount)), Math.max(0, invoiceTotal)),
+    )
     return { total: roundMoney(invoiceTotal - discountAmount), tax: manualTax }
   }, [subtotal, discount, billFormat, autoTax, useIgst, tax])
 
@@ -84,7 +88,7 @@ export function OldBillPage() {
         billFormat,
         paymentMode,
         subtotal: numericFieldToNumber(subtotal),
-        discount: numericFieldToNumber(discount),
+        discount: Math.abs(numericFieldToNumber(discount)),
         autoTax: billFormat === 'tax_invoice' && autoTax,
         useIgst,
         tax: numericFieldToNumber(tax),

@@ -90,6 +90,10 @@ export function initDatabase(): Database.Database {
   return db
 }
 
+export function isDatabaseReady(): boolean {
+  return db !== null
+}
+
 export function getDatabase(): Database.Database {
   if (!db) {
     throw new Error('Database not initialized')

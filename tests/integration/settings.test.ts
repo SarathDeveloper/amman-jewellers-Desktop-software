@@ -109,7 +109,7 @@ describe('settings IPC', () => {
   it('persists printer paper size, copies, and cash drawer flag', async () => {
     const current = await ipc<ShopSettings>(IPC_CHANNELS.SETTINGS_GET)
     expect(current.paperSizeCash).toBe('a5')
-    expect(current.paperSizeTax).toBe('a4')
+    expect(current.paperSizeTax).toBe('a5')
     expect(current.billTemplate.taxColParticulars).toBe('Particulars')
     expect(current.billTemplate.taxColTotWgt).toBe('Tot Wgt')
     expect(current.billTemplate.taxColStnWgt).toBe('Stn Wgt')

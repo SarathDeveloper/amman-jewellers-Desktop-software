@@ -227,6 +227,23 @@
   word-wrap: break-word;
 }
 
+/* Cash and tax bills keep an outer frame and a header rule. Pledge sheets reuse
+   this table and keep the full cell grid. */
+.tax-invoice-root:not(.adagu-print-sheet) .tax-invoice-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 0.5pt solid #999;
+}
+
+.tax-invoice-root:not(.adagu-print-sheet) .tax-invoice-table th,
+.tax-invoice-root:not(.adagu-print-sheet) .tax-invoice-table td {
+  border: none;
+}
+
+.tax-invoice-root:not(.adagu-print-sheet) .tax-invoice-table thead th {
+  border-bottom: 0.5pt solid #999;
+}
+
 .tax-invoice-col-particulars {
   width: 22%;
   text-align: left;
@@ -410,8 +427,8 @@
     box-shadow: none !important;
     page-break-after: avoid;
     break-after: avoid-page;
-    page-break-inside: auto;
-    break-inside: auto;
+    page-break-inside: avoid;
+    break-inside: avoid-page;
   }
 
   .tax-invoice {
@@ -419,8 +436,14 @@
     max-height: none !important;
     min-height: 0 !important;
     overflow: hidden;
-    page-break-inside: auto;
-    break-inside: auto;
+    page-break-inside: avoid;
+    break-inside: avoid-page;
+  }
+
+  .tax-invoice-root:not(.adagu-print-sheet):not(.paper-thermal) .tax-invoice-table,
+  .tax-invoice-root:not(.adagu-print-sheet):not(.paper-thermal) .tax-invoice-table tr {
+    page-break-inside: avoid;
+    break-inside: avoid-page;
   }
 
   .tax-invoice-table tbody tr.empty td {
@@ -450,7 +473,7 @@
 
 .tax-invoice-root.paper-a4 .tax-invoice {
   min-height: 297mm;
-  padding: 6mm 8mm;
+  padding: 10mm 12mm;
 }
 
 .tax-invoice-root.paper-a4 .tax-invoice-brand-row {

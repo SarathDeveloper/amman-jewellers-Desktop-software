@@ -76,6 +76,8 @@ export function getMigrations(): { version: number; sql: string; disableForeignK
     { version: 66, sql: loadMigrationSql('066_purchase_invoice_fields.sql') },
     { version: 67, sql: loadMigrationSql('067_inward_cancel_audit.sql'), disableForeignKeys: true },
     { version: 68, sql: loadMigrationSql('068_inventory_pieces.sql') },
+    { version: 69, sql: loadMigrationSql('069_sessions.sql') },
+    { version: 70, sql: loadMigrationSql('070_bill_paper_a5.sql') },
   ]
 }
 

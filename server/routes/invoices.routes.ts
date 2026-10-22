@@ -399,6 +399,7 @@ function replaceOldGold(
       netWeight,
       ratePerGram: item.ratePerGram,
       deductionPct: item.deductionPct,
+      purity: item.purity,
     })
     insert.run(
       invoiceId,
@@ -898,7 +899,7 @@ function historicalAmounts(input: HistoricalInvoiceInput) {
   if (autoTax) {
     const tax = computeInvoiceTax(taxable, useIgst)
     const total = roundMoney(taxable + tax.tax)
-    const discount = roundMoney(Math.min(input.discount ?? 0, Math.max(0, total)))
+    const discount = roundMoney(Math.min(Math.abs(input.discount ?? 0), Math.max(0, total)))
     return {
       subtotal,
       discount,
@@ -914,7 +915,7 @@ function historicalAmounts(input: HistoricalInvoiceInput) {
 
   const manualTax = input.billFormat === 'tax_invoice' ? roundMoney(input.tax ?? 0) : 0
   const total = roundMoney(taxable + manualTax)
-  const discount = roundMoney(Math.min(input.discount ?? 0, Math.max(0, total)))
+  const discount = roundMoney(Math.min(Math.abs(input.discount ?? 0), Math.max(0, total)))
   const amountPayable = roundMoney(total - discount)
   if (useIgst) {
     return {

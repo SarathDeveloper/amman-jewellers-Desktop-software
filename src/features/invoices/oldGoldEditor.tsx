@@ -1,3 +1,4 @@
+import { useId, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { computeOldGoldValue } from '@shared/billing/billSummary'
 import type { MetalRates } from '@shared/types'
@@ -5,8 +6,9 @@ import { onEnterAdvanceFields } from '../../lib/formKeyboard'
 import { formatCurrency } from '../../lib/format'
 import { numericFieldToNumber, parseNumericField } from '../../lib/numericField'
 import {
-  oldGoldPurityOptions,
+  OLD_GOLD_PURITIES,
   newOldGoldRow,
+  oldGoldPuritySetsRate,
   rateForOldGoldPurity,
   type OldGoldEditorRow,
 } from './invoiceEditorHelpers'
@@ -21,7 +23,15 @@ function rowValues(row: OldGoldEditorRow) {
     ratePerGram: numericFieldToNumber(row.ratePerGram),
     deductionPct: numericFieldToNumber(row.deductionPct),
     touchPct: numericFieldToNumber(row.touchPct),
+    purity: row.purity,
   })
+}
+
+function rateForEnteredAmount(row: OldGoldEditorRow, amount: number): number | '' {
+  const deductionPct = Math.min(100, Math.max(0, numericFieldToNumber(row.deductionPct)))
+  const divisor = rowValues(row).fineWeight * (1 - deductionPct / 100)
+  if (!(divisor > 0) || !Number.isFinite(amount)) return row.ratePerGram
+  return Math.round((amount / divisor) * 100) / 100
 }
 
 export function OldGoldEditor({
@@ -48,7 +58,12 @@ export function OldGoldEditor({
   onChange: (rows: OldGoldEditorRow[]) => void
 }) {
   const isPurchase = layout === 'purchase'
-  function update(key: string, patch: Partial<OldGoldEditorRow>) {
+  const purityListId = useId()
+  const [amountDraft, setAmountDraft] = useState<{ key: string; text: string } | null>(null)
+  function update(key: string, patch: Partial<OldGoldEditorRow>, options?: { keepAmountDraft?: boolean }) {
+    if (!options?.keepAmountDraft) {
+      setAmountDraft((current) => (current?.key === key ? null : current))
+    }
     onChange(
       rows.map((row) => {
         if (row.key !== key) return row
@@ -91,6 +106,12 @@ export function OldGoldEditor({
         </button>
       </div>
 
+      <datalist id={purityListId}>
+        {OLD_GOLD_PURITIES.map((purity) => (
+          <option key={purity} value={purity} />
+        ))}
+      </datalist>
+
       {rows.length === 0 ? (
         compact ? null : (
           <p className="bill-empty-hint">{emptyHint}</p>
@@ -131,7 +152,6 @@ export function OldGoldEditor({
             <tbody>
               {rows.map((row) => {
                 const values = rowValues(row)
-                const purityOptions = oldGoldPurityOptions(row.purity)
                 return (
                   <tr key={row.key}>
                     <td className="old-gold-col-desc" data-label={isPurchase ? 'Item name' : 'Description'}>
@@ -170,20 +190,23 @@ export function OldGoldEditor({
                       />
                     </td>
                     <td className="old-gold-col-purity" data-label="Purity">
-                      <select
+                      <input
                         disabled={disabled}
-                        value={purityOptions.includes(row.purity) ? row.purity : '22K'}
+                        list={purityListId}
+                        placeholder="22K or 80%"
+                        value={row.purity}
                         onChange={(event) => {
                           const purity = event.target.value
-                          update(row.key, { purity, ratePerGram: rateForOldGoldPurity(purity, metalRates) || '' })
+                          if (!oldGoldPuritySetsRate(purity)) {
+                            update(row.key, { purity })
+                            return
+                          }
+                          update(row.key, {
+                            purity,
+                            ratePerGram: rateForOldGoldPurity(purity, metalRates) || '',
+                          })
                         }}
-                      >
-                        {purityOptions.map((purity) => (
-                          <option key={purity} value={purity}>
-                            {purity}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </td>
                     <td className="old-gold-col-num" data-label="Rate per gram">
                       <input
@@ -228,7 +251,39 @@ export function OldGoldEditor({
                       className="old-gold-col-amount num"
                       data-label={isPurchase ? 'Amount' : 'Final value'}
                     >
-                      {formatCurrency(values.finalValue)}
+                      {isPurchase ? (
+                        <input
+                          inputMode="decimal"
+                          disabled={disabled}
+                          aria-label="Amount"
+                          value={
+                            amountDraft?.key === row.key
+                              ? amountDraft.text
+                              : values.finalValue
+                                ? String(values.finalValue)
+                                : ''
+                          }
+                          onChange={(event) => {
+                            const text = event.target.value
+                            if (text !== '' && !/^\d*\.?\d{0,2}$/.test(text)) return
+                            setAmountDraft({ key: row.key, text })
+                            if (text === '' || text === '.') {
+                              update(row.key, { ratePerGram: '' }, { keepAmountDraft: true })
+                              return
+                            }
+                            update(
+                              row.key,
+                              { ratePerGram: rateForEnteredAmount(row, Number(text)) },
+                              { keepAmountDraft: true },
+                            )
+                          }}
+                          onBlur={() =>
+                            setAmountDraft((current) => (current?.key === row.key ? null : current))
+                          }
+                        />
+                      ) : (
+                        formatCurrency(values.finalValue)
+                      )}
                     </td>
                     <td className="adagu-col-action">
                       <button

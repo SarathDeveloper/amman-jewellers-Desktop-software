@@ -32,7 +32,7 @@ function money(value: number): string {
 export function TaxInvoicePrint({
   data,
   shop,
-  paperSize = "a4",
+  paperSize = "a5",
 }: {
   data: TaxInvoiceData;
   shop?: ShopDisplayInfo;

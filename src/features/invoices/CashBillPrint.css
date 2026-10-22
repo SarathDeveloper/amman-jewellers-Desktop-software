@@ -199,14 +199,16 @@
 
 .cash-bill-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
   font-size: 6.6pt;
+  border: 0.5pt solid #999;
 }
 
 .cash-bill-table th,
 .cash-bill-table td {
-  border: 0.5pt solid #999;
+  border: none;
   padding: 1mm 0.6mm;
   vertical-align: top;
   word-wrap: break-word;
@@ -219,6 +221,7 @@
   font-size: 6pt;
   line-height: 1.15;
   word-wrap: break-word;
+  border-bottom: 0.5pt solid #999;
 }
 
 .cash-bill-col-sno {
@@ -395,8 +398,8 @@
     box-shadow: none !important;
     page-break-after: avoid;
     break-after: avoid-page;
-    page-break-inside: auto;
-    break-inside: auto;
+    page-break-inside: avoid;
+    break-inside: avoid-page;
   }
 
   .cash-bill {
@@ -404,8 +407,14 @@
     max-height: none !important;
     min-height: 0 !important;
     overflow: hidden;
-    page-break-inside: auto;
-    break-inside: auto;
+    page-break-inside: avoid;
+    break-inside: avoid-page;
+  }
+
+  .cash-bill-root:not(.paper-thermal) .cash-bill-table,
+  .cash-bill-root:not(.paper-thermal) .cash-bill-table tr {
+    page-break-inside: avoid;
+    break-inside: avoid-page;
   }
 
   .cash-bill-table tbody tr.empty td {
@@ -466,7 +475,7 @@
 
 .cash-bill-root.paper-a4 .cash-bill {
   min-height: 297mm;
-  padding: 6mm 8mm;
+  padding: 10mm 12mm;
 }
 
 .cash-bill-root.paper-a4 .cash-bill-shop-name {

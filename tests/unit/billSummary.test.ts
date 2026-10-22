@@ -19,6 +19,27 @@ describe('bill summary', () => {
     })
   })
 
+  it('scales the fine weight when purity is a percent and keeps the entered rate', () => {
+    expect(computeOldGoldValue({ netWeight: 1, ratePerGram: 14500, purity: '80%' })).toEqual({
+      grossValue: 11600,
+      deductionAmount: 0,
+      finalValue: 11600,
+      fineWeight: 0.8,
+    })
+    expect(computeOldGoldValue({ netWeight: 1, ratePerGram: 14500, purity: '22K' })).toMatchObject({
+      finalValue: 14500,
+      fineWeight: 1,
+    })
+    expect(
+      computeOldGoldValue({ netWeight: 10, ratePerGram: 6000, purity: '80%', touchPct: 75, deductionPct: 10 }),
+    ).toEqual({
+      grossValue: 36000,
+      deductionAmount: 3600,
+      finalValue: 32400,
+      fineWeight: 6,
+    })
+  })
+
   it('values on the fine weight when a touch percentage is set', () => {
     expect(
       computeOldGoldValue({ netWeight: 10, ratePerGram: 6000, deductionPct: 0, touchPct: 75 }),
@@ -74,6 +95,25 @@ describe('bill summary', () => {
     expect(withDiscount.discount).toBe(500)
     expect(withDiscount.amountBeforeRoundOff).toBe(9800)
     expect(withDiscount.amountPayable).toBe(9800)
+  })
+
+  it('treats a negative discount as the same reduction', () => {
+    const negative = computeBillSummary({
+      lineSubtotals: [10000],
+      discount: -500,
+      autoTax: true,
+      roundOff: 0,
+    })
+    const positive = computeBillSummary({
+      lineSubtotals: [10000],
+      discount: 500,
+      autoTax: true,
+      roundOff: 0,
+    })
+    expect(negative.tax).toBe(positive.tax)
+    expect(negative.discount).toBe(500)
+    expect(negative.amountPayable).toBe(9800)
+    expect(negative.amountPayable).toBe(positive.amountPayable)
   })
 
   it('does not change GST when round off changes', () => {
@@ -195,5 +235,39 @@ describe('bill summary', () => {
     expect(totals.taxable).toBe(0)
     expect(totals.tax).toBe(0)
     expect(totals.total).toBe(0)
+  })
+
+  it('keeps a negative purchase discount at zero instead of treating it as a sale discount', () => {
+    const totals = computePurchaseTotals([10000], 0, { discount: -500, gstMode: 'intra' })
+    expect(totals.discount).toBe(0)
+    expect(totals.taxable).toBe(10000)
+    expect(totals.tax).toBe(300)
+    expect(totals.total).toBe(10300)
+  })
+
+  it('keeps a positive sale round off as an increase after discount', () => {
+    const summary = computeBillSummary({
+      lineSubtotals: [10000],
+      discount: 500,
+      autoTax: true,
+      roundOff: 10,
+    })
+    expect(summary.tax).toBe(300)
+    expect(summary.discount).toBe(500)
+    expect(summary.amountPayable).toBe(9810)
+  })
+
+  it('applies scheme credit and a negative discount as separate reductions', () => {
+    const summary = computeBillSummary({
+      lineSubtotals: [10000],
+      discount: -200,
+      autoTax: false,
+      schemeCredit: 1000,
+      roundOff: 0,
+    })
+    expect(summary.schemeCreditTotal).toBe(1000)
+    expect(summary.discount).toBe(200)
+    expect(summary.tax).toBe(0)
+    expect(summary.amountPayable).toBe(8800)
   })
 })

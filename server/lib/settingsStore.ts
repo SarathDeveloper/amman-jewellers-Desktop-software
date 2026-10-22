@@ -216,7 +216,7 @@ export function loadShopSettings(db: ReturnType<typeof getDatabase>): ShopSettin
     defaultPrinterCash: getShopSetting(db, SHOP_KEYS.defaultPrinterCash, ''),
     defaultPrinterTax: getShopSetting(db, SHOP_KEYS.defaultPrinterTax, ''),
     paperSizeCash: parsePaperSize(getShopSetting(db, SHOP_KEYS.paperSizeCash, 'a5')),
-    paperSizeTax: parsePaperSize(getShopSetting(db, SHOP_KEYS.paperSizeTax, 'a4')),
+    paperSizeTax: parsePaperSize(getShopSetting(db, SHOP_KEYS.paperSizeTax, 'a5')),
     copiesCash: clampCopies(getShopSetting(db, SHOP_KEYS.copiesCash, '1')),
     copiesTax: clampCopies(getShopSetting(db, SHOP_KEYS.copiesTax, '1')),
     openCashDrawer: parseBooleanSetting(getShopSetting(db, SHOP_KEYS.openCashDrawer, '')),

@@ -211,6 +211,8 @@ export interface OldGoldItemInput {
   purity?: string
   ratePerGram: number
   deductionPct?: number
+  /** Touch / assay percentage. 0 or omitted means the full net weight is valued. */
+  touchPct?: number
 }
 
 export interface OldGoldItem {

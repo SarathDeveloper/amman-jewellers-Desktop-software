@@ -3,7 +3,7 @@ import { Calculator, Percent, Scale, ShoppingBag } from 'lucide-react'
 import type { BillSummary } from '@shared/billing/billSummary'
 import { suggestRoundOff } from '@shared/billing/billSummary'
 import { formatCurrency, formatInr, formatWeight } from '../../lib/format'
-import { parseNumericField } from '../../lib/numericField'
+import { parseNumericField, type NumericField } from '../../lib/numericField'
 
 /** A leading minus or a trailing decimal is still being typed, not a saved round off. */
 function isUnfinishedRoundOff(raw: string): boolean {
@@ -40,7 +40,7 @@ export function BillSummaryCard({
   showTax: boolean
   disabled?: boolean
   discount: number
-  onDiscountChange: (value: number) => void
+  onDiscountChange: (value: NumericField) => void
   onRoundOffChange: (value: number) => void
 }) {
   const suggested = suggestRoundOff(summary.amountBeforeRoundOff)
@@ -188,7 +188,18 @@ export function BillSummaryCard({
                     value={discount || ''}
                     onChange={(event) => {
                       const parsed = parseNumericField(event.target.value)
-                      onDiscountChange(parsed === '' ? 0 : parsed)
+                      // A leading minus is still being typed. A finished negative amount
+                      // is a discount of that size, so -690 is stored as 690.
+                      if (parsed === '' || parsed === '-' || parsed === '.' || parsed === '-.') {
+                        onDiscountChange(0)
+                        return
+                      }
+                      if (typeof parsed === 'number' || parsed.startsWith('-')) {
+                        const amount = Math.abs(Number(parsed))
+                        onDiscountChange(Number.isFinite(amount) ? amount : 0)
+                        return
+                      }
+                      onDiscountChange(parsed)
                     }}
                   />
                 )}

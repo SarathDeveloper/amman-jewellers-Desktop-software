@@ -11,6 +11,7 @@
   width: 210mm;
   min-height: 297mm;
   margin: 0 auto;
+  padding: 8mm;
   background: #fff;
   color: #111;
   font-family: Arial, "Noto Sans Tamil", sans-serif;
@@ -25,7 +26,7 @@
 }
 .gs-passbook {
   position: relative;
-  min-height: 297mm;
+  min-height: calc(297mm - 16mm);
   padding: 4mm;
   background: var(--gs-cream);
   border: 2.2pt solid var(--gs-gold-dark);
@@ -459,7 +460,7 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 6mm;
+    margin: 0;
   }
   .gs-passbook-root {
     width: auto;
