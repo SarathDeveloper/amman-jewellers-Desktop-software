@@ -3,15 +3,16 @@ import type { PaperSize } from '@shared/types'
 export function paperClassName(paper: PaperSize | undefined): string {
   if (paper === 'a4') return 'paper-a4'
   if (paper === 'thermal') return 'paper-thermal'
-  return 'paper-a5'
+  return paper === 'a5' ? 'paper-a5' : 'paper-a4'
 }
 
 export function paperPageCss(paper: PaperSize | undefined): string {
   if (paper === 'a4') return '@page { size: A4 portrait; margin: 0; }'
   if (paper === 'thermal') return '@page { size: 80mm auto; margin: 2mm; }'
-  return '@page { size: A5 portrait; margin: 0; }'
+  if (paper === 'a5') return '@page { size: A5 portrait; margin: 0; }'
+  return '@page { size: A4 portrait; margin: 0; }'
 }
 
 export function applyPaperDataset(paper: PaperSize | undefined): void {
-  document.documentElement.dataset.paper = paper ?? 'a5'
+  document.documentElement.dataset.paper = paper ?? 'a4'
 }

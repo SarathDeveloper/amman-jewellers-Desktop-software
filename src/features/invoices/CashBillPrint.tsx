@@ -28,7 +28,7 @@ function formatRate(value: number): string {
 export function CashBillPrint({
   data,
   shop,
-  paperSize = 'a5',
+  paperSize = 'a4',
 }: {
   data: CashBillData
   shop?: ShopDisplayInfo
@@ -158,19 +158,17 @@ export function CashBillPrint({
           </div>
         </section>
 
-        <hr className="cash-bill-rule" />
-
         <table className="cash-bill-table">
           <thead>
             <tr>
               <th className="cash-bill-col-particulars">{labels.taxColParticulars}</th>
-              <th>{labels.taxColTotWgt}</th>
-              <th>{labels.taxColGrsWgt}</th>
-              <th>{labels.taxColStnWgt}</th>
-              <th>{labels.taxColVamc}</th>
-              <th>{labels.taxColStoneRate}</th>
-              <th>{labels.taxColMetalRate}</th>
-              <th className="cash-bill-col-amount">{labels.taxColAmount}</th>
+              <th className="cash-bill-col-num">{labels.taxColTotWgt}</th>
+              <th className="cash-bill-col-num">{labels.taxColGrsWgt}</th>
+              <th className="cash-bill-col-num">{labels.taxColStnWgt}</th>
+              <th className="cash-bill-col-num">{labels.taxColVamc}</th>
+              <th className="cash-bill-col-num cash-bill-col-stone-rate">{labels.taxColStoneRate}</th>
+              <th className="cash-bill-col-num cash-bill-col-metal-rate">{labels.taxColMetalRate}</th>
+              <th className="cash-bill-col-num cash-bill-col-amount">{labels.taxColAmount}</th>
             </tr>
           </thead>
           <tbody>
@@ -182,7 +180,7 @@ export function CashBillPrint({
                 <td className="cash-bill-col-num">{formatWeight(line.stoneWeight ?? 0)}</td>
                 <td className="cash-bill-col-num">{formatAmount(line.vamc)}</td>
                 <td className="cash-bill-col-num">{formatAmount(line.stoneRate)}</td>
-                <td className="cash-bill-col-num">{formatAmount(line.metalRate)}</td>
+                <td className="cash-bill-col-num cash-bill-col-metal-rate">{formatAmount(line.metalRate)}</td>
                 <td className="cash-bill-col-num cash-bill-col-amount">{formatAmount(line.amount)}</td>
               </tr>
             ))}

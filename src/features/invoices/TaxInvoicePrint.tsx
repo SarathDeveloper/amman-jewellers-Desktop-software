@@ -32,7 +32,7 @@ function money(value: number): string {
 export function TaxInvoicePrint({
   data,
   shop,
-  paperSize = "a5",
+  paperSize = "a4",
 }: {
   data: TaxInvoiceData;
   shop?: ShopDisplayInfo;
@@ -194,21 +194,19 @@ export function TaxInvoicePrint({
           </div>
         </section>
 
-        <hr className="tax-invoice-rule" />
-
         <table className="tax-invoice-table">
           <thead>
             <tr>
               <th className="tax-invoice-col-particulars">
                 {labels.taxColParticulars}
               </th>
-              <th>{labels.taxColTotWgt}</th>
-              <th>{labels.taxColGrsWgt}</th>
-              <th>{labels.taxColStnWgt}</th>
-              <th>{labels.taxColVamc}</th>
-              <th>{labels.taxColStoneRate}</th>
-              <th>{labels.taxColMetalRate}</th>
-              <th className="tax-col-amount">{labels.taxColAmount}</th>
+              <th className="tax-invoice-col-num">{labels.taxColTotWgt}</th>
+              <th className="tax-invoice-col-num">{labels.taxColGrsWgt}</th>
+              <th className="tax-invoice-col-num">{labels.taxColStnWgt}</th>
+              <th className="tax-invoice-col-num">{labels.taxColVamc}</th>
+              <th className="tax-invoice-col-num tax-invoice-col-stone-rate">{labels.taxColStoneRate}</th>
+              <th className="tax-invoice-col-num tax-invoice-col-metal-rate">{labels.taxColMetalRate}</th>
+              <th className="tax-invoice-col-num tax-col-amount">{labels.taxColAmount}</th>
             </tr>
           </thead>
           <tbody>
@@ -232,7 +230,7 @@ export function TaxInvoicePrint({
                 <td className="tax-invoice-col-num">
                   {fmt2(line.stoneRate ?? 0)}
                 </td>
-                <td className="tax-invoice-col-num">{fmt2(line.metalRate)}</td>
+                <td className="tax-invoice-col-num tax-invoice-col-metal-rate">{fmt2(line.metalRate)}</td>
                 <td className="tax-invoice-col-num tax-col-amount">
                   {fmt2(line.amount)}
                 </td>

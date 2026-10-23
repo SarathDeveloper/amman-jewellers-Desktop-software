@@ -7,7 +7,8 @@ const PRINT_READY_TIMEOUT_MS = 20000
 function paperPageMm(paper: string | undefined): { width: number; height: number | 'auto'; format?: 'a4' | 'a5' } {
   if (paper === 'a4') return { width: 210, height: 297, format: 'a4' }
   if (paper === 'thermal') return { width: 80, height: 'auto' }
-  return { width: 148, height: 210, format: 'a5' }
+  if (paper === 'a5') return { width: 148, height: 210, format: 'a5' }
+  return { width: 210, height: 297, format: 'a4' }
 }
 
 function safePdfFilename(name: string): string {

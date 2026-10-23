@@ -224,24 +224,46 @@
   text-align: center;
   font-size: 6pt;
   line-height: 1.15;
-  word-wrap: break-word;
 }
 
-/* Cash and tax bills keep an outer frame and a header rule. Pledge sheets reuse
-   this table and keep the full cell grid. */
+/* Pledge sheets reuse this table and keep the full cell grid. */
 .tax-invoice-root:not(.adagu-print-sheet) .tax-invoice-table {
   border-collapse: separate;
   border-spacing: 0;
-  border: 0.5pt solid #999;
+  border: none;
+  margin-top: 2mm;
 }
 
 .tax-invoice-root:not(.adagu-print-sheet) .tax-invoice-table th,
 .tax-invoice-root:not(.adagu-print-sheet) .tax-invoice-table td {
   border: none;
+  vertical-align: middle !important;
 }
 
 .tax-invoice-root:not(.adagu-print-sheet) .tax-invoice-table thead th {
   border-bottom: 0.5pt solid #999;
+  color: #111;
+  font-weight: 900;
+  font-size: 7pt;
+  vertical-align: middle !important;
+  white-space: nowrap;
+  word-wrap: normal;
+}
+
+.tax-invoice-root.paper-a5:not(.adagu-print-sheet) .tax-invoice-table thead th {
+  font-size: 6pt;
+}
+
+.tax-invoice-root:not(.adagu-print-sheet) .tax-invoice-table thead th.tax-invoice-col-particulars {
+  text-align: left;
+}
+
+.tax-invoice-root:not(.adagu-print-sheet) .tax-invoice-table thead th.tax-invoice-col-num {
+  text-align: right;
+}
+
+.tax-invoice-col-stone-rate {
+  width: 12%;
 }
 
 .tax-invoice-col-particulars {
@@ -253,8 +275,14 @@
   text-align: right;
 }
 
+.tax-invoice-col-metal-rate {
+  width: 15%;
+  white-space: nowrap;
+}
+
 .tax-col-amount {
   width: 18mm;
+  text-align: right;
 }
 
 .tax-invoice-table tbody tr.empty td {

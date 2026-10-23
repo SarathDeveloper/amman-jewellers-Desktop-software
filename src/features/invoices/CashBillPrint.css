@@ -99,6 +99,7 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   line-height: 1.15;
+  white-space: nowrap;
 }
 
 .cash-bill-tagline {
@@ -203,25 +204,32 @@
   border-spacing: 0;
   table-layout: fixed;
   font-size: 6.6pt;
-  border: 0.5pt solid #999;
+  border: none;
+  margin-top: 2mm;
 }
 
 .cash-bill-table th,
 .cash-bill-table td {
   border: none;
   padding: 1mm 0.6mm;
-  vertical-align: top;
+  vertical-align: middle !important;
   word-wrap: break-word;
 }
 
 .cash-bill-table thead th {
   background: #fff;
-  font-weight: 700;
-  text-align: center;
-  font-size: 6pt;
+  color: #111;
+  font-weight: 900;
+  vertical-align: middle !important;
+  font-size: 7pt;
   line-height: 1.15;
-  word-wrap: break-word;
+  white-space: nowrap;
+  word-wrap: normal;
   border-bottom: 0.5pt solid #999;
+}
+
+.cash-bill-root.paper-a5 .cash-bill-table thead th {
+  font-size: 6pt;
 }
 
 .cash-bill-col-sno {
@@ -238,8 +246,18 @@
   text-align: right;
 }
 
+.cash-bill-col-stone-rate {
+  width: 12%;
+}
+
+.cash-bill-col-metal-rate {
+  width: 15%;
+  white-space: nowrap;
+}
+
 .cash-bill-col-amount {
   width: 18mm;
+  text-align: right;
 }
 
 .cash-bill-table tbody tr.empty td {
@@ -480,6 +498,10 @@
 
 .cash-bill-root.paper-a4 .cash-bill-shop-name {
   font-size: 18pt;
+}
+
+.cash-bill-root.paper-a4 .cash-bill-brand-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 72mm) minmax(0, 1fr);
 }
 
 .cash-bill-root.paper-a4 .cash-bill-table {

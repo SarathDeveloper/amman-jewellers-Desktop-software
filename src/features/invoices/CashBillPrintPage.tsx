@@ -15,7 +15,7 @@ export function CashBillPrintPage() {
   const { id } = useParams()
   const [data, setData] = useState<CashBillData | null>(null)
   const [shop, setShop] = useState<ShopDisplayInfo | null>(null)
-  const [paperSize, setPaperSize] = useState<PaperSize>('a5')
+  const [paperSize, setPaperSize] = useState<PaperSize>('a4')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {

@@ -78,6 +78,7 @@ export function getMigrations(): { version: number; sql: string; disableForeignK
     { version: 68, sql: loadMigrationSql('068_inventory_pieces.sql') },
     { version: 69, sql: loadMigrationSql('069_sessions.sql') },
     { version: 70, sql: loadMigrationSql('070_bill_paper_a5.sql') },
+    { version: 71, sql: loadMigrationSql('071_bill_paper_a4.sql') },
   ]
 }
 

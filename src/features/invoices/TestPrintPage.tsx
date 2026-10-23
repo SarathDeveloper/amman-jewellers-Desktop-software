@@ -21,7 +21,7 @@ function paperLabel(paper: PaperSize): string {
 export function TestPrintPage() {
   const { role: roleParam } = useParams()
   const [shopName, setShopName] = useState('')
-  const [paperSize, setPaperSize] = useState<PaperSize>('a5')
+  const [paperSize, setPaperSize] = useState<PaperSize>('a4')
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
   const role: PrinterRole = isPrinterRole(roleParam) ? roleParam : 'cash'
